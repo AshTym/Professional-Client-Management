@@ -43,4 +43,7 @@ export * from './workspaceInvitationAcceptance';
 export * from './workspaceInvitationInput';
 export * from './workspaceInvitationInputRole';
 export * from './workspaceInvitationRole';
+export * from './workspaceMember';
+export * from './workspaceMemberUpdate';
+export * from './workspaceMemberUpdateRole';
 export * from './workspacePracticeType';

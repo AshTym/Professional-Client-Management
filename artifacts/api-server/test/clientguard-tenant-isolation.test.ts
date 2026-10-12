@@ -625,6 +625,132 @@ test("clients, matters, and activity lists and details stay inside the signed-in
   assert.equal(otherActivityDetail.response.status, 404);
 });
 
+test("firm owners and admins can manage teammate roles with scoped audit events", async () => {
+  const adminId = `member-admin-${randomUUID()}`;
+  const teammateId = `member-teammate-${randomUUID()}`;
+  const teammateName = `Member Teammate ${randomUUID()}`;
+  const [owner] = await db
+    .select({ id: membershipsTable.id })
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, firms.primary.ownerId))
+    .limit(1);
+  const [foreignOwner] = await db
+    .select({ id: membershipsTable.id })
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, firms.other.ownerId))
+    .limit(1);
+  const [admin] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: adminId,
+      email: "member-admin@example.test",
+      displayName: "Member Admin",
+      role: "admin",
+    })
+    .returning();
+  const [teammate] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: teammateId,
+      email: "member-teammate@example.test",
+      displayName: teammateName,
+      role: "professional",
+    })
+    .returning();
+  const insertedActivityIds: number[] = [];
+
+  try {
+    const listed = await request("/workspace/members", {
+      userId: firms.primary.ownerId,
+    });
+    assert.equal(listed.response.status, 200);
+    assert((listed.body as Array<{ id: number; role: string }>).some(
+      ({ id, role }) => id === teammate.id && role === "professional",
+    ));
+    assert(!(listed.body as Array<{ id: number }>).some(({ id }) => id === foreignOwner.id));
+
+    const adminList = await request("/workspace/members", { userId: adminId });
+    assert.equal(adminList.response.status, 200);
+    const unauthorizedList = await request("/workspace/members", {
+      userId: teammateId,
+    });
+    assert.equal(unauthorizedList.response.status, 403);
+
+    const changed = await request(`/workspace/members/${teammate.id}`, {
+      userId: adminId,
+      method: "PATCH",
+      body: { role: "advisor" },
+    });
+    assert.equal(changed.response.status, 200);
+    assert.equal((changed.body as { role: string }).role, "advisor");
+
+    const subsequentWorkspace = await request("/workspace", { userId: teammateId });
+    assert.equal((subsequentWorkspace.body as { role: string }).role, "advisor");
+    const subsequentRequest = await request("/dashboard", { userId: teammateId });
+    assert.equal(subsequentRequest.response.status, 200);
+
+    const unsupportedRole = await request(`/workspace/members/${teammate.id}`, {
+      userId: firms.primary.ownerId,
+      method: "PATCH",
+      body: { role: "owner" },
+    });
+    assert.equal(unsupportedRole.response.status, 400);
+
+    const protectedOwnerRole = await request(`/workspace/members/${owner.id}`, {
+      userId: firms.primary.ownerId,
+      method: "PATCH",
+      body: { role: "professional" },
+    });
+    assert.equal(protectedOwnerRole.response.status, 404);
+    const protectedOwnerRemoval = await request(`/workspace/members/${owner.id}`, {
+      userId: firms.primary.ownerId,
+      method: "DELETE",
+    });
+    assert.equal(protectedOwnerRemoval.response.status, 404);
+
+    const crossFirmRemoval = await request(`/workspace/members/${foreignOwner.id}`, {
+      userId: firms.primary.ownerId,
+      method: "DELETE",
+    });
+    assert.equal(crossFirmRemoval.response.status, 404);
+
+    const removed = await request(`/workspace/members/${teammate.id}`, {
+      userId: firms.primary.ownerId,
+      method: "DELETE",
+    });
+    assert.equal(removed.response.status, 204);
+    const deniedAfterRemoval = await request("/dashboard", { userId: teammateId });
+    assert.equal(deniedAfterRemoval.response.status, 403);
+
+    const accessEvents = await db
+      .select()
+      .from(activitiesTable)
+      .where(eq(activitiesTable.workspaceId, firms.primary.workspaceId));
+    const matchingEvents = accessEvents.filter((event) =>
+      event.action.includes(teammateName),
+    );
+    assert.deepEqual(
+      matchingEvents.map((event) => event.action),
+      [
+        `changed ${teammateName}'s role from professional to advisor`,
+        `removed ${teammateName} from the firm workspace`,
+      ],
+    );
+    insertedActivityIds.push(...matchingEvents.map(({ id }) => id));
+  } finally {
+    if (insertedActivityIds.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, insertedActivityIds));
+    }
+    await db
+      .delete(membershipsTable)
+      .where(inArray(membershipsTable.id, [admin.id, teammate.id]));
+  }
+});
+
 test("owners can email an invitation with the selected workspace role", async (t) => {
   const createInvitation = t.mock.method(
     clerkClient.invitations,

@@ -95,6 +95,55 @@ export const CreateWorkspaceInvitationResponse = zod.object({
 
 
 /**
+ * @summary List current members of the firm
+ */
+export const ListWorkspaceMembersResponseItem = zod.object({
+  "id": zod.number().int(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "role": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const ListWorkspaceMembersResponse = zod.array(ListWorkspaceMembersResponseItem)
+
+
+/**
+ * @summary Change a firm member's role
+ */
+
+
+
+export const UpdateWorkspaceMemberParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const UpdateWorkspaceMemberBody = zod.object({
+  "role": zod.enum(['admin', 'advisor', 'professional', 'assistant'])
+})
+
+export const UpdateWorkspaceMemberResponse = zod.object({
+  "id": zod.number().int(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "role": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Remove a member from the current firm
+ */
+
+
+
+export const RemoveWorkspaceMemberParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const RemoveWorkspaceMemberResponse = zod.void()
+
+
+/**
  * @summary Send a fresh invitation link to a pending teammate
  */
 

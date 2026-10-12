@@ -44,6 +44,7 @@ import {
   GetMatterResponse,
   GetWorkspaceResponse,
   ListWorkspaceInvitationsResponse,
+  ListWorkspaceMembersResponse,
   ResendWorkspaceInvitationParams,
   ResendWorkspaceInvitationResponse,
   WithdrawWorkspaceInvitationParams,
@@ -61,6 +62,10 @@ import {
   UpdateMatterResponse,
   AcceptWorkspaceInvitationBody,
   AcceptWorkspaceInvitationResponse,
+  UpdateWorkspaceMemberBody,
+  UpdateWorkspaceMemberParams,
+  UpdateWorkspaceMemberResponse,
+  RemoveWorkspaceMemberParams,
 } from "@workspace/api-zod";
 import {
   firmAccess,
@@ -132,6 +137,147 @@ const invitationLifetimeMs = 7 * 24 * 60 * 60 * 1000;
 function canManageInvitations(role: string): boolean {
   return role === "owner" || role === "admin";
 }
+
+function memberResponse(member: typeof membershipsTable.$inferSelect) {
+  return {
+    id: member.id,
+    email: member.email,
+    name: member.displayName,
+    role: member.role,
+    createdAt: member.createdAt,
+  };
+}
+
+router.get("/workspace/members", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+  if (!canManageInvitations(access.role)) {
+    res.status(403).json({ error: "Only firm owners and admins can view firm members." });
+    return;
+  }
+
+  const members = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.workspaceId, access.workspaceId))
+    .orderBy(desc(membershipsTable.createdAt), desc(membershipsTable.id));
+  res.json(ListWorkspaceMembersResponse.parse(members.map(memberResponse)));
+});
+
+router.patch("/workspace/members/:id", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+  if (!canManageInvitations(access.role)) {
+    res.status(403).json({ error: "Only firm owners and admins can update firm members." });
+    return;
+  }
+
+  const params = UpdateWorkspaceMemberParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const parsed = UpdateWorkspaceMemberBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const [member] = await tx
+      .select()
+      .from(membershipsTable)
+      .where(
+        and(
+          eq(membershipsTable.id, params.data.id),
+          eq(membershipsTable.workspaceId, access.workspaceId),
+        ),
+      )
+      .limit(1)
+      .for("update");
+    if (!member) return { kind: "missing" as const };
+    if (member.role === "owner") {
+      return { kind: "owner" as const };
+    }
+
+    if (member.role === parsed.data.role) {
+      return { kind: "updated" as const, member };
+    }
+
+    const [updated] = await tx
+      .update(membershipsTable)
+      .set({ role: parsed.data.role })
+      .where(eq(membershipsTable.id, member.id))
+      .returning();
+    await tx.insert(activitiesTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action: `changed ${member.displayName || member.email}'s role from ${member.role} to ${updated.role}`,
+      entityType: "workspace",
+      entityId: access.workspaceId,
+      entityLabel: member.displayName || member.email,
+    });
+    return { kind: "updated" as const, member: updated };
+  });
+
+  if (result.kind !== "updated") {
+    res.status(404).json({ error: "That member could not be found in your firm." });
+    return;
+  }
+  res.json(UpdateWorkspaceMemberResponse.parse(memberResponse(result.member)));
+});
+
+router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+  if (!canManageInvitations(access.role)) {
+    res.status(403).json({ error: "Only firm owners and admins can remove firm members." });
+    return;
+  }
+
+  const params = RemoveWorkspaceMemberParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const [member] = await tx
+      .select()
+      .from(membershipsTable)
+      .where(
+        and(
+          eq(membershipsTable.id, params.data.id),
+          eq(membershipsTable.workspaceId, access.workspaceId),
+        ),
+      )
+      .limit(1)
+      .for("update");
+    if (!member) return "missing" as const;
+    if (member.role === "owner") {
+      return "owner" as const;
+    }
+
+    await tx.delete(membershipsTable).where(eq(membershipsTable.id, member.id));
+    await tx.insert(activitiesTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action: `removed ${member.displayName || member.email} from the firm workspace`,
+      entityType: "workspace",
+      entityId: access.workspaceId,
+      entityLabel: member.displayName || member.email,
+    });
+    return "removed" as const;
+  });
+
+  if (result !== "removed") {
+    res.status(404).json({ error: "That member could not be found in your firm." });
+    return;
+  }
+  res.sendStatus(204);
+});
 
 function invitationResponse(invitation: typeof invitationsTable.$inferSelect) {
   return {

@@ -7,14 +7,15 @@ import { Route, Switch, Router as WouterRouter, Link, Redirect, useLocation, use
 import {
   useHealthCheck, useGetWorkspace, useCreateWorkspace, useGetDashboard, useListActivity,
   useListWorkspaceInvitations, useCreateWorkspaceInvitation, useResendWorkspaceInvitation,
-  useWithdrawWorkspaceInvitation, useAcceptWorkspaceInvitation,
+  useWithdrawWorkspaceInvitation, useAcceptWorkspaceInvitation, useListWorkspaceMembers,
+  useUpdateWorkspaceMember, useRemoveWorkspaceMember,
   useListClients, useCreateClient, useGetClient, useUpdateClient, useDeleteClient,
   useListMatters, useCreateMatter, useGetMatter, useUpdateMatter, useCloseMatter,
   getHealthCheckQueryKey, getGetWorkspaceQueryKey, getGetDashboardQueryKey, getListActivityQueryKey,
-  getListWorkspaceInvitationsQueryKey,
+  getListWorkspaceInvitationsQueryKey, getListWorkspaceMembersQueryKey,
   getListClientsQueryKey, getGetClientQueryKey, getListMattersQueryKey, getGetMatterQueryKey,
 } from '@workspace/api-client-react';
-import type { Client, ClientInput, Matter, MatterInput, WorkspaceInput, WorkspaceInvitationInput } from '@workspace/api-client-react';
+import type { Client, ClientInput, Matter, MatterInput, WorkspaceInput, WorkspaceInvitationInput, WorkspaceMemberUpdate } from '@workspace/api-client-react';
 import {
   Activity as ActivityIcon, ArrowDownRight, ArrowLeft, ArrowRight, BriefcaseBusiness, Check,
   ChevronDown, CircleHelp, Clock3, FileText, Fingerprint, LockKeyhole, LogOut, Menu,
@@ -267,8 +268,51 @@ function TeamPage() {
   const createInvitation = useCreateWorkspaceInvitation();
   const resendInvitation = useResendWorkspaceInvitation();
   const withdrawInvitation = useWithdrawWorkspaceInvitation();
+  const members = useListWorkspaceMembers();
+  const updateMember = useUpdateWorkspaceMember();
+  const removeMember = useRemoveWorkspaceMember();
   const qc = useQueryClient();
   const [invitationActionMessage, setInvitationActionMessage] = useState('');
+  const [memberActionMessage, setMemberActionMessage] = useState('');
+
+  async function refreshAccessViews() {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: getListWorkspaceMembersQueryKey() }),
+      qc.invalidateQueries({ queryKey: getGetWorkspaceQueryKey() }),
+      qc.invalidateQueries({ queryKey: getListActivityQueryKey() }),
+      qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
+    ]);
+  }
+
+  function saveMemberRole(e: FormEvent<HTMLFormElement>, memberId: number, memberName: string, currentRole: string) {
+    e.preventDefault();
+    const role = String(new FormData(e.currentTarget).get('role')) as WorkspaceMemberUpdate['role'];
+    if (role === currentRole) return;
+    setMemberActionMessage('');
+    updateMember.mutate({ id: memberId, data: { role } }, {
+      onSuccess: async () => {
+        await refreshAccessViews();
+        setMemberActionMessage(`${memberName}’s role was updated.`);
+      },
+      onError: async () => {
+        await qc.invalidateQueries({ queryKey: getListWorkspaceMembersQueryKey() });
+      },
+    });
+  }
+
+  function removeTeammate(memberId: number, memberName: string) {
+    if (!window.confirm(`Remove ${memberName} from this firm's workspace? They will lose access on their next request.`)) return;
+    setMemberActionMessage('');
+    removeMember.mutate({ id: memberId }, {
+      onSuccess: async () => {
+        await refreshAccessViews();
+        setMemberActionMessage(`${memberName} no longer has access to this firm.`);
+      },
+      onError: async () => {
+        await qc.invalidateQueries({ queryKey: getListWorkspaceMembersQueryKey() });
+      },
+    });
+  }
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -349,6 +393,48 @@ function TeamPage() {
           </div>)}</div>}
       </section>
     </div>
+    <section className="mt-6 overflow-hidden rounded-md border border-[#e0dace] bg-[#fbfaf5]" data-testid="panel-workspace-members">
+      <div className="flex items-center justify-between border-b border-[#e9e4d9] px-5 py-4">
+        <div><h2 className="serif text-xl font-bold">Current members</h2><p className="mt-1 text-xs text-[#87918d]">Review who can access this firm and update teammate roles.</p></div>
+        <Users className="h-5 w-5 text-[#987747]" />
+      </div>
+      {memberActionMessage && <p className="px-5 pt-4 text-sm text-[#446b55]" role="status" data-testid="status-member-action">{memberActionMessage}</p>}
+      {(updateMember.isError || removeMember.isError) && <p className="px-5 pt-4 text-sm text-[#9b4941]" role="alert" data-testid="status-member-action-error">That access change could not be completed. The member list has been refreshed; please try again.</p>}
+      {members.isLoading ? <div className="p-5"><Skeleton title="Loading firm members" /></div> :
+        members.isError ? <div className="p-5 text-sm text-[#9b4941]">Firm members could not be loaded. <button onClick={() => members.refetch()} className="underline" data-testid="button-retry-members">Try again</button></div> :
+        !members.data?.length ? <div className="p-6"><EmptyState title="No current members" detail="Firm members will appear here after they accept an invitation." /></div> :
+        <div className="divide-y divide-[#eee9df]">{members.data.map(member => {
+          const memberName = member.name || member.email || 'Unnamed teammate';
+          const isProtectedOwner = member.role === 'owner';
+          return <div key={member.id} className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between" data-testid={`member-row-${member.id}`}>
+            <div className="min-w-0">
+              <div className="break-words text-sm font-semibold">{memberName}</div>
+              <div className="mt-1 break-all text-xs text-[#7e8985]">{member.email || 'No email address'}</div>
+              <div className="mt-1 text-[10px] text-[#87918d]">Joined {formatTime(member.createdAt)}</div>
+            </div>
+            {isProtectedOwner ?
+              <span className="inline-flex w-fit rounded-full bg-[#f2eee3] px-3 py-1.5 text-xs font-semibold capitalize text-[#806b44]" data-testid={`member-role-${member.id}`}>Firm owner</span> :
+              <div className="flex flex-wrap items-center gap-2">
+                <form className="flex items-center gap-2" onSubmit={e => saveMemberRole(e, member.id, memberName, member.role)}>
+                  <Field label="Role">
+                    <select name="role" defaultValue={member.role} className="field min-w-40" data-testid={`select-member-role-${member.id}`}>
+                      <option value="admin">Admin</option>
+                      <option value="advisor">Advisor</option>
+                      <option value="professional">Professional</option>
+                      <option value="assistant">Assistant</option>
+                    </select>
+                  </Field>
+                  <Button type="submit" variant="outline" disabled={updateMember.isPending || removeMember.isPending} testId={`button-save-member-role-${member.id}`}>
+                    {updateMember.isPending ? 'Saving…' : 'Save role'}
+                  </Button>
+                </form>
+                <Button variant="outline" disabled={updateMember.isPending || removeMember.isPending} testId={`button-remove-member-${member.id}`} onClick={() => removeTeammate(member.id, memberName)}>
+                  {removeMember.isPending ? 'Removing…' : 'Remove access'}
+                </Button>
+              </div>}
+          </div>;
+        })}</div>}
+    </section>
   </>;
 }
 function InviteAcceptance() {

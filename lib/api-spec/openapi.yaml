@@ -10,6 +10,7 @@ servers:
 tags:
   - name: health
   - name: workspace
+  - name: members
   - name: invitations
   - name: clients
   - name: matters
@@ -98,6 +99,64 @@ paths:
           description: The person is already a member or has a pending invitation
         "502":
           description: The invitation email could not be sent
+  /workspace/members:
+    get:
+      operationId: listWorkspaceMembers
+      tags: [members]
+      summary: List current members of the firm
+      responses:
+        "200":
+          description: Current firm members and their roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkspaceMember"
+        "403":
+          description: Only owners and admins can view firm members
+  /workspace/members/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    patch:
+      operationId: updateWorkspaceMember
+      tags: [members]
+      summary: Change a firm member's role
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceMemberUpdate"
+      responses:
+        "200":
+          description: Member role updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMember"
+        "400":
+          description: Invalid member role
+        "403":
+          description: Only owners and admins can update members
+        "404":
+          description: Member not found in this firm or is the firm owner
+    delete:
+      operationId: removeWorkspaceMember
+      tags: [members]
+      summary: Remove a member from the current firm
+      responses:
+        "204":
+          description: Member access removed
+        "403":
+          description: Only owners and admins can remove members
+        "404":
+          description: Member not found in this firm or is the firm owner
   /workspace/invitations/{id}/resend:
     parameters:
       - name: id
@@ -451,6 +510,22 @@ components:
           enum: [admin, advisor, professional, assistant]
         createdAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
+    WorkspaceMember:
+      type: object
+      required: [id, email, name, role, createdAt]
+      properties:
+        id: { type: integer }
+        email: { type: string }
+        name: { type: string }
+        role: { type: string }
+        createdAt: { type: string, format: date-time }
+    WorkspaceMemberUpdate:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [admin, advisor, professional, assistant]
     WorkspaceInvitationInput:
       type: object
       required: [email, role]

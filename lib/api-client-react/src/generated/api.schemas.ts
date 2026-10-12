@@ -84,6 +84,28 @@ export interface WorkspaceInvitation {
   expiresAt: string;
 }
 
+export interface WorkspaceMember {
+  id: number;
+  email: string;
+  name: string;
+  role: string;
+  createdAt: string;
+}
+
+export type WorkspaceMemberUpdateRole = typeof WorkspaceMemberUpdateRole[keyof typeof WorkspaceMemberUpdateRole];
+
+
+export const WorkspaceMemberUpdateRole = {
+  admin: 'admin',
+  advisor: 'advisor',
+  professional: 'professional',
+  assistant: 'assistant',
+} as const;
+
+export interface WorkspaceMemberUpdate {
+  role: WorkspaceMemberUpdateRole;
+}
+
 export type WorkspaceInvitationInputRole = typeof WorkspaceInvitationInputRole[keyof typeof WorkspaceInvitationInputRole];
 
 
