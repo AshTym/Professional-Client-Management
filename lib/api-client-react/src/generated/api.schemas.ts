@@ -378,6 +378,433 @@ export interface DashboardSummary {
   recentActivity: Activity[];
 }
 
+export type BillingProfileFeeType = typeof BillingProfileFeeType[keyof typeof BillingProfileFeeType];
+
+
+export const BillingProfileFeeType = {
+  hourly: 'hourly',
+  fixed: 'fixed',
+} as const;
+
+export type BillingProfileBillingCycle = typeof BillingProfileBillingCycle[keyof typeof BillingProfileBillingCycle];
+
+
+export const BillingProfileBillingCycle = {
+  weekly: 'weekly',
+  monthly: 'monthly',
+  quarterly: 'quarterly',
+} as const;
+
+export interface BillingProfile {
+  id: number;
+  matterId: number;
+  matterTitle: string;
+  clientName: string;
+  feeType: BillingProfileFeeType;
+  currency: string;
+  /** @nullable */
+  hourlyRateCents: number | null;
+  /** @nullable */
+  fixedFeeCents: number | null;
+  feeDescription: string;
+  billingCycle: BillingProfileBillingCycle;
+  taxRateBps: number;
+  scheduleEnabled: boolean;
+  periodStartAt: string;
+  nextDraftAt: string;
+  updatedAt: string;
+}
+
+export interface TimeEntry {
+  id: number;
+  matterId: number;
+  matterTitle: string;
+  description: string;
+  workDate: string;
+  durationMinutes: number;
+  billable: boolean;
+  /** @nullable */
+  billingDraftId: number | null;
+  createdAt: string;
+}
+
+export interface BillingLineItem {
+  description: string;
+  /** @nullable */
+  workDate: string | null;
+  /** @nullable */
+  durationMinutes: number | null;
+  /** @nullable */
+  rateCents: number | null;
+  amountCents: number;
+}
+
+export type BillingDraftStatus = typeof BillingDraftStatus[keyof typeof BillingDraftStatus];
+
+
+export const BillingDraftStatus = {
+  draft: 'draft',
+  reviewed: 'reviewed',
+} as const;
+
+export interface BillingDraft {
+  id: number;
+  matterId: number;
+  matterTitle: string;
+  clientName: string;
+  periodStartAt: string;
+  periodEndAt: string;
+  currency: string;
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  narrative: string;
+  lineItems: BillingLineItem[];
+  status: BillingDraftStatus;
+  generatedAt: string;
+  /** @nullable */
+  reviewedAt: string | null;
+}
+
+export interface BillingOverview {
+  profiles: BillingProfile[];
+  timeEntries: TimeEntry[];
+  drafts: BillingDraft[];
+}
+
+export type BillingProfileInputFeeType = typeof BillingProfileInputFeeType[keyof typeof BillingProfileInputFeeType];
+
+
+export const BillingProfileInputFeeType = {
+  hourly: 'hourly',
+  fixed: 'fixed',
+} as const;
+
+export type BillingProfileInputBillingCycle = typeof BillingProfileInputBillingCycle[keyof typeof BillingProfileInputBillingCycle];
+
+
+export const BillingProfileInputBillingCycle = {
+  weekly: 'weekly',
+  monthly: 'monthly',
+  quarterly: 'quarterly',
+} as const;
+
+export interface BillingProfileInput {
+  /** @minimum 1 */
+  matterId: number;
+  feeType: BillingProfileInputFeeType;
+  /**
+     * @minLength 3
+     * @maxLength 3
+     */
+  currency: string;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  hourlyRateCents?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  fixedFeeCents?: number | null;
+  /**
+     * @minLength 1
+     * @maxLength 240
+     */
+  feeDescription: string;
+  billingCycle: BillingProfileInputBillingCycle;
+  /**
+     * @minimum 0
+     * @maximum 10000
+     */
+  taxRateBps: number;
+  scheduleEnabled: boolean;
+  nextDraftAt: string;
+}
+
+export interface TimeEntryInput {
+  /** @minimum 1 */
+  matterId: number;
+  /**
+     * @minLength 1
+     * @maxLength 1000
+     */
+  description: string;
+  workDate: string;
+  /**
+     * @minimum 1
+     * @maximum 1440
+     */
+  durationMinutes: number;
+  billable: boolean;
+}
+
+export type BillingDraftUpdateStatus = typeof BillingDraftUpdateStatus[keyof typeof BillingDraftUpdateStatus];
+
+
+export const BillingDraftUpdateStatus = {
+  draft: 'draft',
+  reviewed: 'reviewed',
+} as const;
+
+export interface BillingDraftUpdate {
+  status: BillingDraftUpdateStatus;
+}
+
+export type ClientDocumentStatus = typeof ClientDocumentStatus[keyof typeof ClientDocumentStatus];
+
+
+export const ClientDocumentStatus = {
+  uploading: 'uploading',
+  ready: 'ready',
+  analyzing: 'analyzing',
+  analyzed: 'analyzed',
+  failed: 'failed',
+} as const;
+
+export interface ClientDocument {
+  id: number;
+  matterId: number;
+  matterTitle: string;
+  originalName: string;
+  contentType: string;
+  sizeBytes: number;
+  status: ClientDocumentStatus;
+  /** @nullable */
+  lastAnalysisError: string | null;
+  createdAt: string;
+}
+
+export type DocumentSuggestionKind = typeof DocumentSuggestionKind[keyof typeof DocumentSuggestionKind];
+
+
+export const DocumentSuggestionKind = {
+  event: 'event',
+  task: 'task',
+} as const;
+
+export type DocumentSuggestionStatus = typeof DocumentSuggestionStatus[keyof typeof DocumentSuggestionStatus];
+
+
+export const DocumentSuggestionStatus = {
+  pending: 'pending',
+  confirmed: 'confirmed',
+  rejected: 'rejected',
+} as const;
+
+export interface DocumentSuggestion {
+  id: number;
+  documentId: number;
+  documentName: string;
+  matterId: number;
+  matterTitle: string;
+  kind: DocumentSuggestionKind;
+  title: string;
+  details: string;
+  /** @nullable */
+  dueAt: string | null;
+  sourcePage: number;
+  sourceQuote: string;
+  confidence: number;
+  status: DocumentSuggestionStatus;
+  createdAt: string;
+}
+
+export type PlannerItemKind = typeof PlannerItemKind[keyof typeof PlannerItemKind];
+
+
+export const PlannerItemKind = {
+  event: 'event',
+  task: 'task',
+} as const;
+
+export type PlannerItemStatus = typeof PlannerItemStatus[keyof typeof PlannerItemStatus];
+
+
+export const PlannerItemStatus = {
+  open: 'open',
+  done: 'done',
+} as const;
+
+export interface PlannerItem {
+  id: number;
+  documentId: number;
+  documentName: string;
+  matterId: number;
+  matterTitle: string;
+  kind: PlannerItemKind;
+  title: string;
+  details: string;
+  /** @nullable */
+  dueAt: string | null;
+  sourcePage: number;
+  sourceQuote: string;
+  status: PlannerItemStatus;
+  confirmedAt: string;
+  createdAt: string;
+}
+
+export interface DocumentOverview {
+  documents: ClientDocument[];
+  suggestions: DocumentSuggestion[];
+  plannerItems: PlannerItem[];
+}
+
+export type DocumentUploadInputContentType = typeof DocumentUploadInputContentType[keyof typeof DocumentUploadInputContentType];
+
+
+export const DocumentUploadInputContentType = {
+  'application/pdf': 'application/pdf',
+  'application/vndopenxmlformats-officedocumentwordprocessingmldocument': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain': 'text/plain',
+} as const;
+
+export interface DocumentUploadInput {
+  /** @minimum 1 */
+  matterId: number;
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  name: string;
+  /**
+     * @minimum 1
+     * @maximum 15728640
+     */
+  size: number;
+  contentType: DocumentUploadInputContentType;
+}
+
+export interface DocumentUpload {
+  id: number;
+  uploadURL: string;
+  objectPath: string;
+  originalName: string;
+}
+
+export type DocumentSuggestionUpdateStatus = typeof DocumentSuggestionUpdateStatus[keyof typeof DocumentSuggestionUpdateStatus];
+
+
+export const DocumentSuggestionUpdateStatus = {
+  confirmed: 'confirmed',
+  rejected: 'rejected',
+} as const;
+
+export interface DocumentSuggestionUpdate {
+  status: DocumentSuggestionUpdateStatus;
+}
+
+export type PlannerItemUpdateStatus = typeof PlannerItemUpdateStatus[keyof typeof PlannerItemUpdateStatus];
+
+
+export const PlannerItemUpdateStatus = {
+  open: 'open',
+  done: 'done',
+} as const;
+
+export interface PlannerItemUpdate {
+  status: PlannerItemUpdateStatus;
+}
+
+export type ClientUpdateScheduleCadence = typeof ClientUpdateScheduleCadence[keyof typeof ClientUpdateScheduleCadence];
+
+
+export const ClientUpdateScheduleCadence = {
+  weekly: 'weekly',
+  fortnightly: 'fortnightly',
+  monthly: 'monthly',
+} as const;
+
+export interface ClientUpdateSchedule {
+  matterId: number;
+  matterTitle: string;
+  clientName: string;
+  enabled: boolean;
+  cadence: ClientUpdateScheduleCadence;
+  /** @nullable */
+  nextDraftAt: string | null;
+}
+
+export type ClientUpdateDraftStatus = typeof ClientUpdateDraftStatus[keyof typeof ClientUpdateDraftStatus];
+
+
+export const ClientUpdateDraftStatus = {
+  draft: 'draft',
+  reviewed: 'reviewed',
+} as const;
+
+export type ClientUpdateDraftGeneratedBy = typeof ClientUpdateDraftGeneratedBy[keyof typeof ClientUpdateDraftGeneratedBy];
+
+
+export const ClientUpdateDraftGeneratedBy = {
+  user: 'user',
+  schedule: 'schedule',
+} as const;
+
+export interface ClientUpdateDraft {
+  id: number;
+  matterId: number;
+  matterTitle: string;
+  clientName: string;
+  sourceActivityIds: number[];
+  subject: string;
+  body: string;
+  status: ClientUpdateDraftStatus;
+  generatedBy: ClientUpdateDraftGeneratedBy;
+  generatedAt: string;
+  /** @nullable */
+  reviewedAt: string | null;
+}
+
+export interface ClientUpdateOverview {
+  schedules: ClientUpdateSchedule[];
+  drafts: ClientUpdateDraft[];
+}
+
+export type ClientUpdateScheduleInputCadence = typeof ClientUpdateScheduleInputCadence[keyof typeof ClientUpdateScheduleInputCadence];
+
+
+export const ClientUpdateScheduleInputCadence = {
+  weekly: 'weekly',
+  fortnightly: 'fortnightly',
+  monthly: 'monthly',
+} as const;
+
+export interface ClientUpdateScheduleInput {
+  /** @minimum 1 */
+  matterId: number;
+  enabled: boolean;
+  cadence: ClientUpdateScheduleInputCadence;
+}
+
+export interface ClientUpdateDraftInput {
+  /** @minimum 1 */
+  matterId: number;
+}
+
+export type ClientUpdateDraftUpdateStatus = typeof ClientUpdateDraftUpdateStatus[keyof typeof ClientUpdateDraftUpdateStatus];
+
+
+export const ClientUpdateDraftUpdateStatus = {
+  draft: 'draft',
+  reviewed: 'reviewed',
+} as const;
+
+export interface ClientUpdateDraftUpdate {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  subject?: string;
+  /**
+     * @minLength 1
+     * @maxLength 10000
+     */
+  body?: string;
+  status?: ClientUpdateDraftUpdateStatus;
+}
+
 export type ListActivityParams = {
 /**
  * @minimum 1

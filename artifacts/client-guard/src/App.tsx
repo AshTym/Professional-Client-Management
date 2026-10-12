@@ -22,6 +22,7 @@ import {
   Plus, Search, ShieldCheck, Users, X, Building2, Settings2, AlertTriangle, RefreshCw, Download,
   Mail, UserPlus,
 } from 'lucide-react';
+import Workflows from './Workflows';
 import './index.css';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 20_000, retry: 1 } } });
@@ -74,6 +75,7 @@ function ClerkRoutes() {
       <Route path="/clients/:id" component={() => <Protected><ClientDetail /></Protected>} />
       <Route path="/matters" component={() => <Protected><MattersPage /></Protected>} />
       <Route path="/matters/:id" component={() => <Protected><MatterDetail /></Protected>} />
+      <Route path="/workflows" component={() => <Protected><Workflows /></Protected>} />
       <Route path="/activity" component={() => <Protected><ActivityPage /></Protected>} />
       <Route path="/team" component={() => <Protected><TeamPage /></Protected>} />
       <Route path="/workspace/setup" component={() => <Protected><SetupPage /></Protected>} />
@@ -154,7 +156,7 @@ function Shell({ children, context }: { children: ReactNode; context?: any }) {
   const { signOut } = useClerk();
   const service = useHealthCheck({ query: { queryKey: getHealthCheckQueryKey(), staleTime: 60_000 } });
   const [menuOpen, setMenuOpen] = useState(false);
-  const nav = [{ href: '/dashboard', label: 'Overview', icon: BriefcaseBusiness }, { href: '/clients', label: 'Clients', icon: Users }, { href: '/matters', label: 'Matters', icon: FileText }, { href: '/activity', label: 'Activity', icon: ActivityIcon }, ...(['owner','admin'].includes(context?.role) ? [{ href: '/team', label: 'Team', icon: Users }] : [])];
+  const nav = [{ href: '/dashboard', label: 'Overview', icon: BriefcaseBusiness }, { href: '/clients', label: 'Clients', icon: Users }, { href: '/matters', label: 'Matters', icon: FileText }, { href: '/workflows', label: 'Workflows', icon: RefreshCw }, { href: '/activity', label: 'Activity', icon: ActivityIcon }, ...(['owner','admin'].includes(context?.role) ? [{ href: '/team', label: 'Team', icon: Users }] : [])];
   const heading = path.split('/')[1] || 'dashboard';
   return <div className="min-h-[100dvh] bg-[#f6f3eb] text-[#23353b] md:flex">
     <aside className="hidden w-[250px] shrink-0 flex-col bg-[#253f49] text-[#eff0e9] md:flex">

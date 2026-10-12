@@ -21,10 +21,27 @@ import type {
 
 import type {
   Activity,
+  BillingDraft,
+  BillingDraftUpdate,
+  BillingOverview,
+  BillingProfile,
+  BillingProfileInput,
   Client,
+  ClientDocument,
   ClientInput,
   ClientUpdate,
+  ClientUpdateDraft,
+  ClientUpdateDraftInput,
+  ClientUpdateDraftUpdate,
+  ClientUpdateOverview,
+  ClientUpdateSchedule,
+  ClientUpdateScheduleInput,
   DashboardSummary,
+  DocumentOverview,
+  DocumentSuggestion,
+  DocumentSuggestionUpdate,
+  DocumentUpload,
+  DocumentUploadInput,
   HealthStatus,
   ListActivityParams,
   ListClientsParams,
@@ -32,6 +49,10 @@ import type {
   Matter,
   MatterInput,
   MatterUpdate,
+  PlannerItem,
+  PlannerItemUpdate,
+  TimeEntry,
+  TimeEntryInput,
   WorkspaceContext,
   WorkspaceInput,
   WorkspaceInvitation,
@@ -2011,5 +2032,1331 @@ export const useCloseMatter = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCloseMatterMutationOptions(options));
+    }
+
+export const getGetBillingOverviewUrl = () => {
+
+
+
+
+  return `/api/billing`
+}
+
+/**
+ * @summary Get billing profiles, time entries, and draft bills for the firm
+ */
+export const getBillingOverview = async ( options?: Parameters<typeof customFetch>[1]): Promise<BillingOverview> => {
+
+  return customFetch<BillingOverview>(getGetBillingOverviewUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBillingOverviewQueryKey = () => {
+    return [
+    `/api/billing`
+    ] as const;
+    }
+
+
+export const getGetBillingOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getBillingOverview>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBillingOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBillingOverviewQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBillingOverview>>> = ({ signal }) => getBillingOverview({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBillingOverview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBillingOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getBillingOverview>>>
+export type GetBillingOverviewQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get billing profiles, time entries, and draft bills for the firm
+ */
+
+export function useGetBillingOverview<TData = Awaited<ReturnType<typeof getBillingOverview>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBillingOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBillingOverviewQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSaveBillingProfileUrl = () => {
+
+
+
+
+  return `/api/billing`
+}
+
+/**
+ * @summary Save billing parameters for a matter
+ */
+export const saveBillingProfile = async (billingProfileInput: BillingProfileInput, options?: Parameters<typeof customFetch>[1]): Promise<BillingProfile> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<BillingProfile>(getSaveBillingProfileUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(billingProfileInput)
+  }
+);}
+
+
+
+
+
+export const getSaveBillingProfileMutationKey = () => ['saveBillingProfile'] as const;
+
+export const getSaveBillingProfileMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveBillingProfile>>, TError,SaveBillingProfileMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveBillingProfile>>, TError,SaveBillingProfileMutationVariables, TContext> => {
+
+const mutationKey = getSaveBillingProfileMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveBillingProfile>>, SaveBillingProfileMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveBillingProfile(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveBillingProfileMutationResult = NonNullable<Awaited<ReturnType<typeof saveBillingProfile>>>
+    export type SaveBillingProfileMutationBody = BodyType<BillingProfileInput>
+    export type SaveBillingProfileMutationError = ErrorType<void>
+    export type SaveBillingProfileMutationVariables = {data: BodyType<BillingProfileInput>}
+
+    /**
+ * @summary Save billing parameters for a matter
+ */
+export const useSaveBillingProfile = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveBillingProfile>>, TError,SaveBillingProfileMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveBillingProfile>>,
+        TError,
+        SaveBillingProfileMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSaveBillingProfileMutationOptions(options));
+    }
+
+export const getCreateTimeEntryUrl = () => {
+
+
+
+
+  return `/api/billing/time-entries`
+}
+
+/**
+ * @summary Record work performed on a matter
+ */
+export const createTimeEntry = async (timeEntryInput: TimeEntryInput, options?: Parameters<typeof customFetch>[1]): Promise<TimeEntry> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<TimeEntry>(getCreateTimeEntryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(timeEntryInput)
+  }
+);}
+
+
+
+
+
+export const getCreateTimeEntryMutationKey = () => ['createTimeEntry'] as const;
+
+export const getCreateTimeEntryMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTimeEntry>>, TError,CreateTimeEntryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTimeEntry>>, TError,CreateTimeEntryMutationVariables, TContext> => {
+
+const mutationKey = getCreateTimeEntryMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTimeEntry>>, CreateTimeEntryMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createTimeEntry(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTimeEntryMutationResult = NonNullable<Awaited<ReturnType<typeof createTimeEntry>>>
+    export type CreateTimeEntryMutationBody = BodyType<TimeEntryInput>
+    export type CreateTimeEntryMutationError = ErrorType<void>
+    export type CreateTimeEntryMutationVariables = {data: BodyType<TimeEntryInput>}
+
+    /**
+ * @summary Record work performed on a matter
+ */
+export const useCreateTimeEntry = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTimeEntry>>, TError,CreateTimeEntryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTimeEntry>>,
+        TError,
+        CreateTimeEntryMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateTimeEntryMutationOptions(options));
+    }
+
+export const getUpdateBillingDraftUrl = (id: number,) => {
+
+
+
+
+  return `/api/billing/drafts/${id}`
+}
+
+/**
+ * @summary Mark a draft bill reviewed or return it to draft
+ */
+export const updateBillingDraft = async (id: number,
+    billingDraftUpdate: BillingDraftUpdate, options?: Parameters<typeof customFetch>[1]): Promise<BillingDraft> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<BillingDraft>(getUpdateBillingDraftUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(billingDraftUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateBillingDraftMutationKey = () => ['updateBillingDraft'] as const;
+
+export const getUpdateBillingDraftMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateBillingDraft>>, TError,UpdateBillingDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateBillingDraft>>, TError,UpdateBillingDraftMutationVariables, TContext> => {
+
+const mutationKey = getUpdateBillingDraftMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateBillingDraft>>, UpdateBillingDraftMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateBillingDraft(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateBillingDraftMutationResult = NonNullable<Awaited<ReturnType<typeof updateBillingDraft>>>
+    export type UpdateBillingDraftMutationBody = BodyType<BillingDraftUpdate>
+    export type UpdateBillingDraftMutationError = ErrorType<void>
+    export type UpdateBillingDraftMutationVariables = {id: number;data: BodyType<BillingDraftUpdate>}
+
+    /**
+ * @summary Mark a draft bill reviewed or return it to draft
+ */
+export const useUpdateBillingDraft = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateBillingDraft>>, TError,UpdateBillingDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateBillingDraft>>,
+        TError,
+        UpdateBillingDraftMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateBillingDraftMutationOptions(options));
+    }
+
+export const getGetDocumentOverviewUrl = () => {
+
+
+
+
+  return `/api/documents`
+}
+
+/**
+ * @summary List firm documents, pending source suggestions, and confirmed planner items
+ */
+export const getDocumentOverview = async ( options?: Parameters<typeof customFetch>[1]): Promise<DocumentOverview> => {
+
+  return customFetch<DocumentOverview>(getGetDocumentOverviewUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDocumentOverviewQueryKey = () => {
+    return [
+    `/api/documents`
+    ] as const;
+    }
+
+
+export const getGetDocumentOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getDocumentOverview>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDocumentOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDocumentOverviewQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDocumentOverview>>> = ({ signal }) => getDocumentOverview({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDocumentOverview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDocumentOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getDocumentOverview>>>
+export type GetDocumentOverviewQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List firm documents, pending source suggestions, and confirmed planner items
+ */
+
+export function useGetDocumentOverview<TData = Awaited<ReturnType<typeof getDocumentOverview>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDocumentOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDocumentOverviewQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRequestDocumentUploadUrl = () => {
+
+
+
+
+  return `/api/documents/upload-url`
+}
+
+/**
+ * @summary Create a private upload reservation for a matter document
+ */
+export const requestDocumentUpload = async (documentUploadInput: DocumentUploadInput, options?: Parameters<typeof customFetch>[1]): Promise<DocumentUpload> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<DocumentUpload>(getRequestDocumentUploadUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(documentUploadInput)
+  }
+);}
+
+
+
+
+
+export const getRequestDocumentUploadMutationKey = () => ['requestDocumentUpload'] as const;
+
+export const getRequestDocumentUploadMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestDocumentUpload>>, TError,RequestDocumentUploadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestDocumentUpload>>, TError,RequestDocumentUploadMutationVariables, TContext> => {
+
+const mutationKey = getRequestDocumentUploadMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestDocumentUpload>>, RequestDocumentUploadMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestDocumentUpload(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestDocumentUploadMutationResult = NonNullable<Awaited<ReturnType<typeof requestDocumentUpload>>>
+    export type RequestDocumentUploadMutationBody = BodyType<DocumentUploadInput>
+    export type RequestDocumentUploadMutationError = ErrorType<void>
+    export type RequestDocumentUploadMutationVariables = {data: BodyType<DocumentUploadInput>}
+
+    /**
+ * @summary Create a private upload reservation for a matter document
+ */
+export const useRequestDocumentUpload = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestDocumentUpload>>, TError,RequestDocumentUploadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestDocumentUpload>>,
+        TError,
+        RequestDocumentUploadMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRequestDocumentUploadMutationOptions(options));
+    }
+
+export const getCompleteDocumentUploadUrl = (id: number,) => {
+
+
+
+
+  return `/api/documents/${id}/complete`
+}
+
+/**
+ * @summary Confirm that the reserved document upload completed
+ */
+export const completeDocumentUpload = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ClientDocument> => {
+
+  return customFetch<ClientDocument>(getCompleteDocumentUploadUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCompleteDocumentUploadMutationKey = () => ['completeDocumentUpload'] as const;
+
+export const getCompleteDocumentUploadMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeDocumentUpload>>, TError,CompleteDocumentUploadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeDocumentUpload>>, TError,CompleteDocumentUploadMutationVariables, TContext> => {
+
+const mutationKey = getCompleteDocumentUploadMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeDocumentUpload>>, CompleteDocumentUploadMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  completeDocumentUpload(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteDocumentUploadMutationResult = NonNullable<Awaited<ReturnType<typeof completeDocumentUpload>>>
+
+    export type CompleteDocumentUploadMutationError = ErrorType<void>
+    export type CompleteDocumentUploadMutationVariables = {id: number}
+
+    /**
+ * @summary Confirm that the reserved document upload completed
+ */
+export const useCompleteDocumentUpload = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeDocumentUpload>>, TError,CompleteDocumentUploadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof completeDocumentUpload>>,
+        TError,
+        CompleteDocumentUploadMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCompleteDocumentUploadMutationOptions(options));
+    }
+
+export const getAnalyzeDocumentUrl = (id: number,) => {
+
+
+
+
+  return `/api/documents/${id}/analyze`
+}
+
+/**
+ * @summary Extract source-backed event and task suggestions from a document
+ */
+export const analyzeDocument = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<DocumentSuggestion[]> => {
+
+  return customFetch<DocumentSuggestion[]>(getAnalyzeDocumentUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getAnalyzeDocumentMutationKey = () => ['analyzeDocument'] as const;
+
+export const getAnalyzeDocumentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeDocument>>, TError,AnalyzeDocumentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof analyzeDocument>>, TError,AnalyzeDocumentMutationVariables, TContext> => {
+
+const mutationKey = getAnalyzeDocumentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analyzeDocument>>, AnalyzeDocumentMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  analyzeDocument(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AnalyzeDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof analyzeDocument>>>
+
+    export type AnalyzeDocumentMutationError = ErrorType<void>
+    export type AnalyzeDocumentMutationVariables = {id: number}
+
+    /**
+ * @summary Extract source-backed event and task suggestions from a document
+ */
+export const useAnalyzeDocument = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeDocument>>, TError,AnalyzeDocumentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof analyzeDocument>>,
+        TError,
+        AnalyzeDocumentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAnalyzeDocumentMutationOptions(options));
+    }
+
+export const getGetMatterDocumentFileUrl = (id: number,) => {
+
+
+
+
+  return `/api/documents/${id}/file`
+}
+
+/**
+ * @summary Stream a private document after firm membership is checked
+ */
+export const getMatterDocumentFile = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getGetMatterDocumentFileUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMatterDocumentFileQueryKey = (id: number,) => {
+    return [
+    `/api/documents/${id}/file`
+    ] as const;
+    }
+
+
+export const getGetMatterDocumentFileQueryOptions = <TData = Awaited<ReturnType<typeof getMatterDocumentFile>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMatterDocumentFile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMatterDocumentFileQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMatterDocumentFile>>> = ({ signal }) => getMatterDocumentFile(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMatterDocumentFile>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMatterDocumentFileQueryResult = NonNullable<Awaited<ReturnType<typeof getMatterDocumentFile>>>
+export type GetMatterDocumentFileQueryError = ErrorType<void>
+
+
+/**
+ * @summary Stream a private document after firm membership is checked
+ */
+
+export function useGetMatterDocumentFile<TData = Awaited<ReturnType<typeof getMatterDocumentFile>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMatterDocumentFile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMatterDocumentFileQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDeleteMatterDocumentUrl = (id: number,) => {
+
+
+
+
+  return `/api/documents/${id}`
+}
+
+/**
+ * @summary Delete a firm's uploaded matter document and its suggestions
+ */
+export const deleteMatterDocument = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteMatterDocumentUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteMatterDocumentMutationKey = () => ['deleteMatterDocument'] as const;
+
+export const getDeleteMatterDocumentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMatterDocument>>, TError,DeleteMatterDocumentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMatterDocument>>, TError,DeleteMatterDocumentMutationVariables, TContext> => {
+
+const mutationKey = getDeleteMatterDocumentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMatterDocument>>, DeleteMatterDocumentMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteMatterDocument(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteMatterDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMatterDocument>>>
+
+    export type DeleteMatterDocumentMutationError = ErrorType<void>
+    export type DeleteMatterDocumentMutationVariables = {id: number}
+
+    /**
+ * @summary Delete a firm's uploaded matter document and its suggestions
+ */
+export const useDeleteMatterDocument = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMatterDocument>>, TError,DeleteMatterDocumentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteMatterDocument>>,
+        TError,
+        DeleteMatterDocumentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteMatterDocumentMutationOptions(options));
+    }
+
+export const getReviewDocumentSuggestionUrl = (id: number,) => {
+
+
+
+
+  return `/api/document-suggestions/${id}`
+}
+
+/**
+ * @summary Confirm a source-backed suggestion into the planner or reject it
+ */
+export const reviewDocumentSuggestion = async (id: number,
+    documentSuggestionUpdate: DocumentSuggestionUpdate, options?: Parameters<typeof customFetch>[1]): Promise<DocumentSuggestion> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<DocumentSuggestion>(getReviewDocumentSuggestionUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(documentSuggestionUpdate)
+  }
+);}
+
+
+
+
+
+export const getReviewDocumentSuggestionMutationKey = () => ['reviewDocumentSuggestion'] as const;
+
+export const getReviewDocumentSuggestionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewDocumentSuggestion>>, TError,ReviewDocumentSuggestionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewDocumentSuggestion>>, TError,ReviewDocumentSuggestionMutationVariables, TContext> => {
+
+const mutationKey = getReviewDocumentSuggestionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewDocumentSuggestion>>, ReviewDocumentSuggestionMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reviewDocumentSuggestion(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewDocumentSuggestionMutationResult = NonNullable<Awaited<ReturnType<typeof reviewDocumentSuggestion>>>
+    export type ReviewDocumentSuggestionMutationBody = BodyType<DocumentSuggestionUpdate>
+    export type ReviewDocumentSuggestionMutationError = ErrorType<void>
+    export type ReviewDocumentSuggestionMutationVariables = {id: number;data: BodyType<DocumentSuggestionUpdate>}
+
+    /**
+ * @summary Confirm a source-backed suggestion into the planner or reject it
+ */
+export const useReviewDocumentSuggestion = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewDocumentSuggestion>>, TError,ReviewDocumentSuggestionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reviewDocumentSuggestion>>,
+        TError,
+        ReviewDocumentSuggestionMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReviewDocumentSuggestionMutationOptions(options));
+    }
+
+export const getUpdatePlannerItemUrl = (id: number,) => {
+
+
+
+
+  return `/api/planner-items/${id}`
+}
+
+/**
+ * @summary Mark a confirmed calendar item or task open or done
+ */
+export const updatePlannerItem = async (id: number,
+    plannerItemUpdate: PlannerItemUpdate, options?: Parameters<typeof customFetch>[1]): Promise<PlannerItem> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PlannerItem>(getUpdatePlannerItemUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(plannerItemUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdatePlannerItemMutationKey = () => ['updatePlannerItem'] as const;
+
+export const getUpdatePlannerItemMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePlannerItem>>, TError,UpdatePlannerItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePlannerItem>>, TError,UpdatePlannerItemMutationVariables, TContext> => {
+
+const mutationKey = getUpdatePlannerItemMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePlannerItem>>, UpdatePlannerItemMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updatePlannerItem(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePlannerItemMutationResult = NonNullable<Awaited<ReturnType<typeof updatePlannerItem>>>
+    export type UpdatePlannerItemMutationBody = BodyType<PlannerItemUpdate>
+    export type UpdatePlannerItemMutationError = ErrorType<void>
+    export type UpdatePlannerItemMutationVariables = {id: number;data: BodyType<PlannerItemUpdate>}
+
+    /**
+ * @summary Mark a confirmed calendar item or task open or done
+ */
+export const useUpdatePlannerItem = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePlannerItem>>, TError,UpdatePlannerItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePlannerItem>>,
+        TError,
+        UpdatePlannerItemMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdatePlannerItemMutationOptions(options));
+    }
+
+export const getGetClientUpdateOverviewUrl = () => {
+
+
+
+
+  return `/api/updates`
+}
+
+/**
+ * @summary List scheduled client update settings and saved drafts
+ */
+export const getClientUpdateOverview = async ( options?: Parameters<typeof customFetch>[1]): Promise<ClientUpdateOverview> => {
+
+  return customFetch<ClientUpdateOverview>(getGetClientUpdateOverviewUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetClientUpdateOverviewQueryKey = () => {
+    return [
+    `/api/updates`
+    ] as const;
+    }
+
+
+export const getGetClientUpdateOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getClientUpdateOverview>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getClientUpdateOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetClientUpdateOverviewQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getClientUpdateOverview>>> = ({ signal }) => getClientUpdateOverview({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getClientUpdateOverview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetClientUpdateOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getClientUpdateOverview>>>
+export type GetClientUpdateOverviewQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List scheduled client update settings and saved drafts
+ */
+
+export function useGetClientUpdateOverview<TData = Awaited<ReturnType<typeof getClientUpdateOverview>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getClientUpdateOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetClientUpdateOverviewQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSaveClientUpdateScheduleUrl = () => {
+
+
+
+
+  return `/api/updates/schedules`
+}
+
+/**
+ * @summary Enable or change the scheduled client update draft cadence for a matter
+ */
+export const saveClientUpdateSchedule = async (clientUpdateScheduleInput: ClientUpdateScheduleInput, options?: Parameters<typeof customFetch>[1]): Promise<ClientUpdateSchedule> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ClientUpdateSchedule>(getSaveClientUpdateScheduleUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(clientUpdateScheduleInput)
+  }
+);}
+
+
+
+
+
+export const getSaveClientUpdateScheduleMutationKey = () => ['saveClientUpdateSchedule'] as const;
+
+export const getSaveClientUpdateScheduleMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveClientUpdateSchedule>>, TError,SaveClientUpdateScheduleMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveClientUpdateSchedule>>, TError,SaveClientUpdateScheduleMutationVariables, TContext> => {
+
+const mutationKey = getSaveClientUpdateScheduleMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveClientUpdateSchedule>>, SaveClientUpdateScheduleMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveClientUpdateSchedule(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveClientUpdateScheduleMutationResult = NonNullable<Awaited<ReturnType<typeof saveClientUpdateSchedule>>>
+    export type SaveClientUpdateScheduleMutationBody = BodyType<ClientUpdateScheduleInput>
+    export type SaveClientUpdateScheduleMutationError = ErrorType<void>
+    export type SaveClientUpdateScheduleMutationVariables = {data: BodyType<ClientUpdateScheduleInput>}
+
+    /**
+ * @summary Enable or change the scheduled client update draft cadence for a matter
+ */
+export const useSaveClientUpdateSchedule = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveClientUpdateSchedule>>, TError,SaveClientUpdateScheduleMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveClientUpdateSchedule>>,
+        TError,
+        SaveClientUpdateScheduleMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSaveClientUpdateScheduleMutationOptions(options));
+    }
+
+export const getCreateClientUpdateDraftUrl = () => {
+
+
+
+
+  return `/api/updates/drafts`
+}
+
+/**
+ * @summary Draft a client update from recent real matter activity
+ */
+export const createClientUpdateDraft = async (clientUpdateDraftInput: ClientUpdateDraftInput, options?: Parameters<typeof customFetch>[1]): Promise<ClientUpdateDraft> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ClientUpdateDraft>(getCreateClientUpdateDraftUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(clientUpdateDraftInput)
+  }
+);}
+
+
+
+
+
+export const getCreateClientUpdateDraftMutationKey = () => ['createClientUpdateDraft'] as const;
+
+export const getCreateClientUpdateDraftMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createClientUpdateDraft>>, TError,CreateClientUpdateDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createClientUpdateDraft>>, TError,CreateClientUpdateDraftMutationVariables, TContext> => {
+
+const mutationKey = getCreateClientUpdateDraftMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createClientUpdateDraft>>, CreateClientUpdateDraftMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createClientUpdateDraft(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateClientUpdateDraftMutationResult = NonNullable<Awaited<ReturnType<typeof createClientUpdateDraft>>>
+    export type CreateClientUpdateDraftMutationBody = BodyType<ClientUpdateDraftInput>
+    export type CreateClientUpdateDraftMutationError = ErrorType<void>
+    export type CreateClientUpdateDraftMutationVariables = {data: BodyType<ClientUpdateDraftInput>}
+
+    /**
+ * @summary Draft a client update from recent real matter activity
+ */
+export const useCreateClientUpdateDraft = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createClientUpdateDraft>>, TError,CreateClientUpdateDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createClientUpdateDraft>>,
+        TError,
+        CreateClientUpdateDraftMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateClientUpdateDraftMutationOptions(options));
+    }
+
+export const getUpdateClientUpdateDraftUrl = (id: number,) => {
+
+
+
+
+  return `/api/updates/drafts/${id}`
+}
+
+/**
+ * @summary Edit or mark a client update draft as reviewed
+ */
+export const updateClientUpdateDraft = async (id: number,
+    clientUpdateDraftUpdate: ClientUpdateDraftUpdate, options?: Parameters<typeof customFetch>[1]): Promise<ClientUpdateDraft> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ClientUpdateDraft>(getUpdateClientUpdateDraftUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(clientUpdateDraftUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateClientUpdateDraftMutationKey = () => ['updateClientUpdateDraft'] as const;
+
+export const getUpdateClientUpdateDraftMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateClientUpdateDraft>>, TError,UpdateClientUpdateDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateClientUpdateDraft>>, TError,UpdateClientUpdateDraftMutationVariables, TContext> => {
+
+const mutationKey = getUpdateClientUpdateDraftMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateClientUpdateDraft>>, UpdateClientUpdateDraftMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateClientUpdateDraft(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateClientUpdateDraftMutationResult = NonNullable<Awaited<ReturnType<typeof updateClientUpdateDraft>>>
+    export type UpdateClientUpdateDraftMutationBody = BodyType<ClientUpdateDraftUpdate>
+    export type UpdateClientUpdateDraftMutationError = ErrorType<void>
+    export type UpdateClientUpdateDraftMutationVariables = {id: number;data: BodyType<ClientUpdateDraftUpdate>}
+
+    /**
+ * @summary Edit or mark a client update draft as reviewed
+ */
+export const useUpdateClientUpdateDraft = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateClientUpdateDraft>>, TError,UpdateClientUpdateDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateClientUpdateDraft>>,
+        TError,
+        UpdateClientUpdateDraftMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateClientUpdateDraftMutationOptions(options));
     }
 

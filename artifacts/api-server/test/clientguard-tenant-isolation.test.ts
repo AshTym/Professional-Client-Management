@@ -119,6 +119,119 @@ before(async () => {
       entity_label text NOT NULL,
       occurred_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE "${schemaName}".clientguard_billing_profiles (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL,
+      matter_id integer NOT NULL,
+      fee_type text NOT NULL DEFAULT 'hourly',
+      currency text NOT NULL DEFAULT 'AUD',
+      hourly_rate_cents integer,
+      fixed_fee_cents integer,
+      fee_description text NOT NULL DEFAULT 'Professional services',
+      billing_cycle text NOT NULL DEFAULT 'monthly',
+      tax_rate_bps integer NOT NULL DEFAULT 0,
+      schedule_enabled boolean NOT NULL DEFAULT false,
+      period_start_at timestamptz NOT NULL DEFAULT now(),
+      next_draft_at timestamptz NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (workspace_id, matter_id)
+    );
+    CREATE TABLE "${schemaName}".clientguard_billing_drafts (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL,
+      matter_id integer NOT NULL,
+      period_start_at timestamptz NOT NULL,
+      period_end_at timestamptz NOT NULL,
+      currency text NOT NULL,
+      subtotal_cents integer NOT NULL,
+      tax_cents integer NOT NULL,
+      total_cents integer NOT NULL,
+      narrative text NOT NULL,
+      line_items jsonb NOT NULL,
+      status text NOT NULL DEFAULT 'draft',
+      generated_at timestamptz NOT NULL DEFAULT now(),
+      reviewed_at timestamptz,
+      UNIQUE (workspace_id, matter_id, period_start_at, period_end_at)
+    );
+    CREATE TABLE "${schemaName}".clientguard_time_entries (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL,
+      matter_id integer NOT NULL,
+      clerk_user_id text NOT NULL,
+      description text NOT NULL,
+      work_date date NOT NULL,
+      duration_minutes integer NOT NULL,
+      billable boolean NOT NULL DEFAULT true,
+      billing_draft_id integer,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE "${schemaName}".clientguard_documents (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL,
+      matter_id integer NOT NULL,
+      uploaded_by_clerk_user_id text NOT NULL,
+      object_path text NOT NULL,
+      original_name text NOT NULL,
+      content_type text NOT NULL,
+      size_bytes integer NOT NULL,
+      status text NOT NULL DEFAULT 'uploading',
+      last_analysis_error text,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE "${schemaName}".clientguard_document_suggestions (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL,
+      document_id integer NOT NULL,
+      matter_id integer NOT NULL,
+      kind text NOT NULL,
+      title text NOT NULL,
+      details text NOT NULL DEFAULT '',
+      due_at timestamptz,
+      source_page integer NOT NULL,
+      source_quote text NOT NULL,
+      confidence real NOT NULL DEFAULT 0,
+      status text NOT NULL DEFAULT 'pending',
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE "${schemaName}".clientguard_planner_items (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL,
+      matter_id integer NOT NULL,
+      document_id integer NOT NULL,
+      kind text NOT NULL,
+      title text NOT NULL,
+      details text NOT NULL DEFAULT '',
+      due_at timestamptz,
+      source_page integer NOT NULL,
+      source_quote text NOT NULL,
+      status text NOT NULL DEFAULT 'open',
+      confirmed_by_clerk_user_id text NOT NULL,
+      confirmed_at timestamptz NOT NULL DEFAULT now(),
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE "${schemaName}".clientguard_update_schedules (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL,
+      matter_id integer NOT NULL,
+      enabled boolean NOT NULL DEFAULT false,
+      cadence text NOT NULL DEFAULT 'weekly',
+      next_draft_at timestamptz,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (workspace_id, matter_id)
+    );
+    CREATE TABLE "${schemaName}".clientguard_update_drafts (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL,
+      matter_id integer NOT NULL,
+      source_activity_ids integer[] NOT NULL,
+      subject text NOT NULL,
+      body text NOT NULL,
+      status text NOT NULL DEFAULT 'draft',
+      generated_by text NOT NULL DEFAULT 'user',
+      generated_at timestamptz NOT NULL DEFAULT now(),
+      reviewed_at timestamptz
+    );
   `);
 
   const isolatedUrl = new URL(originalDatabaseUrl);
@@ -285,7 +398,11 @@ before(async () => {
     next();
   });
   const { default: router } = await import("../src/routes/clientguard.ts");
+  const { default: workflowRouter } = await import(
+    "../src/routes/clientguard-workflows.ts"
+  );
   app.use("/api", router);
+  app.use("/api", workflowRouter);
 
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve, reject) => {
@@ -1649,4 +1766,144 @@ test("unauthenticated requests to client, matter, and activity routes remain rej
     results.map(({ response }) => response.status),
     [401, 401, 401, 401, 401, 401, 401, 401],
   );
+});
+
+test("workflow endpoints require firm membership before exposing or changing records", async () => {
+  const attempts = [
+    request("/billing"),
+    request("/documents"),
+    request("/updates"),
+    request("/billing", { method: "PUT", body: {} }),
+    request("/billing/time-entries", { method: "POST", body: {} }),
+    request("/documents/upload-url", { method: "POST", body: {} }),
+    request("/updates/drafts", { method: "POST", body: {} }),
+    request("/documents/1/analyze", { method: "POST" }),
+    request("/document-suggestions/1", {
+      method: "PATCH",
+      body: { status: "confirmed" },
+    }),
+  ];
+  const results = await Promise.all(attempts);
+  assert.deepEqual(
+    results.map(({ response }) => response.status),
+    Array(attempts.length).fill(401),
+  );
+
+  const noFirm = await request("/documents", {
+    userId: `workflow-no-firm-${randomUUID()}`,
+  });
+  assert.equal(noFirm.response.status, 403);
+  assert.deepEqual(noFirm.body, {
+    error: "You do not have access to a firm workspace.",
+    code: "firm_authorization_required",
+  });
+});
+
+test("billing settings, time entries, and workflow overviews remain firm-scoped", async () => {
+  const ownerId = firms.primary.ownerId;
+  const nextDraftAt = new Date(Date.now() + 7 * 86_400_000).toISOString();
+  const firstProfile = await request("/billing", {
+    userId: ownerId,
+    method: "PUT",
+    body: {
+      matterId: firms.primary.matterId,
+      feeType: "hourly",
+      currency: "AUD",
+      hourlyRateCents: 25_000,
+      fixedFeeCents: null,
+      feeDescription: "Matter advisory",
+      billingCycle: "monthly",
+      taxRateBps: 1_000,
+      scheduleEnabled: false,
+      nextDraftAt,
+    },
+  });
+  assert.equal(firstProfile.response.status, 200);
+  assert.equal(firstProfile.body.matterId, firms.primary.matterId);
+  assert.match(firstProfile.body.clientName, /^Primary Client /);
+
+  const revisedProfile = await request("/billing", {
+    userId: ownerId,
+    method: "PUT",
+    body: {
+      matterId: firms.primary.matterId,
+      feeType: "hourly",
+      currency: "AUD",
+      hourlyRateCents: 30_000,
+      fixedFeeCents: null,
+      feeDescription: "Matter advisory",
+      billingCycle: "monthly",
+      taxRateBps: 1_000,
+      scheduleEnabled: false,
+      nextDraftAt,
+    },
+  });
+  assert.equal(revisedProfile.response.status, 200);
+  assert.equal(revisedProfile.body.id, firstProfile.body.id);
+  assert.equal(revisedProfile.body.hourlyRateCents, 30_000);
+
+  const entry = await request("/billing/time-entries", {
+    userId: ownerId,
+    method: "POST",
+    body: {
+      matterId: firms.primary.matterId,
+      description: "Reviewed client materials",
+      workDate: new Date().toISOString().slice(0, 10),
+      durationMinutes: 60,
+      billable: true,
+    },
+  });
+  assert.equal(entry.response.status, 201);
+
+  const [billing, documents, updates] = await Promise.all([
+    request("/billing", { userId: ownerId }),
+    request("/documents", { userId: ownerId }),
+    request("/updates", { userId: ownerId }),
+  ]);
+  assert.equal(billing.response.status, 200);
+  assert.equal(billing.body.profiles.length, 1);
+  assert.equal(billing.body.timeEntries.length, 1);
+  assert.equal(billing.body.timeEntries[0].description, "Reviewed client materials");
+  assert.equal(documents.response.status, 200);
+  assert.deepEqual(documents.body, {
+    documents: [],
+    suggestions: [],
+    plannerItems: [],
+  });
+  assert.equal(updates.response.status, 200);
+  assert.deepEqual(updates.body, { schedules: [], drafts: [] });
+
+  const otherFirmBilling = await request("/billing", {
+    userId: firms.other.ownerId,
+  });
+  assert.equal(otherFirmBilling.response.status, 200);
+  assert.deepEqual(otherFirmBilling.body, {
+    profiles: [],
+    timeEntries: [],
+    drafts: [],
+  });
+});
+
+test("client-update schedules can be enabled and listed without generating a draft", async () => {
+  const saved = await request("/updates/schedules", {
+    userId: firms.primary.ownerId,
+    method: "PUT",
+    body: {
+      matterId: firms.primary.matterId,
+      enabled: true,
+      cadence: "fortnightly",
+    },
+  });
+  assert.equal(saved.response.status, 200);
+  assert.equal(saved.body.matterId, firms.primary.matterId);
+  assert.equal(saved.body.cadence, "fortnightly");
+  assert.equal(saved.body.enabled, true);
+  assert.ok(saved.body.nextDraftAt);
+
+  const overview = await request("/updates", {
+    userId: firms.primary.ownerId,
+  });
+  assert.equal(overview.response.status, 200);
+  assert.equal(overview.body.schedules.length, 1);
+  assert.equal(overview.body.drafts.length, 0);
 });

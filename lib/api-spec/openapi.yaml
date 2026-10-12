@@ -16,6 +16,10 @@ tags:
   - name: matters
   - name: dashboard
   - name: activity
+  - name: billing
+  - name: documents
+  - name: planner
+  - name: updates
 paths:
   /healthz:
     get:
@@ -459,6 +463,327 @@ paths:
       responses:
         "204":
           description: Matter closed
+  /billing:
+    get:
+      operationId: getBillingOverview
+      tags: [billing]
+      summary: Get billing profiles, time entries, and draft bills for the firm
+      responses:
+        "200":
+          description: Firm billing overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingOverview"
+    put:
+      operationId: saveBillingProfile
+      tags: [billing]
+      summary: Save billing parameters for a matter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingProfileInput"
+      responses:
+        "200":
+          description: Billing profile saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingProfile"
+        "400":
+          description: Invalid billing parameters
+        "404":
+          description: Matter not found
+  /billing/time-entries:
+    post:
+      operationId: createTimeEntry
+      tags: [billing]
+      summary: Record work performed on a matter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TimeEntryInput"
+      responses:
+        "201":
+          description: Time entry recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimeEntry"
+        "400":
+          description: Invalid time entry
+        "404":
+          description: Matter not found
+  /billing/drafts/{id}:
+    patch:
+      operationId: updateBillingDraft
+      tags: [billing]
+      summary: Mark a draft bill reviewed or return it to draft
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingDraftUpdate"
+      responses:
+        "200":
+          description: Draft bill updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingDraft"
+        "404":
+          description: Draft bill not found
+  /documents:
+    get:
+      operationId: getDocumentOverview
+      tags: [documents]
+      summary: List firm documents, pending source suggestions, and confirmed planner items
+      responses:
+        "200":
+          description: Firm document and planner overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentOverview"
+  /documents/upload-url:
+    post:
+      operationId: requestDocumentUpload
+      tags: [documents]
+      summary: Create a private upload reservation for a matter document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DocumentUploadInput"
+      responses:
+        "201":
+          description: Upload URL and document record created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentUpload"
+        "400":
+          description: Unsupported file or invalid matter
+  /documents/{id}/complete:
+    post:
+      operationId: completeDocumentUpload
+      tags: [documents]
+      summary: Confirm that the reserved document upload completed
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Document is ready for analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientDocument"
+        "404":
+          description: Upload reservation or object not found
+  /documents/{id}/analyze:
+    post:
+      operationId: analyzeDocument
+      tags: [documents]
+      summary: Extract source-backed event and task suggestions from a document
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Suggestions with verified source quotations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DocumentSuggestion"
+        "400":
+          description: Document is not ready or has no extractable text
+        "404":
+          description: Document not found
+  /documents/{id}/file:
+    get:
+      operationId: getMatterDocumentFile
+      tags: [documents]
+      summary: Stream a private document after firm membership is checked
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Private document bytes
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema: { type: string, format: binary }
+            text/plain:
+              schema: { type: string, format: binary }
+        "404":
+          description: Document not found
+  /documents/{id}:
+    delete:
+      operationId: deleteMatterDocument
+      tags: [documents]
+      summary: Delete a firm's uploaded matter document and its suggestions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Document deleted
+        "404":
+          description: Document not found
+  /document-suggestions/{id}:
+    patch:
+      operationId: reviewDocumentSuggestion
+      tags: [documents]
+      summary: Confirm a source-backed suggestion into the planner or reject it
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DocumentSuggestionUpdate"
+      responses:
+        "200":
+          description: Suggestion reviewed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentSuggestion"
+        "404":
+          description: Suggestion not found
+  /planner-items/{id}:
+    patch:
+      operationId: updatePlannerItem
+      tags: [planner]
+      summary: Mark a confirmed calendar item or task open or done
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlannerItemUpdate"
+      responses:
+        "200":
+          description: Planner item updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlannerItem"
+        "404":
+          description: Planner item not found
+  /updates:
+    get:
+      operationId: getClientUpdateOverview
+      tags: [updates]
+      summary: List scheduled client update settings and saved drafts
+      responses:
+        "200":
+          description: Firm client update overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientUpdateOverview"
+  /updates/schedules:
+    put:
+      operationId: saveClientUpdateSchedule
+      tags: [updates]
+      summary: Enable or change the scheduled client update draft cadence for a matter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientUpdateScheduleInput"
+      responses:
+        "200":
+          description: Client update schedule saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientUpdateSchedule"
+        "404":
+          description: Matter not found
+  /updates/drafts:
+    post:
+      operationId: createClientUpdateDraft
+      tags: [updates]
+      summary: Draft a client update from recent real matter activity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientUpdateDraftInput"
+      responses:
+        "201":
+          description: Client update draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientUpdateDraft"
+        "404":
+          description: Matter not found
+        "409":
+          description: No recent activity is available to support an update
+  /updates/drafts/{id}:
+    patch:
+      operationId: updateClientUpdateDraft
+      tags: [updates]
+      summary: Edit or mark a client update draft as reviewed
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientUpdateDraftUpdate"
+      responses:
+        "200":
+          description: Client update draft updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientUpdateDraft"
+        "404":
+          description: Client update draft not found
+
 components:
   schemas:
     HealthStatus:
@@ -663,3 +988,252 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Activity"
+    BillingOverview:
+      type: object
+      required: [profiles, timeEntries, drafts]
+      properties:
+        profiles:
+          type: array
+          items: { $ref: "#/components/schemas/BillingProfile" }
+        timeEntries:
+          type: array
+          items: { $ref: "#/components/schemas/TimeEntry" }
+        drafts:
+          type: array
+          items: { $ref: "#/components/schemas/BillingDraft" }
+    BillingProfile:
+      type: object
+      required: [id, matterId, matterTitle, clientName, feeType, currency, hourlyRateCents, fixedFeeCents, feeDescription, billingCycle, taxRateBps, scheduleEnabled, periodStartAt, nextDraftAt, updatedAt]
+      properties:
+        id: { type: integer }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        clientName: { type: string }
+        feeType: { type: string, enum: [hourly, fixed] }
+        currency: { type: string }
+        hourlyRateCents: { type: ["integer", "null"] }
+        fixedFeeCents: { type: ["integer", "null"] }
+        feeDescription: { type: string }
+        billingCycle: { type: string, enum: [weekly, monthly, quarterly] }
+        taxRateBps: { type: integer }
+        scheduleEnabled: { type: boolean }
+        periodStartAt: { type: string, format: date-time }
+        nextDraftAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    BillingProfileInput:
+      type: object
+      required: [matterId, feeType, currency, feeDescription, billingCycle, taxRateBps, scheduleEnabled, nextDraftAt]
+      properties:
+        matterId: { type: integer, minimum: 1 }
+        feeType: { type: string, enum: [hourly, fixed] }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        hourlyRateCents: { type: ["integer", "null"], minimum: 0 }
+        fixedFeeCents: { type: ["integer", "null"], minimum: 0 }
+        feeDescription: { type: string, minLength: 1, maxLength: 240 }
+        billingCycle: { type: string, enum: [weekly, monthly, quarterly] }
+        taxRateBps: { type: integer, minimum: 0, maximum: 10000 }
+        scheduleEnabled: { type: boolean }
+        nextDraftAt: { type: string, format: date-time }
+    TimeEntry:
+      type: object
+      required: [id, matterId, matterTitle, description, workDate, durationMinutes, billable, billingDraftId, createdAt]
+      properties:
+        id: { type: integer }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        description: { type: string }
+        workDate: { type: string, format: date }
+        durationMinutes: { type: integer }
+        billable: { type: boolean }
+        billingDraftId: { type: ["integer", "null"] }
+        createdAt: { type: string, format: date-time }
+    TimeEntryInput:
+      type: object
+      required: [matterId, description, workDate, durationMinutes, billable]
+      properties:
+        matterId: { type: integer, minimum: 1 }
+        description: { type: string, minLength: 1, maxLength: 1000 }
+        workDate: { type: string, format: date }
+        durationMinutes: { type: integer, minimum: 1, maximum: 1440 }
+        billable: { type: boolean }
+    BillingDraft:
+      type: object
+      required: [id, matterId, matterTitle, clientName, periodStartAt, periodEndAt, currency, subtotalCents, taxCents, totalCents, narrative, lineItems, status, generatedAt, reviewedAt]
+      properties:
+        id: { type: integer }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        clientName: { type: string }
+        periodStartAt: { type: string, format: date-time }
+        periodEndAt: { type: string, format: date-time }
+        currency: { type: string }
+        subtotalCents: { type: integer }
+        taxCents: { type: integer }
+        totalCents: { type: integer }
+        narrative: { type: string }
+        lineItems:
+          type: array
+          items: { $ref: "#/components/schemas/BillingLineItem" }
+        status: { type: string, enum: [draft, reviewed] }
+        generatedAt: { type: string, format: date-time }
+        reviewedAt: { type: ["string", "null"], format: date-time }
+    BillingLineItem:
+      type: object
+      required: [description, workDate, durationMinutes, rateCents, amountCents]
+      properties:
+        description: { type: string }
+        workDate: { type: ["string", "null"], format: date }
+        durationMinutes: { type: ["integer", "null"] }
+        rateCents: { type: ["integer", "null"] }
+        amountCents: { type: integer }
+    BillingDraftUpdate:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [draft, reviewed] }
+    DocumentOverview:
+      type: object
+      required: [documents, suggestions, plannerItems]
+      properties:
+        documents:
+          type: array
+          items: { $ref: "#/components/schemas/ClientDocument" }
+        suggestions:
+          type: array
+          items: { $ref: "#/components/schemas/DocumentSuggestion" }
+        plannerItems:
+          type: array
+          items: { $ref: "#/components/schemas/PlannerItem" }
+    ClientDocument:
+      type: object
+      required: [id, matterId, matterTitle, originalName, contentType, sizeBytes, status, lastAnalysisError, createdAt]
+      properties:
+        id: { type: integer }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        originalName: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer }
+        status: { type: string, enum: [uploading, ready, analyzing, analyzed, failed] }
+        lastAnalysisError: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+    DocumentUploadInput:
+      type: object
+      required: [matterId, name, size, contentType]
+      properties:
+        matterId: { type: integer, minimum: 1 }
+        name: { type: string, minLength: 1, maxLength: 255 }
+        size: { type: integer, minimum: 1, maximum: 15728640 }
+        contentType:
+          type: string
+          enum: [application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, text/plain]
+    DocumentUpload:
+      type: object
+      required: [id, uploadURL, objectPath, originalName]
+      properties:
+        id: { type: integer }
+        uploadURL: { type: string, format: uri }
+        objectPath: { type: string }
+        originalName: { type: string }
+    DocumentSuggestion:
+      type: object
+      required: [id, documentId, documentName, matterId, matterTitle, kind, title, details, dueAt, sourcePage, sourceQuote, confidence, status, createdAt]
+      properties:
+        id: { type: integer }
+        documentId: { type: integer }
+        documentName: { type: string }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        kind: { type: string, enum: [event, task] }
+        title: { type: string }
+        details: { type: string }
+        dueAt: { type: ["string", "null"], format: date-time }
+        sourcePage: { type: integer }
+        sourceQuote: { type: string }
+        confidence: { type: number }
+        status: { type: string, enum: [pending, confirmed, rejected] }
+        createdAt: { type: string, format: date-time }
+    DocumentSuggestionUpdate:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [confirmed, rejected] }
+    PlannerItem:
+      type: object
+      required: [id, documentId, documentName, matterId, matterTitle, kind, title, details, dueAt, sourcePage, sourceQuote, status, confirmedAt, createdAt]
+      properties:
+        id: { type: integer }
+        documentId: { type: integer }
+        documentName: { type: string }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        kind: { type: string, enum: [event, task] }
+        title: { type: string }
+        details: { type: string }
+        dueAt: { type: ["string", "null"], format: date-time }
+        sourcePage: { type: integer }
+        sourceQuote: { type: string }
+        status: { type: string, enum: [open, done] }
+        confirmedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+    PlannerItemUpdate:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [open, done] }
+    ClientUpdateOverview:
+      type: object
+      required: [schedules, drafts]
+      properties:
+        schedules:
+          type: array
+          items: { $ref: "#/components/schemas/ClientUpdateSchedule" }
+        drafts:
+          type: array
+          items: { $ref: "#/components/schemas/ClientUpdateDraft" }
+    ClientUpdateSchedule:
+      type: object
+      required: [matterId, matterTitle, clientName, enabled, cadence, nextDraftAt]
+      properties:
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        clientName: { type: string }
+        enabled: { type: boolean }
+        cadence: { type: string, enum: [weekly, fortnightly, monthly] }
+        nextDraftAt: { type: ["string", "null"], format: date-time }
+    ClientUpdateScheduleInput:
+      type: object
+      required: [matterId, enabled, cadence]
+      properties:
+        matterId: { type: integer, minimum: 1 }
+        enabled: { type: boolean }
+        cadence: { type: string, enum: [weekly, fortnightly, monthly] }
+    ClientUpdateDraftInput:
+      type: object
+      required: [matterId]
+      properties:
+        matterId: { type: integer, minimum: 1 }
+    ClientUpdateDraft:
+      type: object
+      required: [id, matterId, matterTitle, clientName, sourceActivityIds, subject, body, status, generatedBy, generatedAt, reviewedAt]
+      properties:
+        id: { type: integer }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        clientName: { type: string }
+        sourceActivityIds:
+          type: array
+          items: { type: integer }
+        subject: { type: string }
+        body: { type: string }
+        status: { type: string, enum: [draft, reviewed] }
+        generatedBy: { type: string, enum: [user, schedule] }
+        generatedAt: { type: string, format: date-time }
+        reviewedAt: { type: ["string", "null"], format: date-time }
+    ClientUpdateDraftUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        subject: { type: string, minLength: 1, maxLength: 200 }
+        body: { type: string, minLength: 1, maxLength: 10000 }
+        status: { type: string, enum: [draft, reviewed] }

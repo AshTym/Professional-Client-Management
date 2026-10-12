@@ -530,3 +530,486 @@ export const CloseMatterParams = zod.object({
 export const CloseMatterResponse = zod.void()
 
 
+/**
+ * @summary Get billing profiles, time entries, and draft bills for the firm
+ */
+export const GetBillingOverviewResponse = zod.object({
+  "profiles": zod.array(zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "feeType": zod.enum(['hourly', 'fixed']),
+  "currency": zod.string(),
+  "hourlyRateCents": zod.number().int().nullable(),
+  "fixedFeeCents": zod.number().int().nullable(),
+  "feeDescription": zod.string(),
+  "billingCycle": zod.enum(['weekly', 'monthly', 'quarterly']),
+  "taxRateBps": zod.number().int(),
+  "scheduleEnabled": zod.boolean(),
+  "periodStartAt": zod.coerce.date(),
+  "nextDraftAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "timeEntries": zod.array(zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "description": zod.string(),
+  "workDate": zod.coerce.date(),
+  "durationMinutes": zod.number().int(),
+  "billable": zod.boolean(),
+  "billingDraftId": zod.number().int().nullable(),
+  "createdAt": zod.coerce.date()
+})),
+  "drafts": zod.array(zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "periodStartAt": zod.coerce.date(),
+  "periodEndAt": zod.coerce.date(),
+  "currency": zod.string(),
+  "subtotalCents": zod.number().int(),
+  "taxCents": zod.number().int(),
+  "totalCents": zod.number().int(),
+  "narrative": zod.string(),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string(),
+  "workDate": zod.coerce.date().nullable(),
+  "durationMinutes": zod.number().int().nullable(),
+  "rateCents": zod.number().int().nullable(),
+  "amountCents": zod.number().int()
+})),
+  "status": zod.enum(['draft', 'reviewed']),
+  "generatedAt": zod.coerce.date(),
+  "reviewedAt": zod.coerce.date().nullable()
+}))
+})
+
+
+/**
+ * @summary Save billing parameters for a matter
+ */
+
+export const saveBillingProfileBodyCurrencyMin = 3;
+export const saveBillingProfileBodyCurrencyMax = 3;
+
+export const saveBillingProfileBodyHourlyRateCentsMin = 0;
+
+export const saveBillingProfileBodyFixedFeeCentsMin = 0;
+
+export const saveBillingProfileBodyFeeDescriptionMax = 240;
+
+export const saveBillingProfileBodyTaxRateBpsMin = 0;
+export const saveBillingProfileBodyTaxRateBpsMax = 10000;
+
+
+
+export const SaveBillingProfileBody = zod.object({
+  "matterId": zod.number().int().min(1),
+  "feeType": zod.enum(['hourly', 'fixed']),
+  "currency": zod.string().min(saveBillingProfileBodyCurrencyMin).max(saveBillingProfileBodyCurrencyMax),
+  "hourlyRateCents": zod.number().int().min(saveBillingProfileBodyHourlyRateCentsMin).nullish(),
+  "fixedFeeCents": zod.number().int().min(saveBillingProfileBodyFixedFeeCentsMin).nullish(),
+  "feeDescription": zod.string().min(1).max(saveBillingProfileBodyFeeDescriptionMax),
+  "billingCycle": zod.enum(['weekly', 'monthly', 'quarterly']),
+  "taxRateBps": zod.number().int().min(saveBillingProfileBodyTaxRateBpsMin).max(saveBillingProfileBodyTaxRateBpsMax),
+  "scheduleEnabled": zod.boolean(),
+  "nextDraftAt": zod.coerce.date()
+})
+
+export const SaveBillingProfileResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "feeType": zod.enum(['hourly', 'fixed']),
+  "currency": zod.string(),
+  "hourlyRateCents": zod.number().int().nullable(),
+  "fixedFeeCents": zod.number().int().nullable(),
+  "feeDescription": zod.string(),
+  "billingCycle": zod.enum(['weekly', 'monthly', 'quarterly']),
+  "taxRateBps": zod.number().int(),
+  "scheduleEnabled": zod.boolean(),
+  "periodStartAt": zod.coerce.date(),
+  "nextDraftAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Record work performed on a matter
+ */
+
+export const createTimeEntryBodyDescriptionMax = 1000;
+
+export const createTimeEntryBodyDurationMinutesMax = 1440;
+
+
+
+export const CreateTimeEntryBody = zod.object({
+  "matterId": zod.number().int().min(1),
+  "description": zod.string().min(1).max(createTimeEntryBodyDescriptionMax),
+  "workDate": zod.coerce.date(),
+  "durationMinutes": zod.number().int().min(1).max(createTimeEntryBodyDurationMinutesMax),
+  "billable": zod.boolean()
+})
+
+export const CreateTimeEntryResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "description": zod.string(),
+  "workDate": zod.coerce.date(),
+  "durationMinutes": zod.number().int(),
+  "billable": zod.boolean(),
+  "billingDraftId": zod.number().int().nullable(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Mark a draft bill reviewed or return it to draft
+ */
+export const UpdateBillingDraftParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const UpdateBillingDraftBody = zod.object({
+  "status": zod.enum(['draft', 'reviewed'])
+})
+
+export const UpdateBillingDraftResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "periodStartAt": zod.coerce.date(),
+  "periodEndAt": zod.coerce.date(),
+  "currency": zod.string(),
+  "subtotalCents": zod.number().int(),
+  "taxCents": zod.number().int(),
+  "totalCents": zod.number().int(),
+  "narrative": zod.string(),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string(),
+  "workDate": zod.coerce.date().nullable(),
+  "durationMinutes": zod.number().int().nullable(),
+  "rateCents": zod.number().int().nullable(),
+  "amountCents": zod.number().int()
+})),
+  "status": zod.enum(['draft', 'reviewed']),
+  "generatedAt": zod.coerce.date(),
+  "reviewedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary List firm documents, pending source suggestions, and confirmed planner items
+ */
+export const GetDocumentOverviewResponse = zod.object({
+  "documents": zod.array(zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "originalName": zod.string(),
+  "contentType": zod.string(),
+  "sizeBytes": zod.number().int(),
+  "status": zod.enum(['uploading', 'ready', 'analyzing', 'analyzed', 'failed']),
+  "lastAnalysisError": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})),
+  "suggestions": zod.array(zod.object({
+  "id": zod.number().int(),
+  "documentId": zod.number().int(),
+  "documentName": zod.string(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "kind": zod.enum(['event', 'task']),
+  "title": zod.string(),
+  "details": zod.string(),
+  "dueAt": zod.coerce.date().nullable(),
+  "sourcePage": zod.number().int(),
+  "sourceQuote": zod.string(),
+  "confidence": zod.number(),
+  "status": zod.enum(['pending', 'confirmed', 'rejected']),
+  "createdAt": zod.coerce.date()
+})),
+  "plannerItems": zod.array(zod.object({
+  "id": zod.number().int(),
+  "documentId": zod.number().int(),
+  "documentName": zod.string(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "kind": zod.enum(['event', 'task']),
+  "title": zod.string(),
+  "details": zod.string(),
+  "dueAt": zod.coerce.date().nullable(),
+  "sourcePage": zod.number().int(),
+  "sourceQuote": zod.string(),
+  "status": zod.enum(['open', 'done']),
+  "confirmedAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Create a private upload reservation for a matter document
+ */
+
+export const requestDocumentUploadBodyNameMax = 255;
+
+export const requestDocumentUploadBodySizeMax = 15728640;
+
+
+
+export const RequestDocumentUploadBody = zod.object({
+  "matterId": zod.number().int().min(1),
+  "name": zod.string().min(1).max(requestDocumentUploadBodyNameMax),
+  "size": zod.number().int().min(1).max(requestDocumentUploadBodySizeMax),
+  "contentType": zod.enum(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'])
+})
+
+export const RequestDocumentUploadResponse = zod.object({
+  "id": zod.number().int(),
+  "uploadURL": zod.string().url(),
+  "objectPath": zod.string(),
+  "originalName": zod.string()
+})
+
+
+/**
+ * @summary Confirm that the reserved document upload completed
+ */
+export const CompleteDocumentUploadParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const CompleteDocumentUploadResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "originalName": zod.string(),
+  "contentType": zod.string(),
+  "sizeBytes": zod.number().int(),
+  "status": zod.enum(['uploading', 'ready', 'analyzing', 'analyzed', 'failed']),
+  "lastAnalysisError": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Extract source-backed event and task suggestions from a document
+ */
+export const AnalyzeDocumentParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const AnalyzeDocumentResponseItem = zod.object({
+  "id": zod.number().int(),
+  "documentId": zod.number().int(),
+  "documentName": zod.string(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "kind": zod.enum(['event', 'task']),
+  "title": zod.string(),
+  "details": zod.string(),
+  "dueAt": zod.coerce.date().nullable(),
+  "sourcePage": zod.number().int(),
+  "sourceQuote": zod.string(),
+  "confidence": zod.number(),
+  "status": zod.enum(['pending', 'confirmed', 'rejected']),
+  "createdAt": zod.coerce.date()
+})
+export const AnalyzeDocumentResponse = zod.array(AnalyzeDocumentResponseItem)
+
+
+/**
+ * @summary Stream a private document after firm membership is checked
+ */
+export const GetMatterDocumentFileParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const GetMatterDocumentFileResponse = zod.string()
+
+
+/**
+ * @summary Delete a firm's uploaded matter document and its suggestions
+ */
+export const DeleteMatterDocumentParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const DeleteMatterDocumentResponse = zod.void()
+
+
+/**
+ * @summary Confirm a source-backed suggestion into the planner or reject it
+ */
+export const ReviewDocumentSuggestionParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const ReviewDocumentSuggestionBody = zod.object({
+  "status": zod.enum(['confirmed', 'rejected'])
+})
+
+export const ReviewDocumentSuggestionResponse = zod.object({
+  "id": zod.number().int(),
+  "documentId": zod.number().int(),
+  "documentName": zod.string(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "kind": zod.enum(['event', 'task']),
+  "title": zod.string(),
+  "details": zod.string(),
+  "dueAt": zod.coerce.date().nullable(),
+  "sourcePage": zod.number().int(),
+  "sourceQuote": zod.string(),
+  "confidence": zod.number(),
+  "status": zod.enum(['pending', 'confirmed', 'rejected']),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Mark a confirmed calendar item or task open or done
+ */
+export const UpdatePlannerItemParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const UpdatePlannerItemBody = zod.object({
+  "status": zod.enum(['open', 'done'])
+})
+
+export const UpdatePlannerItemResponse = zod.object({
+  "id": zod.number().int(),
+  "documentId": zod.number().int(),
+  "documentName": zod.string(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "kind": zod.enum(['event', 'task']),
+  "title": zod.string(),
+  "details": zod.string(),
+  "dueAt": zod.coerce.date().nullable(),
+  "sourcePage": zod.number().int(),
+  "sourceQuote": zod.string(),
+  "status": zod.enum(['open', 'done']),
+  "confirmedAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List scheduled client update settings and saved drafts
+ */
+export const GetClientUpdateOverviewResponse = zod.object({
+  "schedules": zod.array(zod.object({
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "enabled": zod.boolean(),
+  "cadence": zod.enum(['weekly', 'fortnightly', 'monthly']),
+  "nextDraftAt": zod.coerce.date().nullable()
+})),
+  "drafts": zod.array(zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "sourceActivityIds": zod.array(zod.number().int()),
+  "subject": zod.string(),
+  "body": zod.string(),
+  "status": zod.enum(['draft', 'reviewed']),
+  "generatedBy": zod.enum(['user', 'schedule']),
+  "generatedAt": zod.coerce.date(),
+  "reviewedAt": zod.coerce.date().nullable()
+}))
+})
+
+
+/**
+ * @summary Enable or change the scheduled client update draft cadence for a matter
+ */
+
+
+
+export const SaveClientUpdateScheduleBody = zod.object({
+  "matterId": zod.number().int().min(1),
+  "enabled": zod.boolean(),
+  "cadence": zod.enum(['weekly', 'fortnightly', 'monthly'])
+})
+
+export const SaveClientUpdateScheduleResponse = zod.object({
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "enabled": zod.boolean(),
+  "cadence": zod.enum(['weekly', 'fortnightly', 'monthly']),
+  "nextDraftAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Draft a client update from recent real matter activity
+ */
+
+
+
+export const CreateClientUpdateDraftBody = zod.object({
+  "matterId": zod.number().int().min(1)
+})
+
+export const CreateClientUpdateDraftResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "sourceActivityIds": zod.array(zod.number().int()),
+  "subject": zod.string(),
+  "body": zod.string(),
+  "status": zod.enum(['draft', 'reviewed']),
+  "generatedBy": zod.enum(['user', 'schedule']),
+  "generatedAt": zod.coerce.date(),
+  "reviewedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Edit or mark a client update draft as reviewed
+ */
+export const UpdateClientUpdateDraftParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const updateClientUpdateDraftBodySubjectMax = 200;
+
+export const updateClientUpdateDraftBodyBodyMax = 10000;
+
+
+
+export const UpdateClientUpdateDraftBody = zod.object({
+  "subject": zod.string().min(1).max(updateClientUpdateDraftBodySubjectMax).optional(),
+  "body": zod.string().min(1).max(updateClientUpdateDraftBodyBodyMax).optional(),
+  "status": zod.enum(['draft', 'reviewed']).optional()
+})
+
+export const UpdateClientUpdateDraftResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "sourceActivityIds": zod.array(zod.number().int()),
+  "subject": zod.string(),
+  "body": zod.string(),
+  "status": zod.enum(['draft', 'reviewed']),
+  "generatedBy": zod.enum(['user', 'schedule']),
+  "generatedAt": zod.coerce.date(),
+  "reviewedAt": zod.coerce.date().nullable()
+})
+
+
