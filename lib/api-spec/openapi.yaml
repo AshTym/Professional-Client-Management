@@ -3,20 +3,23 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: ClientGuard firm-scoped client and matter management API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: workspace
+  - name: clients
+  - name: matters
+  - name: dashboard
+  - name: activity
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +27,244 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /workspace:
+    get:
+      operationId: getWorkspace
+      tags: [workspace]
+      summary: Get the signed-in user's firm and access assurance
+      responses:
+        "200":
+          description: Firm context and three-stage authentication status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceContext"
+    post:
+      operationId: createWorkspace
+      tags: [workspace]
+      summary: Create a firm and become its owner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceInput"
+      responses:
+        "201":
+          description: Firm created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceContext"
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Get firm-scoped dashboard totals and recent activity
+      responses:
+        "200":
+          description: Dashboard snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /activity:
+    get:
+      operationId: listActivity
+      tags: [activity]
+      summary: List recent firm audit events
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Recent audit events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Activity"
+  /clients:
+    get:
+      operationId: listClients
+      tags: [clients]
+      summary: Search and filter firm clients
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [prospect, active, archived]
+      responses:
+        "200":
+          description: Firm clients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Client"
+    post:
+      operationId: createClient
+      tags: [clients]
+      summary: Create a firm client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientInput"
+      responses:
+        "201":
+          description: Client created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+  /clients/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getClient
+      tags: [clients]
+      summary: Get a firm client
+      responses:
+        "200":
+          description: Client record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "404":
+          description: Client not found
+    patch:
+      operationId: updateClient
+      tags: [clients]
+      summary: Update a firm client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientUpdate"
+      responses:
+        "200":
+          description: Updated client record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+    delete:
+      operationId: deleteClient
+      tags: [clients]
+      summary: Archive a firm client
+      responses:
+        "204":
+          description: Client archived
+  /matters:
+    get:
+      operationId: listMatters
+      tags: [matters]
+      summary: Search and filter firm matters
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, on_hold, closed]
+      responses:
+        "200":
+          description: Firm matters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Matter"
+    post:
+      operationId: createMatter
+      tags: [matters]
+      summary: Create a firm matter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MatterInput"
+      responses:
+        "201":
+          description: Matter created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Matter"
+  /matters/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getMatter
+      tags: [matters]
+      summary: Get a firm matter
+      responses:
+        "200":
+          description: Matter record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Matter"
+        "404":
+          description: Matter not found
+    patch:
+      operationId: updateMatter
+      tags: [matters]
+      summary: Update a firm matter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MatterUpdate"
+      responses:
+        "200":
+          description: Updated matter record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Matter"
+    delete:
+      operationId: closeMatter
+      tags: [matters]
+      summary: Close a firm matter
+      responses:
+        "204":
+          description: Matter closed
 components:
   schemas:
     HealthStatus:
@@ -31,6 +272,166 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
-
+      required: [status]
+    Workspace:
+      type: object
+      required: [id, name, practiceType, createdAt]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        practiceType:
+          type: string
+          enum: [law, financial, both]
+        createdAt: { type: string, format: date-time }
+    WorkspaceContext:
+      type: object
+      required: [userId, email, name, workspace, role, stages]
+      properties:
+        userId: { type: string }
+        email: { type: string }
+        name: { type: string }
+        workspace:
+          anyOf:
+            - $ref: "#/components/schemas/Workspace"
+            - type: "null"
+        role:
+          type: ["string", "null"]
+          enum: [owner, admin, advisor, professional, assistant, null]
+        stages:
+          type: object
+          required: [identity, secondFactor, firmAuthorization, dataAccess]
+          properties:
+            identity: { type: boolean }
+            secondFactor: { type: boolean }
+            firmAuthorization: { type: boolean }
+            dataAccess: { type: boolean }
+    WorkspaceInput:
+      type: object
+      required: [name, practiceType]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        practiceType:
+          type: string
+          enum: [law, financial, both]
+    Client:
+      type: object
+      required: [id, name, clientType, email, phone, industry, status, owner, matterCount, lastActivityAt, createdAt]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        clientType:
+          type: string
+          enum: [individual, business]
+        email: { type: ["string", "null"] }
+        phone: { type: ["string", "null"] }
+        industry: { type: ["string", "null"] }
+        status:
+          type: string
+          enum: [prospect, active, archived]
+        owner: { type: string }
+        matterCount: { type: integer }
+        lastActivityAt: { type: ["string", "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+    ClientInput:
+      type: object
+      required: [name, clientType]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        clientType:
+          type: string
+          enum: [individual, business]
+        email: { type: ["string", "null"], format: email }
+        phone: { type: ["string", "null"] }
+        industry: { type: ["string", "null"] }
+        status:
+          type: string
+          enum: [prospect, active, archived]
+    ClientUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        clientType:
+          type: string
+          enum: [individual, business]
+        email: { type: ["string", "null"], format: email }
+        phone: { type: ["string", "null"] }
+        industry: { type: ["string", "null"] }
+        status:
+          type: string
+          enum: [prospect, active, archived]
+    Matter:
+      type: object
+      required: [id, clientId, clientName, title, reference, matterType, status, riskLevel, responsible, dueAt, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        clientId: { type: integer }
+        clientName: { type: string }
+        title: { type: string }
+        reference: { type: string }
+        matterType: { type: string }
+        status:
+          type: string
+          enum: [open, on_hold, closed]
+        riskLevel:
+          type: string
+          enum: [low, medium, high]
+        responsible: { type: string }
+        dueAt: { type: ["string", "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    MatterInput:
+      type: object
+      required: [clientId, title, matterType, responsible]
+      properties:
+        clientId: { type: integer, minimum: 1 }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        matterType: { type: string, minLength: 1, maxLength: 120 }
+        status:
+          type: string
+          enum: [open, on_hold, closed]
+        riskLevel:
+          type: string
+          enum: [low, medium, high]
+        responsible: { type: string, minLength: 1, maxLength: 160 }
+        dueAt: { type: ["string", "null"], format: date-time }
+    MatterUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        clientId: { type: integer, minimum: 1 }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        matterType: { type: string, minLength: 1, maxLength: 120 }
+        status:
+          type: string
+          enum: [open, on_hold, closed]
+        riskLevel:
+          type: string
+          enum: [low, medium, high]
+        responsible: { type: string, minLength: 1, maxLength: 160 }
+        dueAt: { type: ["string", "null"], format: date-time }
+    Activity:
+      type: object
+      required: [id, actor, action, entityType, entityId, entityLabel, occurredAt]
+      properties:
+        id: { type: integer }
+        actor: { type: string }
+        action: { type: string }
+        entityType:
+          type: string
+          enum: [client, matter, workspace]
+        entityId: { type: integer }
+        entityLabel: { type: string }
+        occurredAt: { type: string, format: date-time }
+    DashboardSummary:
+      type: object
+      required: [clientCount, activeClientCount, openMatterCount, overdueMatterCount, recentActivity]
+      properties:
+        clientCount: { type: integer }
+        activeClientCount: { type: integer }
+        openMatterCount: { type: integer }
+        overdueMatterCount: { type: integer }
+        recentActivity:
+          type: array
+          items:
+            $ref: "#/components/schemas/Activity"

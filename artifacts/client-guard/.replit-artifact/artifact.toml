@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "ClientGuard"
+description = "A secure client and matter management platform for law firms and financial services teams, with staged identity verification, MFA, firm-level authorization, audit history, client records, and matter workflows."
+version = "1.0.0"
+id = "artifacts/client-guard"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20181
+
+[services.development]
+run = "pnpm --filter @workspace/client-guard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/client-guard", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/client-guard/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20181"
+BASE_PATH = "/"
