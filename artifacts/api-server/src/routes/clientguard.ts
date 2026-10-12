@@ -29,6 +29,8 @@ import {
   CreateWorkspaceResponse,
   DashboardSummary,
   DeleteClientParams,
+  GetActivityParams,
+  GetActivityResponse,
   GetClientParams,
   GetClientResponse,
   GetDashboardResponse,
@@ -182,6 +184,31 @@ router.get("/activity", async (req, res): Promise<void> => {
     .orderBy(desc(activitiesTable.occurredAt))
     .limit(parsed.data.limit);
   res.json(ListActivityResponse.parse(activity));
+});
+
+router.get("/activity/:id", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+  const params = GetActivityParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const [activity] = await db
+    .select()
+    .from(activitiesTable)
+    .where(
+      and(
+        eq(activitiesTable.id, params.data.id),
+        eq(activitiesTable.workspaceId, access.workspaceId),
+      ),
+    )
+    .limit(1);
+  if (!activity) {
+    res.status(404).json({ error: "Activity not found." });
+    return;
+  }
+  res.json(GetActivityResponse.parse(activity));
 });
 
 router.get("/clients", async (req, res): Promise<void> => {

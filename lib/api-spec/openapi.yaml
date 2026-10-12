@@ -91,6 +91,27 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Activity"
+  /activity/{id}:
+    get:
+      operationId: getActivity
+      tags: [activity]
+      summary: Get a firm audit event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Audit event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "404":
+          description: Audit event not found in this firm
   /clients:
     get:
       operationId: listClients

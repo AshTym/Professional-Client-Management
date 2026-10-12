@@ -105,6 +105,27 @@ export const ListActivityResponse = zod.array(ListActivityResponseItem)
 
 
 /**
+ * @summary Get a firm audit event
+ */
+
+
+
+export const GetActivityParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const GetActivityResponse = zod.object({
+  "id": zod.number().int(),
+  "actor": zod.string(),
+  "action": zod.string(),
+  "entityType": zod.enum(['client', 'matter', 'workspace']),
+  "entityId": zod.number().int(),
+  "entityLabel": zod.string(),
+  "occurredAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Search and filter firm clients
  */
 export const ListClientsQueryParams = zod.object({
