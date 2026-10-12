@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ClerkProvider, SignIn, SignUp, Show, useClerk, useUser, UserProfile } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
@@ -19,7 +19,7 @@ import type { Client, ClientInput, Matter, MatterInput, WorkspaceInput, Workspac
 import {
   Activity as ActivityIcon, ArrowDownRight, ArrowLeft, ArrowRight, BriefcaseBusiness, Check,
   ChevronDown, CircleHelp, Clock3, FileText, Fingerprint, LockKeyhole, LogOut, Menu,
-  Plus, Search, ShieldCheck, Users, X, Building2, Settings2, AlertTriangle, RefreshCw,
+  Plus, Search, ShieldCheck, Users, X, Building2, Settings2, AlertTriangle, RefreshCw, Download,
   Mail, UserPlus,
 } from 'lucide-react';
 import './index.css';
@@ -182,12 +182,12 @@ function Skeleton({ title='Loading records' }: { title?:string }) { return <div 
 function ErrorState({ title, retry }: { title:string; retry:()=>void }) { return <div className="rounded-md border border-[#e6c7c1] bg-[#fff9f6] p-8" data-testid="status-error"><div className="flex items-center gap-2 font-semibold text-[#843f38]"><AlertTriangle className="h-4 w-4" />{title}</div><p className="mt-2 text-sm text-[#7d7470]">We could not load this information. Your firm data has not been changed.</p><Button onClick={retry} variant="outline" testId="button-retry"><RefreshCw className="h-4 w-4" />Try again</Button></div>; }
 function EmptyState({ title, detail, action }: { title:string; detail:string; action?:ReactNode }) { return <div className="grid min-h-64 place-items-center rounded-md border border-dashed border-[#d6d1c5] bg-[#fbfaf5] p-8 text-center" data-testid="status-empty"><div><div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#e8eee8] text-[#4d7463]"><FileText className="h-5 w-5" /></div><h3 className="serif mt-4 text-xl font-bold">{title}</h3><p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#71807e]">{detail}</p>{action&&<div className="mt-5">{action}</div>}</div></div>; }
 function Dashboard() {
- const summary = useGetDashboard(); const activity = useListActivity({limit:6});
+ const summary = useGetDashboard(); const activity = useListActivity({limit:6}); const [,setLocation]=useLocation();
  if(summary.isLoading||activity.isLoading) return <Skeleton title="Loading firm overview" />;
  if(summary.isError) return <ErrorState title="Overview unavailable" retry={()=>summary.refetch()} />;
  const data=summary.data!;
  const isEmpty=data.clientCount===0&&data.matterCount===0;
- return <><PageHeader eyebrow="Your firm at a glance" title="Good morning." subtitle="Here is what needs your attention across the workspace." action={<Link href="/activity" className="text-sm font-semibold text-[#405c60]" data-testid="link-full-activity">View audit trail <ArrowRight className="ml-1 inline h-4 w-4" /></Link>} />
+ return <><PageHeader eyebrow="Your firm at a glance" title="Good morning." subtitle="Here is what needs your attention across the workspace." action={<div className="flex flex-wrap items-center gap-2"><Button onClick={()=>setLocation('/clients?create=1')} testId="button-dashboard-create-client"><Plus className="h-4 w-4" />Create client</Button><Button variant="outline" onClick={()=>setLocation('/matters?create=1')} testId="button-dashboard-create-matter"><Plus className="h-4 w-4" />Create matter</Button><Link href="/activity" className="px-2 py-2 text-sm font-semibold text-[#405c60]" data-testid="link-full-activity">View audit trail <ArrowRight className="ml-1 inline h-4 w-4" /></Link></div>} />
    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[['Clients',data.clientCount,'Total relationships',Users],['Active clients',data.activeClientCount,'Currently engaged',Fingerprint],['Open matters',data.openMatterCount,'In progress',BriefcaseBusiness],['Overdue matters',data.overdueMatterCount,'Review required',Clock3]].map(([name,value,caption,Icon]:any,i)=><div key={name} className={`rounded-md border border-[#e0dace] bg-[#fbfaf5] p-5 ${i===3?'border-t-2 border-t-[#c46d5f]':''}`} data-testid={`metric-${String(name).toLowerCase().replace(' ','-')}`}><div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[.12em] text-[#75817e]"><span>{name}</span><Icon className="h-4 w-4 text-[#9a825a]" /></div><div className="serif mt-4 text-4xl font-semibold">{value}</div><div className="mt-2 text-xs text-[#85908c]">{caption}</div></div>)}</div>
     {isEmpty?<section className="mt-7 rounded-md border border-[#e0dace] bg-[#fbfaf5] p-6 md:p-8" data-testid="dashboard-empty-onboarding"><div className="grid gap-6 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mono text-[10px] uppercase tracking-[.16em] text-[#987747]">Getting started</div><h2 className="serif mt-2 text-2xl font-bold">Start with your first client.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-[#71807e]">Add a client relationship to your firm. Once it’s in place, you can create and track matters for that client.</p></div><Link href="/clients?create=1" className="inline-flex items-center justify-center gap-2 rounded-md bg-[#294651] px-4 py-3 text-[13px] font-semibold text-[#f9f6ed] transition hover:bg-[#1c3943]" data-testid="link-create-first-client">Add your first client <ArrowRight className="h-4 w-4" /></Link></div></section>:<div className="mt-7 grid gap-5 xl:grid-cols-[1.45fr_.8fr]"><section className="rounded-md border border-[#e0dace] bg-[#fbfaf5]"><div className="flex items-center justify-between border-b border-[#e9e4d9] px-5 py-4"><div><h2 className="serif text-lg font-bold">Recent activity</h2><p className="mt-1 text-xs text-[#87918d]">A living record of firm changes</p></div><ActivityIcon className="h-4 w-4 text-[#987747]" /></div>{activity.isError?<div className="p-5 text-sm text-[#9a554d]">Activity could not be loaded. <button onClick={()=>activity.refetch()} data-testid="button-retry-activity" className="underline">Retry</button></div>:<ActivityList items={(activity.data||[]).slice(0,6)} />}</section>
     <section className="rounded-md bg-[#294651] p-6 text-[#f3f1e9]"><div className="mono text-[9px] uppercase tracking-[.18em] text-[#c5b389]">Quick access</div><h2 className="serif mt-3 text-2xl font-semibold">Keep work moving.</h2><p className="mt-2 text-sm leading-6 text-[#c6d0cc]">Jump into the records that shape your day.</p><div className="mt-6 space-y-2"><QuickLink href="/clients" label="Browse client relationships" /><QuickLink href="/matters" label="Review active matters" /><QuickLink href="/settings/security" label="Account security" /></div></section>
@@ -230,13 +230,91 @@ function ClientDetail() {
 }
 
 function MattersPage() {
- const [search,setSearch]=useState('');const [status,setStatus]=useState('');const [modal,setModal]=useState(false);const list=useListMatters({search:search||undefined,status:(status||undefined) as any});const clients=useListClients();const create=useCreateMatter();const qc=useQueryClient();
- function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);const input:MatterInput={clientId:Number(f.get('clientId')),title:String(f.get('title')),matterType:String(f.get('matterType')),responsible:String(f.get('responsible')),riskLevel:String(f.get('riskLevel')) as any,status:String(f.get('status')) as any,dueAt:String(f.get('dueAt'))||null};create.mutate({data:input},{onSuccess:()=>{qc.invalidateQueries({queryKey:getListMattersQueryKey()});qc.invalidateQueries({queryKey:getGetDashboardQueryKey()});qc.invalidateQueries({queryKey:getListActivityQueryKey()});setModal(false)}});}
- return <><PageHeader eyebrow="Active work" title="Matters" subtitle="Keep each engagement, owner, and next date in view." action={<Button onClick={()=>setModal(true)} testId="button-new-matter"><Plus className="h-4 w-4" />New matter</Button>} />
- <div className="mb-5 flex flex-col gap-3 sm:flex-row"><label className="relative flex-1"><Search className="absolute left-3 top-3 h-4 w-4 text-[#89918d]" /><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search matter, reference, client…" className="h-10 w-full rounded-md border border-[#d9d4c8] bg-[#fbfaf5] pl-10 pr-3 text-sm outline-none focus:border-[#a88b5e]" data-testid="input-search-matters" /></label><select value={status} onChange={e=>setStatus(e.target.value)} className="h-10 rounded-md border border-[#d9d4c8] bg-[#fbfaf5] px-3 text-sm capitalize" data-testid="select-matter-status"><option value="">All statuses</option><option value="open">Open</option><option value="on_hold">On hold</option><option value="closed">Closed</option></select></div>
- {list.isLoading?<Skeleton title="Loading matters" />:list.isError?<ErrorState title="Matter list unavailable" retry={()=>list.refetch()} />:!list.data?.length?<EmptyState title={search||status?'No matching matters':'No matters on file'} detail={search||status?'Try a different search or status.':'Create a matter and keep its client, responsible professional, and due date together.'} action={<Button onClick={()=>setModal(true)} testId="button-empty-add-matter"><Plus className="h-4 w-4" />Create a matter</Button>} />:
- <div className="overflow-hidden rounded-md border border-[#e0dace] bg-[#fbfaf5]"><div className="hidden grid-cols-[minmax(220px,1.5fr)_1fr_110px_105px_115px] gap-4 border-b border-[#e8e3d8] bg-[#f1eee6] px-5 py-3 text-[10px] font-bold uppercase tracking-[.12em] text-[#798480] md:grid"><span>Matter</span><span>Responsible</span><span>Status</span><span>Risk</span><span>Due date</span></div>{list.data.map(m=><Link key={m.id} href={`/matters/${m.id}`} className="grid gap-3 border-b border-[#eee9df] px-5 py-4 transition hover:bg-[#f5f2e9] last:border-0 md:grid-cols-[minmax(220px,1.5fr)_1fr_110px_105px_115px] md:items-center md:gap-4" data-testid={`row-matter-${m.id}`}><div><div className="text-sm font-semibold">{m.title}</div><div className="mt-1 text-[11px] text-[#7e8985]">{m.clientName}<span className="mx-2">·</span><span className="mono">{m.reference}</span></div></div><div className="text-xs">{m.responsible}</div><div><StatusPill value={m.status} /></div><div><StatusPill value={m.riskLevel} /></div><div className="text-xs text-[#72807d]">{m.dueAt?formatTime(m.dueAt):'No due date'}</div></Link>)}</div>}
- {modal&&<Modal title="Create a matter" close={()=>setModal(false)}><form onSubmit={submit} className="space-y-4"><Field label="Client"><select name="clientId" className="field" required defaultValue="">{(clients.data||[]).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Matter title"><input name="title" required className="field" maxLength={200} data-testid="input-matter-title" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Matter type"><input name="matterType" required className="field" placeholder="e.g. Estate planning" data-testid="input-matter-type" /></Field><Field label="Responsible"><input name="responsible" required className="field" data-testid="input-matter-responsible" /></Field></div><div className="grid gap-4 sm:grid-cols-3"><Field label="Status"><select name="status" className="field"><option value="open">Open</option><option value="on_hold">On hold</option></select></Field><Field label="Risk level"><select name="riskLevel" className="field"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></Field><Field label="Due date"><input name="dueAt" type="date" className="field" /></Field></div>{!clients.data?.length&&<div className="text-xs text-[#99534a]">Create a client record before opening a matter.</div>}{create.isError&&<p className="text-sm text-[#9b4941]" data-testid="status-create-matter-error">Matter could not be created. Please try again.</p>}<div className="flex justify-end gap-2 pt-2"><Button variant="outline" onClick={()=>setModal(false)} testId="button-cancel-matter">Cancel</Button><Button type="submit" disabled={create.isPending||!clients.data?.length} testId="button-save-matter">{create.isPending?'Saving…':'Create matter'}</Button></div></form></Modal>}</>;
+ const [search,setSearch]=useState('');
+ const [status,setStatus]=useState('');
+ const [modal,setModal]=useState(()=>new URLSearchParams(window.location.search).get('create')==='1');
+ const [selectedIds,setSelectedIds]=useState<Set<number>>(()=>new Set());
+ const [pdfError,setPdfError]=useState('');
+ const [isExportingPdf,setIsExportingPdf]=useState(false);
+ const list=useListMatters();
+ const clients=useListClients();
+ const create=useCreateMatter();
+ const qc=useQueryClient();
+ const [,setLocation]=useLocation();
+ const filteredMatters=useMemo(()=>{
+  const query=search.trim().toLowerCase();
+  return (list.data||[]).filter(m=>
+   (!status||m.status===status)&&
+   (!query||m.title.toLowerCase().includes(query)||m.reference.toLowerCase().includes(query)||m.clientName.toLowerCase().includes(query))
+  );
+ },[list.data,search,status]);
+ const selectedMatters=filteredMatters.filter(m=>selectedIds.has(m.id));
+ const allVisibleSelected=filteredMatters.length>0&&filteredMatters.every(m=>selectedIds.has(m.id));
+ function closeModal(){setModal(false);if(new URLSearchParams(window.location.search).has('create'))setLocation('/matters',{replace:true});}
+ function toggleVisibleSelection(){
+  setSelectedIds(current=>{
+   const next=new Set(current);
+   if(allVisibleSelected)filteredMatters.forEach(m=>next.delete(m.id));
+   else filteredMatters.forEach(m=>next.add(m.id));
+   return next;
+  });
+ }
+ async function downloadPdf(records: Matter[], scope:'selected'|'all'){
+  if(!records.length)return;
+  setPdfError('');
+  setIsExportingPdf(true);
+  try{
+   const {downloadMattersPdf}=await import('./lib/matters-pdf');
+   downloadMattersPdf(records,scope);
+  }catch{
+   setPdfError('The PDF could not be created. Please try again.');
+  }finally{
+   setIsExportingPdf(false);
+  }
+ }
+ function submit(e:FormEvent<HTMLFormElement>){
+  e.preventDefault();
+  const f=new FormData(e.currentTarget);
+  const input:MatterInput={clientId:Number(f.get('clientId')),title:String(f.get('title')),matterType:String(f.get('matterType')),responsible:String(f.get('responsible')),riskLevel:String(f.get('riskLevel')) as any,status:String(f.get('status')) as any,dueAt:String(f.get('dueAt'))||null};
+  create.mutate({data:input},{onSuccess:()=>{
+   qc.invalidateQueries({queryKey:getListMattersQueryKey()});
+   qc.invalidateQueries({queryKey:getGetDashboardQueryKey()});
+   qc.invalidateQueries({queryKey:getListActivityQueryKey()});
+   closeModal();
+  }});
+ }
+ return <>
+  <PageHeader eyebrow="Active work" title="Matters" subtitle="Keep each engagement, owner, and next date in view." action={<Button onClick={()=>setModal(true)} testId="button-new-matter"><Plus className="h-4 w-4" />New matter</Button>} />
+  <div className="mb-5 flex flex-col gap-3 sm:flex-row">
+   <label className="relative flex-1"><Search className="absolute left-3 top-3 h-4 w-4 text-[#89918d]" /><input value={search} onChange={e=>{setSearch(e.target.value);setSelectedIds(new Set());}} placeholder="Search matter, reference, client…" className="h-10 w-full rounded-md border border-[#d9d4c8] bg-[#fbfaf5] pl-10 pr-3 text-sm outline-none focus:border-[#a88b5e]" data-testid="input-search-matters" /></label>
+   <select value={status} onChange={e=>{setStatus(e.target.value);setSelectedIds(new Set());}} className="h-10 rounded-md border border-[#d9d4c8] bg-[#fbfaf5] px-3 text-sm capitalize" data-testid="select-matter-status"><option value="">All statuses</option><option value="open">Open</option><option value="on_hold">On hold</option><option value="closed">Closed</option></select>
+  </div>
+  {list.isLoading?<Skeleton title="Loading matters" />:list.isError?<ErrorState title="Matter list unavailable" retry={()=>list.refetch()} />:<>
+   {!!list.data?.length&&<div className="mb-4 rounded-md border border-[#e0dace] bg-[#fbfaf5] p-3">
+    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+     <div className="flex flex-wrap items-center gap-4 text-xs text-[#647573]">
+      <label className="inline-flex cursor-pointer items-center gap-2 font-semibold"><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleSelection} aria-label="Select all visible matters" data-testid="checkbox-select-visible-matters" className="h-4 w-4 accent-[#294651]" />Select visible</label>
+      <span data-testid="text-selected-matters">{selectedIds.size} selected</span>
+      {selectedIds.size>0&&<button type="button" onClick={()=>setSelectedIds(new Set())} className="font-semibold text-[#405c60] underline underline-offset-2" data-testid="button-clear-matter-selection">Clear selection</button>}
+     </div>
+     <div className="flex flex-wrap gap-2">
+      <Button variant="outline" onClick={()=>downloadPdf(selectedMatters,'selected')} disabled={!selectedMatters.length||isExportingPdf} testId="button-download-selected-matters"><Download className="h-4 w-4" />{isExportingPdf?'Preparing PDF…':`Download selected PDF (${selectedMatters.length})`}</Button>
+      <Button onClick={()=>downloadPdf(list.data||[],'all')} disabled={!list.data?.length||isExportingPdf} testId="button-download-all-matters"><Download className="h-4 w-4" />{isExportingPdf?'Preparing PDF…':`Download all matters PDF (${list.data.length})`}</Button>
+     </div>
+    </div>
+    {pdfError&&<p role="alert" className="mt-3 text-xs text-[#9b4941]" data-testid="status-matter-pdf-error">{pdfError}</p>}
+   </div>}
+   {!filteredMatters.length?<EmptyState title={search||status?'No matching matters':'No matters on file'} detail={search||status?'Try a different search or status.':'Create a matter and keep its client, responsible professional, and due date together.'} action={<Button onClick={()=>setModal(true)} testId="button-empty-add-matter"><Plus className="h-4 w-4" />Create a matter</Button>} />:
+    <div className="overflow-hidden rounded-md border border-[#e0dace] bg-[#fbfaf5]">
+     <div className="hidden grid-cols-[28px_minmax(220px,1.5fr)_1fr_110px_105px_115px] gap-4 border-b border-[#e8e3d8] bg-[#f1eee6] px-5 py-3 text-[10px] font-bold uppercase tracking-[.12em] text-[#798480] md:grid"><span></span><span>Matter</span><span>Responsible</span><span>Status</span><span>Risk</span><span>Due date</span></div>
+     {filteredMatters.map(m=><div key={m.id} className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-4 gap-y-2 border-b border-[#eee9df] px-5 py-4 transition hover:bg-[#f5f2e9] last:border-0 md:grid-cols-[28px_minmax(220px,1.5fr)_1fr_110px_105px_115px] md:items-center md:gap-4" data-testid={`row-matter-${m.id}`}>
+      <div className="flex items-center"><input type="checkbox" checked={selectedIds.has(m.id)} onChange={e=>setSelectedIds(current=>{const next=new Set(current);if(e.target.checked)next.add(m.id);else next.delete(m.id);return next;})} aria-label={`Select ${m.title}`} data-testid={`checkbox-matter-${m.id}`} className="h-4 w-4 accent-[#294651]" /></div>
+      <Link href={`/matters/${m.id}`} className="contents" data-testid={`link-matter-${m.id}`}><div className="min-w-0"><div className="truncate text-sm font-semibold">{m.title}</div><div className="mt-1 text-[11px] text-[#7e8985]">{m.clientName}<span className="mx-2">·</span><span className="mono">{m.reference}</span></div></div><div className="col-start-2 text-xs md:col-start-auto">{m.responsible}</div><div className="col-start-2 md:col-start-auto"><StatusPill value={m.status} /></div><div className="col-start-2 md:col-start-auto"><StatusPill value={m.riskLevel} /></div><div className="col-start-2 text-xs text-[#72807d] md:col-start-auto">{m.dueAt?formatTime(m.dueAt):'No due date'}</div></Link>
+     </div>)}
+    </div>}
+  </>}
+  {modal&&<Modal title="Create a matter" close={closeModal}><form onSubmit={submit} className="space-y-4"><Field label="Client"><select name="clientId" className="field" required defaultValue="">{(clients.data||[]).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Matter title"><input name="title" required className="field" maxLength={200} data-testid="input-matter-title" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Matter type"><input name="matterType" required className="field" placeholder="e.g. Estate planning" data-testid="input-matter-type" /></Field><Field label="Responsible"><input name="responsible" required className="field" data-testid="input-matter-responsible" /></Field></div><div className="grid gap-4 sm:grid-cols-3"><Field label="Status"><select name="status" className="field"><option value="open">Open</option><option value="on_hold">On hold</option></select></Field><Field label="Risk level"><select name="riskLevel" className="field"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></Field><Field label="Due date"><input name="dueAt" type="date" className="field" /></Field></div>{!clients.isLoading&&!clients.isError&&!clients.data?.length&&<div className="text-xs text-[#99534a]">Create a client record before opening a matter. <Link href="/clients?create=1" className="font-semibold underline" data-testid="link-create-client-from-matter">Create client</Link></div>}{clients.isError&&<p className="text-xs text-[#9b4941]">Client list could not be loaded. Close this form and retry.</p>}{create.isError&&<p className="text-sm text-[#9b4941]" data-testid="status-create-matter-error">Matter could not be created. Please try again.</p>}<div className="flex justify-end gap-2 pt-2"><Button variant="outline" onClick={closeModal} testId="button-cancel-matter">Cancel</Button><Button type="submit" disabled={create.isPending||clients.isLoading||clients.isError||!clients.data?.length} testId="button-save-matter">{create.isPending?'Saving…':'Create matter'}</Button></div></form></Modal>}
+ </>;
 }
 function MatterDetail() {
  const params=useRoute('/matters/:id')[1];const id=Number(params?.id);const result=useGetMatter(id,{query:{queryKey:getGetMatterQueryKey(id)}});const update=useUpdateMatter();const close=useCloseMatter();const qc=useQueryClient();const [,setLocation]=useLocation();const [editing,setEditing]=useState(false);const clients=useListClients();
