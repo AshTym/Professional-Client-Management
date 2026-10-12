@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, mock, test } from "node:test";
 import { createHash, randomUUID } from "node:crypto";
 import express, { type Request } from "express";
-import { eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { Pool } from "pg";
 import type { Server } from "node:http";
 import { clerkClient } from "@clerk/express";
@@ -968,6 +968,91 @@ test("another firm cannot change or archive clients and matters or create a matt
     .limit(1);
   assert.equal(client.status, "active");
   assert.equal(matter.status, "open");
+});
+
+test("signed-in users without a firm cannot read or change firm records", async () => {
+  const userId = `no-firm-${randomUUID()}`;
+  const before = {
+    clients: await db
+      .select()
+      .from(clientsTable)
+      .orderBy(asc(clientsTable.id)),
+    matters: await db
+      .select()
+      .from(mattersTable)
+      .orderBy(asc(mattersTable.id)),
+    activities: await db
+      .select()
+      .from(activitiesTable)
+      .orderBy(asc(activitiesTable.id)),
+  };
+
+  const attempts = [
+    request("/dashboard", { userId }),
+    request("/clients", { userId }),
+    request(`/clients/${firms.primary.clientId}`, { userId }),
+    request("/clients", {
+      userId,
+      method: "POST",
+      body: { name: "No Firm Client", clientType: "individual" },
+    }),
+    request(`/clients/${firms.primary.clientId}`, {
+      userId,
+      method: "PATCH",
+      body: { name: "Must Not Change Client" },
+    }),
+    request(`/clients/${firms.primary.clientId}`, {
+      userId,
+      method: "DELETE",
+    }),
+    request("/matters", { userId }),
+    request(`/matters/${firms.primary.matterId}`, { userId }),
+    request("/matters", {
+      userId,
+      method: "POST",
+      body: {
+        clientId: firms.primary.clientId,
+        title: "No Firm Matter",
+        matterType: "advisory",
+        responsible: "No Firm User",
+      },
+    }),
+    request(`/matters/${firms.primary.matterId}`, {
+      userId,
+      method: "PATCH",
+      body: { title: "Must Not Change Matter" },
+    }),
+    request(`/matters/${firms.primary.matterId}`, {
+      userId,
+      method: "DELETE",
+    }),
+    request("/activity", { userId }),
+    request(`/activity/${firms.primary.activityId}`, { userId }),
+  ];
+  const results = await Promise.all(attempts);
+  for (const { response, body } of results) {
+    assert.equal(response.status, 403);
+    assert.deepEqual(body, {
+      error: "You do not have access to a firm workspace.",
+      code: "firm_authorization_required",
+    });
+  }
+
+  const after = {
+    clients: await db
+      .select()
+      .from(clientsTable)
+      .orderBy(asc(clientsTable.id)),
+    matters: await db
+      .select()
+      .from(mattersTable)
+      .orderBy(asc(mattersTable.id)),
+    activities: await db
+      .select()
+      .from(activitiesTable)
+      .orderBy(asc(activitiesTable.id)),
+  };
+  assert.deepEqual(after, before);
 });
 
 test("unauthenticated requests to client, matter, and activity routes remain rejected", async () => {
