@@ -39,13 +39,6 @@ export const WorkspaceContextRole = {
   assistant: 'assistant',
 } as const;
 
-export type WorkspaceContextStages = {
-  identity: boolean;
-  secondFactor: boolean;
-  firmAuthorization: boolean;
-  dataAccess: boolean;
-};
-
 export interface WorkspaceContext {
   userId: string;
   email: string;
@@ -53,7 +46,6 @@ export interface WorkspaceContext {
   workspace: Workspace | null;
   /** @nullable */
   role: WorkspaceContextRole;
-  stages: WorkspaceContextStages;
 }
 
 export type WorkspaceInputPracticeType = typeof WorkspaceInputPracticeType[keyof typeof WorkspaceInputPracticeType];

@@ -34,7 +34,7 @@ paths:
       summary: Get the signed-in user's firm and access assurance
       responses:
         "200":
-          description: Firm context and three-stage authentication status
+          description: Signed-in user context and current firm workspace membership
           content:
             application/json:
               schema:
@@ -285,7 +285,7 @@ components:
         createdAt: { type: string, format: date-time }
     WorkspaceContext:
       type: object
-      required: [userId, email, name, workspace, role, stages]
+      required: [userId, email, name, workspace, role]
       properties:
         userId: { type: string }
         email: { type: string }
@@ -297,14 +297,6 @@ components:
         role:
           type: ["string", "null"]
           enum: [owner, admin, advisor, professional, assistant, null]
-        stages:
-          type: object
-          required: [identity, secondFactor, firmAuthorization, dataAccess]
-          properties:
-            identity: { type: boolean }
-            secondFactor: { type: boolean }
-            firmAuthorization: { type: boolean }
-            dataAccess: { type: boolean }
     WorkspaceInput:
       type: object
       required: [name, practiceType]

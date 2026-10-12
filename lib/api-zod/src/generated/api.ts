@@ -29,13 +29,7 @@ export const GetWorkspaceResponse = zod.object({
   "practiceType": zod.enum(['law', 'financial', 'both']),
   "createdAt": zod.coerce.date()
 }),zod.null()]),
-  "role": zod.union([zod.literal('owner'),zod.literal('admin'),zod.literal('advisor'),zod.literal('professional'),zod.literal('assistant'),zod.literal(null)]).nullable(),
-  "stages": zod.object({
-  "identity": zod.boolean(),
-  "secondFactor": zod.boolean(),
-  "firmAuthorization": zod.boolean(),
-  "dataAccess": zod.boolean()
-})
+  "role": zod.union([zod.literal('owner'),zod.literal('admin'),zod.literal('advisor'),zod.literal('professional'),zod.literal('assistant'),zod.literal(null)]).nullable()
 })
 
 
@@ -62,13 +56,7 @@ export const CreateWorkspaceResponse = zod.object({
   "practiceType": zod.enum(['law', 'financial', 'both']),
   "createdAt": zod.coerce.date()
 }),zod.null()]),
-  "role": zod.union([zod.literal('owner'),zod.literal('admin'),zod.literal('advisor'),zod.literal('professional'),zod.literal('assistant'),zod.literal(null)]).nullable(),
-  "stages": zod.object({
-  "identity": zod.boolean(),
-  "secondFactor": zod.boolean(),
-  "firmAuthorization": zod.boolean(),
-  "dataAccess": zod.boolean()
-})
+  "role": zod.union([zod.literal('owner'),zod.literal('admin'),zod.literal('advisor'),zod.literal('professional'),zod.literal('assistant'),zod.literal(null)]).nullable()
 })
 
 

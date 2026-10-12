@@ -36,7 +36,6 @@ export * from './matterUpdateStatus';
 export * from './workspace';
 export * from './workspaceContext';
 export * from './workspaceContextRole';
-export * from './workspaceContextStages';
 export * from './workspaceInput';
 export * from './workspaceInputPracticeType';
 export * from './workspacePracticeType';

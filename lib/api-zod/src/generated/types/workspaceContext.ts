@@ -7,7 +7,6 @@
  */
 import type { Workspace } from './workspace';
 import type { WorkspaceContextRole } from './workspaceContextRole';
-import type { WorkspaceContextStages } from './workspaceContextStages';
 
 export interface WorkspaceContext {
   userId: string;
@@ -16,5 +15,4 @@ export interface WorkspaceContext {
   workspace: Workspace | null;
   /** @nullable */
   role: WorkspaceContextRole;
-  stages: WorkspaceContextStages;
 }

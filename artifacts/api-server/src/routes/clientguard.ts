@@ -68,14 +68,6 @@ router.get("/workspace", async (req, res): Promise<void> => {
 router.post("/workspace", async (req, res): Promise<void> => {
   const identity = identify(req, res);
   if (!identity) return;
-  if (!identity.secondFactor) {
-    res.status(403).json({
-      error: "Set up and verify a second factor before creating a firm.",
-      code: "second_factor_required",
-      action: "Complete multi-factor authentication in account security settings.",
-    });
-    return;
-  }
 
   const parsed = CreateWorkspaceBody.safeParse(req.body);
   if (!parsed.success) {

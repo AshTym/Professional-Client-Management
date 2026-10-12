@@ -7,7 +7,6 @@ export type ClientGuardIdentity = {
   userId: string;
   email: string;
   name: string;
-  secondFactor: boolean;
 };
 
 export type FirmAccess = ClientGuardIdentity & {
@@ -39,12 +38,6 @@ export function identify(
   }
 
   const claims = (auth.sessionClaims ?? {}) as Record<string, unknown>;
-  const verificationAge = claims.factorVerificationAge;
-  const secondFactor =
-    Array.isArray(verificationAge) &&
-    verificationAge.length > 1 &&
-    typeof verificationAge[1] === "number";
-
   return {
     userId: auth.userId,
     email: claimString(claims, "email", "email_address") ?? "",
@@ -54,7 +47,6 @@ export function identify(
         .filter(Boolean)
         .join(" ") ||
       "Firm user",
-    secondFactor,
   };
 }
 
@@ -82,14 +74,6 @@ export async function firmAccess(
 ): Promise<FirmAccess | null> {
   const identity = identify(req, res);
   if (!identity) return null;
-  if (!identity.secondFactor) {
-    res.status(403).json({
-      error: "A verified second factor is required to access firm records.",
-      code: "second_factor_required",
-      action: "Complete multi-factor authentication in account security settings.",
-    });
-    return null;
-  }
 
   const row = await membershipFor(identity.userId);
   if (!row) {
@@ -124,8 +108,6 @@ export function workspaceContext(
   identity: ClientGuardIdentity,
   row: Awaited<ReturnType<typeof membershipFor>>,
 ) {
-  const firmAuthorization = Boolean(row);
-  const secondFactor = identity.secondFactor;
   return {
     userId: identity.userId,
     email: row?.membership.email || identity.email,
@@ -139,12 +121,6 @@ export function workspaceContext(
         }
       : null,
     role: row?.membership.role ?? null,
-    stages: {
-      identity: true,
-      secondFactor,
-      firmAuthorization,
-      dataAccess: secondFactor && firmAuthorization,
-    },
   };
 }
 
