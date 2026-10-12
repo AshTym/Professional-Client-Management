@@ -333,6 +333,56 @@ async function request(
   };
 }
 
+test("concurrent workspace setup requests create one firm for the signed-in owner", async () => {
+  const userId = `workspace-setup-${randomUUID()}`;
+  const workspaceNames = Array.from(
+    { length: 8 },
+    (_, index) => `Concurrent Workspace ${index} ${randomUUID()}`,
+  );
+  const results = await Promise.all(
+    workspaceNames.map((name) =>
+      request("/workspace", {
+        userId,
+        method: "POST",
+        body: { name, practiceType: "law" },
+      }),
+    ),
+  );
+
+  assert.deepEqual(
+    results.map(({ response }) => response.status).sort(),
+    [200, 200, 200, 200, 200, 200, 200, 201],
+  );
+  const workspaceIds = results.map(
+    ({ body }) =>
+      (body as { workspace: { id: number } }).workspace.id,
+  );
+  assert.equal(new Set(workspaceIds).size, 1);
+
+  const createdWorkspaces = await db
+    .select()
+    .from(workspacesTable)
+    .where(inArray(workspacesTable.name, workspaceNames));
+  assert.equal(createdWorkspaces.length, 1);
+  assert.equal(createdWorkspaces[0].id, workspaceIds[0]);
+
+  const ownerMemberships = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, userId));
+  assert.equal(ownerMemberships.length, 1);
+  assert.equal(ownerMemberships[0].workspaceId, workspaceIds[0]);
+  assert.equal(ownerMemberships[0].role, "owner");
+
+  const setupActivities = await db
+    .select()
+    .from(activitiesTable)
+    .where(eq(activitiesTable.clerkUserId, userId));
+  assert.equal(setupActivities.length, 1);
+  assert.equal(setupActivities[0].workspaceId, workspaceIds[0]);
+  assert.equal(setupActivities[0].action, "created the firm workspace");
+});
+
 test("dashboard totals and recent activity include only the current firm's records", async () => {
   const now = Date.now();
   const overdueAt = new Date(now - 24 * 60 * 60 * 1000);
