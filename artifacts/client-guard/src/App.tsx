@@ -437,16 +437,16 @@ function TeamPage() {
       </section>
       <section className="rounded-md border border-[#e0dace] bg-[#fbfaf5]">
         <div className="flex items-center justify-between border-b border-[#e9e4d9] px-5 py-4">
-          <div><h2 className="serif text-xl font-bold">Pending invitations</h2><p className="mt-1 text-xs text-[#87918d]">Invitations expire after seven days.</p></div>
+          <div><h2 className="serif text-xl font-bold">Invitations</h2><p className="mt-1 text-xs text-[#87918d]">Invitations expire after seven days. Expired invitations can be renewed.</p></div>
           <Users className="h-5 w-5 text-[#987747]" />
         </div>
         {invitationActionMessage && <p className="px-5 pt-4 text-sm text-[#446b55]" role="status" data-testid="status-invitation-action">{invitationActionMessage}</p>}
-        {(resendInvitation.isError || withdrawInvitation.isError) && <p className="px-5 pt-4 text-sm text-[#9b4941]" role="alert" data-testid="status-invitation-action-error">That invitation could not be updated. It may no longer be pending; refresh the list and try again.</p>}
+        {(resendInvitation.isError || withdrawInvitation.isError) && <p className="px-5 pt-4 text-sm text-[#9b4941]" role="alert" data-testid="status-invitation-action-error">That invitation could not be updated. It may have changed; refresh the list and try again.</p>}
         {invitations.isLoading ? <div className="p-5"><Skeleton title="Loading invitations" /></div> :
           invitations.isError ? <div className="p-5 text-sm text-[#9b4941]">Invitations could not be loaded. <button onClick={() => invitations.refetch()} className="underline" data-testid="button-retry-invitations">Try again</button></div> :
-          !invitations.data?.length ? <div className="p-6"><EmptyState title="No pending invitations" detail="When you invite a colleague, their email and role will appear here until they join." /></div> :
+          !invitations.data?.length ? <div className="p-6"><EmptyState title="No invitations" detail="When you invite a colleague, their email and role will appear here until they join." /></div> :
           <div className="divide-y divide-[#eee9df]">{invitations.data.map(invite => <div key={invite.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" data-testid={`invitation-row-${invite.id}`}>
-            <div className="min-w-0"><div className="break-all text-sm font-semibold">{invite.email}</div><div className="mt-1 text-xs capitalize text-[#7e8985]">{invite.role} · sent {formatTime(invite.createdAt)}</div><span className="mt-2 inline-block rounded-full bg-[#f2eee3] px-3 py-1 text-[10px] font-semibold text-[#806b44]">Expires {formatTime(invite.expiresAt)}</span></div>
+            <div className="min-w-0"><div className="break-all text-sm font-semibold">{invite.email}</div><div className="mt-1 text-xs capitalize text-[#7e8985]">{invite.role} · sent {formatTime(invite.createdAt)}</div><span className={`mt-2 inline-block rounded-full px-3 py-1 text-[10px] font-semibold ${invite.expired ? 'bg-[#f8e9e5] text-[#9b4941]' : 'bg-[#f2eee3] text-[#806b44]'}`}>{invite.expired ? 'Expired' : 'Expires'} {formatTime(invite.expiresAt)}</span></div>
             <div className="flex items-center gap-2">
               <Button variant="outline" disabled={resendInvitation.isPending || withdrawInvitation.isPending} testId={`button-resend-invitation-${invite.id}`} onClick={() => {
                 setInvitationActionMessage('');
@@ -458,8 +458,8 @@ function TeamPage() {
                     setInvitationActionMessage(`A fresh invitation was sent to ${invite.email}. Its previous link no longer works.`);
                   },
                 });
-              }}><RefreshCw className="h-4 w-4" />{resendInvitation.isPending ? 'Resending…' : 'Resend'}</Button>
-              <Button variant="outline" disabled={resendInvitation.isPending || withdrawInvitation.isPending} testId={`button-withdraw-invitation-${invite.id}`} onClick={() => {
+              }}><RefreshCw className="h-4 w-4" />{resendInvitation.isPending ? (invite.expired ? 'Renewing…' : 'Resending…') : (invite.expired ? 'Renew' : 'Resend')}</Button>
+              {!invite.expired && <Button variant="outline" disabled={resendInvitation.isPending || withdrawInvitation.isPending} testId={`button-withdraw-invitation-${invite.id}`} onClick={() => {
                 setInvitationActionMessage('');
                 resendInvitation.reset();
                 withdrawInvitation.reset();
@@ -469,7 +469,7 @@ function TeamPage() {
                     setInvitationActionMessage(`The invitation to ${invite.email} was withdrawn.`);
                   },
                 });
-              }}><X className="h-4 w-4" />{withdrawInvitation.isPending ? 'Withdrawing…' : 'Withdraw'}</Button>
+              }}><X className="h-4 w-4" />{withdrawInvitation.isPending ? 'Withdrawing…' : 'Withdraw'}</Button>}
             </div>
           </div>)}</div>}
       </section>

@@ -62,10 +62,10 @@ paths:
     get:
       operationId: listWorkspaceInvitations
       tags: [invitations]
-      summary: List pending invitations for the current firm
+      summary: List unused invitations for the current firm, including expired invitations
       responses:
         "200":
-          description: Pending firm invitations
+          description: Unused firm invitations, including expired invitations
           content:
             application/json:
               schema:
@@ -168,7 +168,7 @@ paths:
     post:
       operationId: resendWorkspaceInvitation
       tags: [invitations]
-      summary: Send a fresh invitation link to a pending teammate
+      summary: Send a fresh invitation link to a pending or expired teammate
       responses:
         "200":
           description: A new invitation email was sent
@@ -179,7 +179,7 @@ paths:
         "403":
           description: Only owners and admins can manage invitations
         "404":
-          description: The invitation is not pending in the current firm
+          description: The invitation is not unused in the current firm
         "502":
           description: The invitation email could not be sent
   /workspace/invitations/{id}:
@@ -501,7 +501,7 @@ components:
           enum: [law, financial, both]
     WorkspaceInvitation:
       type: object
-      required: [id, email, role, createdAt, expiresAt]
+      required: [id, email, role, createdAt, expiresAt, expired]
       properties:
         id: { type: integer }
         email: { type: string, format: email }
@@ -510,6 +510,7 @@ components:
           enum: [admin, advisor, professional, assistant]
         createdAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
+        expired: { type: boolean }
     WorkspaceMember:
       type: object
       required: [id, email, name, role, createdAt]

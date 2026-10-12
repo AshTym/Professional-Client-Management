@@ -965,6 +965,7 @@ test("owners can email an invitation with the selected workspace role", async (t
       role: "assistant",
       createdAt: (result.body as { createdAt: string }).createdAt,
       expiresAt: (result.body as { expiresAt: string }).expiresAt,
+      expired: false,
     },
   );
   const [stored] = await db
@@ -1053,6 +1054,126 @@ test("firm admins can resend a pending invitation and invalidate its previous li
     body: { token: oldToken },
   });
   assert.equal(oldLink.response.status, 404);
+});
+
+test("firm admins can renew expired invitations with a new seven-day link", async (t) => {
+  const adminId = `expired-admin-${randomUUID()}`;
+  await db.insert(membershipsTable).values({
+    workspaceId: firms.primary.workspaceId,
+    clerkUserId: adminId,
+    email: "expired-admin@example.test",
+    displayName: "Expired Admin",
+    role: "admin",
+  });
+  const oldToken = randomUUID();
+  const oldCreatedAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+  const [expired] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email: "expired-target@example.test",
+      role: "professional",
+      invitedByClerkUserId: firms.primary.ownerId,
+      clerkInvitationId: "expired_clerk_invitation",
+      tokenHash: createHash("sha256").update(oldToken).digest("hex"),
+      expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      createdAt: oldCreatedAt,
+    })
+    .returning();
+  const listed = await request("/workspace/invitations", { userId: adminId });
+  assert.equal(listed.response.status, 200);
+  const listedInvitation = (listed.body as Array<{ id: number; expired: boolean }>).find(
+    ({ id }) => id === expired.id,
+  );
+  assert.equal(listedInvitation?.expired, true);
+
+  let newToken = "";
+  const createInvitation = t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async (params) => {
+      assert.equal(params.emailAddress, "expired-target@example.test");
+      assert.equal(params.expiresInDays, 7);
+      assert.equal(params.notify, true);
+      const match = params.redirectUrl?.match(/[?&]token=([^&]+)/);
+      assert(match);
+      newToken = decodeURIComponent(match[1]);
+      return { id: "renewed_clerk_invitation" } as never;
+    },
+  );
+  const revokeInvitation = t.mock.method(
+    clerkClient.invitations,
+    "revokeInvitation",
+    async () => ({ id: "expired_clerk_invitation" }) as never,
+  );
+
+  const renewed = await request(`/workspace/invitations/${expired.id}/resend`, {
+    userId: adminId,
+    method: "POST",
+  });
+  assert.equal(renewed.response.status, 200);
+  assert.equal(createInvitation.mock.callCount(), 1);
+  assert.equal(revokeInvitation.mock.callCount(), 1);
+  assert.equal(revokeInvitation.mock.calls[0].arguments[0], "expired_clerk_invitation");
+  assert.equal((renewed.body as { expired: boolean }).expired, false);
+
+  const [updated] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, expired.id));
+  assert.notEqual(updated.tokenHash, createHash("sha256").update(oldToken).digest("hex"));
+  assert.equal(updated.tokenHash, createHash("sha256").update(newToken).digest("hex"));
+  assert.equal(updated.clerkInvitationId, "renewed_clerk_invitation");
+  assert(updated.createdAt > oldCreatedAt);
+  assert(updated.expiresAt > new Date(Date.now() + 6 * 24 * 60 * 60 * 1000));
+
+  const oldLink = await request("/workspace/invitations/accept", {
+    userId: `expired-target-${randomUUID()}`,
+    method: "POST",
+    body: { token: oldToken },
+  });
+  assert.equal(oldLink.response.status, 404);
+
+  const relisted = await request("/workspace/invitations", { userId: adminId });
+  const renewedInvitation = (relisted.body as Array<{ id: number; expired: boolean }>).find(
+    ({ id }) => id === expired.id,
+  );
+  assert.equal(renewedInvitation?.expired, false);
+});
+
+test("firm owners can renew expired invitations", async (t) => {
+  const oldToken = randomUUID();
+  const [expired] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email: "owner-renewal@example.test",
+      role: "assistant",
+      invitedByClerkUserId: firms.primary.ownerId,
+      tokenHash: createHash("sha256").update(oldToken).digest("hex"),
+      expiresAt: new Date(Date.now() - 60_000),
+    })
+    .returning();
+  const createInvitation = t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async () => ({ id: "owner_renewed_clerk_invitation" }) as never,
+  );
+
+  const renewed = await request(`/workspace/invitations/${expired.id}/resend`, {
+    userId: firms.primary.ownerId,
+    method: "POST",
+  });
+  assert.equal(renewed.response.status, 200);
+  assert.equal(createInvitation.mock.callCount(), 1);
+  assert.equal((renewed.body as { expired: boolean }).expired, false);
+
+  const [updated] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, expired.id));
+  assert.notEqual(updated.tokenHash, createHash("sha256").update(oldToken).digest("hex"));
+  assert(updated.expiresAt > new Date(Date.now() + 6 * 24 * 60 * 60 * 1000));
 });
 
 test("firm owners can withdraw a pending invitation and its link cannot be accepted", async (t) => {

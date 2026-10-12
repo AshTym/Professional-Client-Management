@@ -82,6 +82,7 @@ export interface WorkspaceInvitation {
   role: WorkspaceInvitationRole;
   createdAt: string;
   expiresAt: string;
+  expired: boolean;
 }
 
 export interface WorkspaceMember {

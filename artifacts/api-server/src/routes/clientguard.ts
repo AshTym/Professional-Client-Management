@@ -286,6 +286,7 @@ function invitationResponse(invitation: typeof invitationsTable.$inferSelect) {
     role: invitation.role,
     createdAt: invitation.createdAt,
     expiresAt: invitation.expiresAt,
+    expired: invitation.expiresAt <= new Date(),
   };
 }
 
@@ -305,7 +306,6 @@ router.get("/workspace/invitations", async (req, res): Promise<void> => {
         eq(invitationsTable.workspaceId, access.workspaceId),
         isNull(invitationsTable.acceptedAt),
         isNull(invitationsTable.revokedAt),
-        gt(invitationsTable.expiresAt, new Date()),
       ),
     )
     .orderBy(desc(invitationsTable.createdAt));
@@ -433,7 +433,6 @@ router.post(
               eq(invitationsTable.workspaceId, access.workspaceId),
               isNull(invitationsTable.acceptedAt),
               isNull(invitationsTable.revokedAt),
-              gt(invitationsTable.expiresAt, now),
             ),
           )
           .limit(1)

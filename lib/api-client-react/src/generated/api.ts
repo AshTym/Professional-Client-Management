@@ -319,7 +319,7 @@ export const getListWorkspaceInvitationsUrl = () => {
 }
 
 /**
- * @summary List pending invitations for the current firm
+ * @summary List unused invitations for the current firm, including expired invitations
  */
 export const listWorkspaceInvitations = async ( options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceInvitation[]> => {
 
@@ -366,7 +366,7 @@ export type ListWorkspaceInvitationsQueryError = ErrorType<void>
 
 
 /**
- * @summary List pending invitations for the current firm
+ * @summary List unused invitations for the current firm, including expired invitations
  */
 
 export function useListWorkspaceInvitations<TData = Awaited<ReturnType<typeof listWorkspaceInvitations>>, TError = ErrorType<void>>(
@@ -724,7 +724,7 @@ export const getResendWorkspaceInvitationUrl = (id: number,) => {
 }
 
 /**
- * @summary Send a fresh invitation link to a pending teammate
+ * @summary Send a fresh invitation link to a pending or expired teammate
  */
 export const resendWorkspaceInvitation = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceInvitation> => {
 
@@ -776,7 +776,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type ResendWorkspaceInvitationMutationVariables = {id: number}
 
     /**
- * @summary Send a fresh invitation link to a pending teammate
+ * @summary Send a fresh invitation link to a pending or expired teammate
  */
 export const useResendWorkspaceInvitation = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resendWorkspaceInvitation>>, TError,ResendWorkspaceInvitationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}

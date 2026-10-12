@@ -13,4 +13,5 @@ export interface WorkspaceInvitation {
   role: WorkspaceInvitationRole;
   createdAt: Date;
   expiresAt: Date;
+  expired: boolean;
 }

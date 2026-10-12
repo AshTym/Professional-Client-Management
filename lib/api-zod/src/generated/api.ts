@@ -61,14 +61,15 @@ export const CreateWorkspaceResponse = zod.object({
 
 
 /**
- * @summary List pending invitations for the current firm
+ * @summary List unused invitations for the current firm, including expired invitations
  */
 export const ListWorkspaceInvitationsResponseItem = zod.object({
   "id": zod.number().int(),
   "email": zod.string().email(),
   "role": zod.enum(['admin', 'advisor', 'professional', 'assistant']),
   "createdAt": zod.coerce.date(),
-  "expiresAt": zod.coerce.date()
+  "expiresAt": zod.coerce.date(),
+  "expired": zod.boolean()
 })
 export const ListWorkspaceInvitationsResponse = zod.array(ListWorkspaceInvitationsResponseItem)
 
@@ -90,7 +91,8 @@ export const CreateWorkspaceInvitationResponse = zod.object({
   "email": zod.string().email(),
   "role": zod.enum(['admin', 'advisor', 'professional', 'assistant']),
   "createdAt": zod.coerce.date(),
-  "expiresAt": zod.coerce.date()
+  "expiresAt": zod.coerce.date(),
+  "expired": zod.boolean()
 })
 
 
@@ -144,7 +146,7 @@ export const RemoveWorkspaceMemberResponse = zod.void()
 
 
 /**
- * @summary Send a fresh invitation link to a pending teammate
+ * @summary Send a fresh invitation link to a pending or expired teammate
  */
 
 
@@ -158,7 +160,8 @@ export const ResendWorkspaceInvitationResponse = zod.object({
   "email": zod.string().email(),
   "role": zod.enum(['admin', 'advisor', 'professional', 'assistant']),
   "createdAt": zod.coerce.date(),
-  "expiresAt": zod.coerce.date()
+  "expiresAt": zod.coerce.date(),
+  "expired": zod.boolean()
 })
 
 
