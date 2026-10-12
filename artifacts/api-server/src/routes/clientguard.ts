@@ -1,11 +1,14 @@
 import { Router, type IRouter } from "express";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { clerkClient } from "@clerk/express";
 import {
   and,
   count,
   desc,
   eq,
+  gt,
   ilike,
+  isNull,
   lt,
   max,
   or,
@@ -15,6 +18,7 @@ import { db } from "@workspace/db";
 import {
   activitiesTable,
   clientsTable,
+  invitationsTable,
   mattersTable,
   membershipsTable,
   workspacesTable,
@@ -27,6 +31,8 @@ import {
   CreateMatterResponse,
   CreateWorkspaceBody,
   CreateWorkspaceResponse,
+  CreateWorkspaceInvitationBody,
+  CreateWorkspaceInvitationResponse,
   DashboardSummary,
   DeleteClientParams,
   GetActivityParams,
@@ -37,6 +43,7 @@ import {
   GetMatterParams,
   GetMatterResponse,
   GetWorkspaceResponse,
+  ListWorkspaceInvitationsResponse,
   ListActivityQueryParams,
   ListActivityResponse,
   ListClientsQueryParams,
@@ -49,6 +56,8 @@ import {
   UpdateMatterBody,
   UpdateMatterParams,
   UpdateMatterResponse,
+  AcceptWorkspaceInvitationBody,
+  AcceptWorkspaceInvitationResponse,
 } from "@workspace/api-zod";
 import {
   firmAccess,
@@ -113,6 +122,290 @@ router.post("/workspace", async (req, res): Promise<void> => {
   const row = await membershipFor(identity.userId);
   const response = CreateWorkspaceResponse.parse(workspaceContext(identity, row));
   res.status(created ? 201 : 200).json(response);
+});
+
+const invitationLifetimeMs = 7 * 24 * 60 * 60 * 1000;
+
+function canManageInvitations(role: string): boolean {
+  return role === "owner" || role === "admin";
+}
+
+function invitationResponse(invitation: typeof invitationsTable.$inferSelect) {
+  return {
+    id: invitation.id,
+    email: invitation.email,
+    role: invitation.role,
+    createdAt: invitation.createdAt,
+    expiresAt: invitation.expiresAt,
+  };
+}
+
+router.get("/workspace/invitations", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+  if (!canManageInvitations(access.role)) {
+    res.status(403).json({ error: "Only firm owners and admins can view invitations." });
+    return;
+  }
+
+  const invitations = await db
+    .select()
+    .from(invitationsTable)
+    .where(
+      and(
+        eq(invitationsTable.workspaceId, access.workspaceId),
+        isNull(invitationsTable.acceptedAt),
+        gt(invitationsTable.expiresAt, new Date()),
+      ),
+    )
+    .orderBy(desc(invitationsTable.createdAt));
+  res.json(
+    ListWorkspaceInvitationsResponse.parse(invitations.map(invitationResponse)),
+  );
+});
+
+router.post("/workspace/invitations", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+  if (!canManageInvitations(access.role)) {
+    res.status(403).json({ error: "Only firm owners and admins can invite teammates." });
+    return;
+  }
+
+  const parsed = CreateWorkspaceInvitationBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const email = parsed.data.email.trim().toLowerCase();
+  const [existingMember] = await db
+    .select({ id: membershipsTable.id })
+    .from(membershipsTable)
+    .where(sql`lower(${membershipsTable.email}) = ${email}`)
+    .limit(1);
+  if (existingMember) {
+    res.status(409).json({ error: "That email address already belongs to a firm member." });
+    return;
+  }
+  const [existingInvitation] = await db
+    .select({ id: invitationsTable.id })
+    .from(invitationsTable)
+    .where(
+      and(
+        eq(invitationsTable.workspaceId, access.workspaceId),
+        sql`lower(${invitationsTable.email}) = ${email}`,
+        isNull(invitationsTable.acceptedAt),
+        gt(invitationsTable.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+  if (existingInvitation) {
+    res.status(409).json({ error: "A pending invitation already exists for that email address." });
+    return;
+  }
+
+  const token = randomUUID();
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const expiresAt = new Date(Date.now() + invitationLifetimeMs);
+  const [invitation] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: access.workspaceId,
+      email,
+      role: parsed.data.role,
+      invitedByClerkUserId: access.userId,
+      tokenHash,
+      expiresAt,
+    })
+    .returning();
+
+  try {
+    const clerkInvitation = await clerkClient.invitations.createInvitation({
+      emailAddress: email,
+      expiresInDays: 7,
+      ignoreExisting: true,
+      notify: true,
+      redirectUrl: `/invite?token=${encodeURIComponent(token)}`,
+    });
+    const [updatedInvitation] = await db
+      .update(invitationsTable)
+      .set({ clerkInvitationId: clerkInvitation.id })
+      .where(eq(invitationsTable.id, invitation.id))
+      .returning();
+    res.status(201).json(
+      CreateWorkspaceInvitationResponse.parse(
+        invitationResponse(updatedInvitation),
+      ),
+    );
+  } catch {
+    await db
+      .delete(invitationsTable)
+      .where(eq(invitationsTable.id, invitation.id));
+    req.log.error(
+      { workspaceId: access.workspaceId },
+      "Could not send firm invitation email",
+    );
+    res.status(502).json({ error: "The invitation email could not be sent. Please try again." });
+  }
+});
+
+router.post("/workspace/invitations/accept", async (req, res): Promise<void> => {
+  const identity = identify(req, res);
+  if (!identity) return;
+
+  const parsed = AcceptWorkspaceInvitationBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const tokenHash = createHash("sha256").update(parsed.data.token).digest("hex");
+  const [initialInvitation] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.tokenHash, tokenHash))
+    .limit(1);
+  if (!initialInvitation) {
+    res.status(404).json({ error: "This invitation could not be found." });
+    return;
+  }
+  if (initialInvitation.expiresAt <= new Date()) {
+    res.status(410).json({ error: "This invitation has expired." });
+    return;
+  }
+
+  let clerkUser;
+  try {
+    clerkUser = await clerkClient.users.getUser(identity.userId);
+  } catch {
+    req.log.error("Could not verify the signed-in user's email with Clerk");
+    res.status(502).json({ error: "Your account email could not be verified. Please try again." });
+    return;
+  }
+  const verifiedEmails = clerkUser.emailAddresses
+    .filter((emailAddress) => emailAddress.verification?.status === "verified")
+    .map((emailAddress) => emailAddress.emailAddress.trim().toLowerCase());
+  if (!verifiedEmails.includes(initialInvitation.email.toLowerCase())) {
+    res.status(403).json({ error: "Sign in with the verified email address that received this invitation." });
+    return;
+  }
+
+  const displayName =
+    [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
+    clerkUser.primaryEmailAddress?.emailAddress ||
+    "Firm user";
+  let result: "accepted" | "already-accepted" | "missing" | "expired" | "used" | "other-firm" | "already-member" =
+    "missing";
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tokenHash}))`);
+    const [invitation] = await tx
+      .select()
+      .from(invitationsTable)
+      .where(eq(invitationsTable.tokenHash, tokenHash))
+      .limit(1);
+    if (!invitation) {
+      result = "missing";
+      return;
+    }
+    if (invitation.acceptedAt) {
+      if (invitation.acceptedByClerkUserId !== identity.userId) {
+        result = "used";
+        return;
+      }
+      const [existingMembership] = await tx
+        .select({ workspaceId: membershipsTable.workspaceId })
+        .from(membershipsTable)
+        .where(eq(membershipsTable.clerkUserId, identity.userId))
+        .limit(1);
+      result =
+        existingMembership?.workspaceId === invitation.workspaceId
+          ? "already-accepted"
+          : "other-firm";
+      return;
+    }
+    if (invitation.expiresAt <= new Date()) {
+      result = "expired";
+      return;
+    }
+
+    const existingMemberships = await tx
+      .select({ workspaceId: membershipsTable.workspaceId })
+      .from(membershipsTable)
+      .where(eq(membershipsTable.clerkUserId, identity.userId));
+    if (
+      existingMemberships.some(
+        (membership) => membership.workspaceId !== invitation.workspaceId,
+      )
+    ) {
+      result = "other-firm";
+      return;
+    }
+    if (existingMemberships.length) {
+      result = "already-member";
+      return;
+    }
+
+    await tx.insert(membershipsTable).values({
+      workspaceId: invitation.workspaceId,
+      clerkUserId: identity.userId,
+      email: initialInvitation.email,
+      displayName,
+      role: invitation.role,
+    });
+    await tx
+      .update(invitationsTable)
+      .set({
+        acceptedAt: new Date(),
+        acceptedByClerkUserId: identity.userId,
+      })
+      .where(eq(invitationsTable.id, invitation.id));
+    const [workspace] = await tx
+      .select({ name: workspacesTable.name })
+      .from(workspacesTable)
+      .where(eq(workspacesTable.id, invitation.workspaceId))
+      .limit(1);
+    await tx.insert(activitiesTable).values({
+      workspaceId: invitation.workspaceId,
+      clerkUserId: identity.userId,
+      actor: displayName,
+      action: "joined the firm workspace",
+      entityType: "workspace",
+      entityId: invitation.workspaceId,
+      entityLabel: workspace?.name ?? "Firm workspace",
+    });
+    result = "accepted";
+  });
+
+  if (result === "missing") {
+    res.status(404).json({ error: "This invitation could not be found." });
+    return;
+  }
+  if (result === "expired" || result === "used") {
+    res.status(410).json({ error: "This invitation has expired or has already been used." });
+    return;
+  }
+  if (result === "other-firm") {
+    res.status(409).json({ error: "This account already belongs to another firm workspace." });
+    return;
+  }
+  if (result === "already-member") {
+    res.status(409).json({ error: "This account is already a member of the invited firm." });
+    return;
+  }
+
+  const row = await membershipFor(identity.userId);
+  res.json(
+    AcceptWorkspaceInvitationResponse.parse(
+      workspaceContext(
+        {
+          ...identity,
+          email: initialInvitation.email,
+          name: displayName,
+        },
+        row,
+      ),
+    ),
+  );
 });
 
 router.get("/dashboard", async (req, res): Promise<void> => {

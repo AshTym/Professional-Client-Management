@@ -43,6 +43,34 @@ export const membershipsTable = pgTable(
   ],
 );
 
+export const invitationsTable = pgTable(
+  "clientguard_invitations",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspace_id")
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role").notNull(),
+    invitedByClerkUserId: text("invited_by_clerk_user_id").notNull(),
+    clerkInvitationId: text("clerk_invitation_id"),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    acceptedByClerkUserId: text("accepted_by_clerk_user_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("clientguard_invitation_token_hash_unique").on(table.tokenHash),
+    index("clientguard_invitation_workspace_idx").on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+  ],
+);
+
 export const clientsTable = pgTable(
   "clientguard_clients",
   {
@@ -145,6 +173,10 @@ export const insertWorkspaceSchema = createInsertSchema(workspacesTable).omit({
 export const insertMembershipSchema = createInsertSchema(
   membershipsTable,
 ).omit({ id: true, createdAt: true });
+export const insertInvitationSchema = createInsertSchema(invitationsTable).omit({
+  id: true,
+  createdAt: true,
+});
 export const insertClientSchema = createInsertSchema(clientsTable).omit({
   id: true,
   createdAt: true,
@@ -162,11 +194,13 @@ export const insertActivitySchema = createInsertSchema(activitiesTable).omit({
 
 export type Workspace = typeof workspacesTable.$inferSelect;
 export type Membership = typeof membershipsTable.$inferSelect;
+export type Invitation = typeof invitationsTable.$inferSelect;
 export type Client = typeof clientsTable.$inferSelect;
 export type Matter = typeof mattersTable.$inferSelect;
 export type Activity = typeof activitiesTable.$inferSelect;
 export type InsertWorkspace = z.infer<typeof insertWorkspaceSchema>;
 export type InsertMembership = z.infer<typeof insertMembershipSchema>;
+export type InsertInvitation = z.infer<typeof insertInvitationSchema>;
 export type InsertClient = z.infer<typeof insertClientSchema>;
 export type InsertMatter = z.infer<typeof insertMatterSchema>;
 export type InsertActivity = z.infer<typeof insertActivitySchema>;

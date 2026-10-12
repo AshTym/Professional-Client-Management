@@ -1,22 +1,25 @@
 import assert from "node:assert/strict";
-import { after, before, test } from "node:test";
-import { randomUUID } from "node:crypto";
+import { after, before, mock, test } from "node:test";
+import { createHash, randomUUID } from "node:crypto";
 import express, { type Request } from "express";
 import { eq } from "drizzle-orm";
 import { Pool } from "pg";
 import type { Server } from "node:http";
+import { clerkClient } from "@clerk/express";
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const schemaName = `clientguard_test_${randomUUID().replaceAll("-", "")}`;
 const firms = {
   primary: {
     ownerId: `owner-${randomUUID()}`,
+    workspaceId: 0,
     clientId: 0,
     matterId: 0,
     activityId: 0,
   },
   other: {
     ownerId: `owner-${randomUUID()}`,
+    workspaceId: 0,
     clientId: 0,
     matterId: 0,
     activityId: 0,
@@ -31,6 +34,7 @@ let baseUrl = "";
 let db: typeof import("@workspace/db").db;
 let workspacesTable: typeof import("@workspace/db").workspacesTable;
 let membershipsTable: typeof import("@workspace/db").membershipsTable;
+let invitationsTable: typeof import("@workspace/db").invitationsTable;
 let clientsTable: typeof import("@workspace/db").clientsTable;
 let mattersTable: typeof import("@workspace/db").mattersTable;
 let activitiesTable: typeof import("@workspace/db").activitiesTable;
@@ -60,6 +64,19 @@ before(async () => {
       email text NOT NULL DEFAULT '',
       display_name text NOT NULL DEFAULT 'User',
       role text NOT NULL DEFAULT 'professional',
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE "${schemaName}".clientguard_invitations (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,
+      email text NOT NULL,
+      role text NOT NULL,
+      invited_by_clerk_user_id text NOT NULL,
+      clerk_invitation_id text,
+      token_hash text NOT NULL UNIQUE,
+      expires_at timestamptz NOT NULL,
+      accepted_at timestamptz,
+      accepted_by_clerk_user_id text,
       created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE "${schemaName}".clientguard_clients (
@@ -111,6 +128,7 @@ before(async () => {
   ({
     workspacesTable,
     membershipsTable,
+    invitationsTable,
     clientsTable,
     mattersTable,
     activitiesTable,
@@ -124,6 +142,8 @@ before(async () => {
     .insert(workspacesTable)
     .values({ name: `Other ${randomUUID()}`, practiceType: "law" })
     .returning();
+  firms.primary.workspaceId = primaryWorkspace.id;
+  firms.other.workspaceId = otherWorkspace.id;
   const readOnlyUserId = `viewer-${randomUUID()}`;
   const professionalUserId = `professional-${randomUUID()}`;
 
@@ -353,6 +373,121 @@ test("clients, matters, and activity lists and details stay inside the signed-in
     { userId: firms.primary.ownerId },
   );
   assert.equal(otherActivityDetail.response.status, 404);
+});
+
+test("owners can email an invitation with the selected workspace role", async (t) => {
+  const createInvitation = t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async (params) => {
+      assert.equal(params.emailAddress, "new-teammate@example.test");
+      assert.equal(params.notify, true);
+      assert.match(params.redirectUrl ?? "", /^\/invite\?token=/);
+      return { id: "clerk_invitation_test" } as never;
+    },
+  );
+  const result = await request("/workspace/invitations", {
+    userId: firms.primary.ownerId,
+    method: "POST",
+    body: { email: "New-Teammate@example.test", role: "assistant" },
+  });
+  assert.equal(result.response.status, 201);
+  assert.deepEqual(
+    result.body,
+    {
+      id: (result.body as { id: number }).id,
+      email: "new-teammate@example.test",
+      role: "assistant",
+      createdAt: (result.body as { createdAt: string }).createdAt,
+      expiresAt: (result.body as { expiresAt: string }).expiresAt,
+    },
+  );
+  const [stored] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.email, "new-teammate@example.test"));
+  assert.equal(stored.workspaceId, firms.primary.workspaceId);
+  assert.equal(stored.role, "assistant");
+  assert.equal(stored.clerkInvitationId, "clerk_invitation_test");
+  assert.equal(createInvitation.mock.callCount(), 1);
+});
+
+test("invitation acceptance adds the verified invitee to the exact firm and role", async (t) => {
+  const token = randomUUID();
+  const email = "invited-user@example.test";
+  const userId = `invitee-${randomUUID()}`;
+  await db.insert(invitationsTable).values({
+    workspaceId: firms.primary.workspaceId,
+    email,
+    role: "advisor",
+    invitedByClerkUserId: firms.primary.ownerId,
+    tokenHash: createHash("sha256").update(token).digest("hex"),
+    expiresAt: new Date(Date.now() + 60_000),
+  });
+  t.mock.method(clerkClient.users, "getUser", async () => ({
+    id: userId,
+    firstName: "Invited",
+    lastName: "Colleague",
+    primaryEmailAddress: { emailAddress: email },
+    emailAddresses: [
+      {
+        emailAddress: email,
+        verification: { status: "verified" },
+      },
+    ],
+  }) as never);
+
+  const result = await request("/workspace/invitations/accept", {
+    userId,
+    method: "POST",
+    body: { token },
+  });
+  assert.equal(result.response.status, 200);
+  assert.equal(
+    (result.body as { workspace: { id: number } }).workspace.id,
+    firms.primary.workspaceId,
+  );
+  assert.equal((result.body as { role: string }).role, "advisor");
+  const [membership] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, userId));
+  assert.equal(membership.workspaceId, firms.primary.workspaceId);
+  assert.equal(membership.email, email);
+  assert.equal(membership.role, "advisor");
+});
+
+test("an invite cannot move a user from a different firm", async (t) => {
+  const token = randomUUID();
+  const email = "owner-other@example.test";
+  await db.insert(invitationsTable).values({
+    workspaceId: firms.primary.workspaceId,
+    email,
+    role: "professional",
+    invitedByClerkUserId: firms.primary.ownerId,
+    tokenHash: createHash("sha256").update(token).digest("hex"),
+    expiresAt: new Date(Date.now() + 60_000),
+  });
+  t.mock.method(clerkClient.users, "getUser", async () => ({
+    id: firms.other.ownerId,
+    firstName: "Other",
+    lastName: "Owner",
+    primaryEmailAddress: { emailAddress: email },
+    emailAddresses: [
+      { emailAddress: email, verification: { status: "verified" } },
+    ],
+  }) as never);
+
+  const result = await request("/workspace/invitations/accept", {
+    userId: firms.other.ownerId,
+    method: "POST",
+    body: { token },
+  });
+  assert.equal(result.response.status, 409);
+  assert.equal(
+    (result.body as { error: string }).error,
+    "This account already belongs to another firm workspace.",
+  );
 });
 
 test("all permitted firm roles can create client records", async () => {

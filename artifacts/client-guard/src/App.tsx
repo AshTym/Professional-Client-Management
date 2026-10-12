@@ -6,16 +6,19 @@ import { shadcn } from '@clerk/themes';
 import { Route, Switch, Router as WouterRouter, Link, Redirect, useLocation, useRoute } from 'wouter';
 import {
   useHealthCheck, useGetWorkspace, useCreateWorkspace, useGetDashboard, useListActivity,
+  useListWorkspaceInvitations, useCreateWorkspaceInvitation, useAcceptWorkspaceInvitation,
   useListClients, useCreateClient, useGetClient, useUpdateClient, useDeleteClient,
   useListMatters, useCreateMatter, useGetMatter, useUpdateMatter, useCloseMatter,
   getHealthCheckQueryKey, getGetWorkspaceQueryKey, getGetDashboardQueryKey, getListActivityQueryKey,
+  getListWorkspaceInvitationsQueryKey,
   getListClientsQueryKey, getGetClientQueryKey, getListMattersQueryKey, getGetMatterQueryKey,
 } from '@workspace/api-client-react';
-import type { Client, ClientInput, Matter, MatterInput, WorkspaceInput } from '@workspace/api-client-react';
+import type { Client, ClientInput, Matter, MatterInput, WorkspaceInput, WorkspaceInvitationInput } from '@workspace/api-client-react';
 import {
   Activity as ActivityIcon, ArrowDownRight, ArrowLeft, ArrowRight, BriefcaseBusiness, Check,
   ChevronDown, CircleHelp, Clock3, FileText, Fingerprint, LockKeyhole, LogOut, Menu,
   Plus, Search, ShieldCheck, Users, X, Building2, Settings2, AlertTriangle, RefreshCw,
+  Mail, UserPlus,
 } from 'lucide-react';
 import './index.css';
 
@@ -63,12 +66,14 @@ function ClerkRoutes() {
       <Route path="/" component={HomeRedirect} />
       <Route path="/sign-in/*?" component={() => <AuthFrame><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} /></AuthFrame>} />
       <Route path="/sign-up/*?" component={() => <AuthFrame><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} /></AuthFrame>} />
+      <Route path="/invite" component={InviteAcceptance} />
       <Route path="/dashboard" component={() => <Protected><Dashboard /></Protected>} />
       <Route path="/clients" component={() => <Protected><ClientsPage /></Protected>} />
       <Route path="/clients/:id" component={() => <Protected><ClientDetail /></Protected>} />
       <Route path="/matters" component={() => <Protected><MattersPage /></Protected>} />
       <Route path="/matters/:id" component={() => <Protected><MatterDetail /></Protected>} />
       <Route path="/activity" component={() => <Protected><ActivityPage /></Protected>} />
+      <Route path="/team" component={() => <Protected><TeamPage /></Protected>} />
       <Route path="/workspace/setup" component={() => <Protected><SetupPage /></Protected>} />
       <Route path="/settings/security" component={() => <Protected><SecurityPage /></Protected>} />
       <Route component={NotFound} />
@@ -138,6 +143,7 @@ function WorkspaceGate({ children }: { children: ReactNode }) {
   if (isError || !ctx) return <Shell><ErrorState title="Workspace unavailable" retry={() => refetch()} /></Shell>;
   if (path === '/settings/security') return <Shell context={ctx}>{children}</Shell>;
   if (!ctx.workspace && path !== '/workspace/setup') return <Redirect to="/workspace/setup" />;
+  if (path === '/team' && !['owner', 'admin'].includes(ctx.role || '')) return <Redirect to="/dashboard" />;
   if (path === '/workspace/setup') return <Shell context={ctx}>{children}</Shell>;
   return <Shell context={ctx}>{children}</Shell>;
 }
@@ -146,7 +152,7 @@ function Shell({ children, context }: { children: ReactNode; context?: any }) {
   const { signOut } = useClerk();
   const service = useHealthCheck({ query: { queryKey: getHealthCheckQueryKey(), staleTime: 60_000 } });
   const [menuOpen, setMenuOpen] = useState(false);
-  const nav = [{ href: '/dashboard', label: 'Overview', icon: BriefcaseBusiness }, { href: '/clients', label: 'Clients', icon: Users }, { href: '/matters', label: 'Matters', icon: FileText }, { href: '/activity', label: 'Activity', icon: ActivityIcon }];
+  const nav = [{ href: '/dashboard', label: 'Overview', icon: BriefcaseBusiness }, { href: '/clients', label: 'Clients', icon: Users }, { href: '/matters', label: 'Matters', icon: FileText }, { href: '/activity', label: 'Activity', icon: ActivityIcon }, ...(['owner','admin'].includes(context?.role) ? [{ href: '/team', label: 'Team', icon: Users }] : [])];
   const heading = path.split('/')[1] || 'dashboard';
   return <div className="min-h-[100dvh] bg-[#f6f3eb] text-[#23353b] md:flex">
     <aside className="hidden w-[250px] shrink-0 flex-col bg-[#253f49] text-[#eff0e9] md:flex">
@@ -254,6 +260,106 @@ function SecurityPage() {
   {!isLoaded?<Skeleton title="Loading account settings" />:<div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]"><section className="rounded-md border border-[#e0dace] bg-[#fbfaf5] p-2 sm:p-5" data-testid="panel-security-profile"><div className="mb-4 px-3 pt-3"><div className="mono text-[10px] uppercase tracking-[.15em] text-[#987747]">Your account</div><div className="mt-2 text-sm text-[#71807e]">Update your profile and manage your email/password sign-in.</div></div><UserProfile routing="hash" />
   </section><aside className="space-y-4"><div className="rounded-md bg-[#294651] p-5 text-[#f4f2e9]"><ShieldCheck className="h-5 w-5 text-[#e4c58e]" /><h3 className="serif mt-3 text-lg font-bold">Sign in your way</h3><p className="mt-2 text-xs leading-5 text-[#c3cfca]">Use email and password, or Google when it is enabled for this environment.</p></div><div className="rounded-md border border-[#e0dace] bg-[#fbfaf5] p-5"><div className="mono text-[9px] uppercase tracking-[.15em] text-[#8b948f]">Signed-in identity</div><div className="mt-3 text-sm font-semibold" data-testid="text-security-user">{user?.fullName||user?.primaryEmailAddress?.emailAddress||'Account'}</div><div className="mt-1 break-all text-xs text-[#7e8985]">{user?.primaryEmailAddress?.emailAddress}</div><div className="mt-4 flex items-center gap-2 text-xs text-[#52735e]"><Check className="h-4 w-4" /> Signed in</div></div></aside></div>}
  </>;
+}
+function TeamPage() {
+  const invitations = useListWorkspaceInvitations();
+  const createInvitation = useCreateWorkspaceInvitation();
+  const qc = useQueryClient();
+
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formElement = e.currentTarget;
+    const form = new FormData(formElement);
+    const data: WorkspaceInvitationInput = {
+      email: String(form.get('email')).trim(),
+      role: String(form.get('role')) as WorkspaceInvitationInput['role'],
+    };
+    createInvitation.reset();
+    createInvitation.mutate({ data }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListWorkspaceInvitationsQueryKey() });
+        formElement.reset();
+      },
+    });
+  }
+
+  return <>
+    <PageHeader eyebrow="Firm access" title="Your team" subtitle="Invite colleagues to this firm's shared workspace and set their starting role." />
+    <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+      <section className="rounded-md border border-[#e0dace] bg-[#fbfaf5] p-5 sm:p-6">
+        <div className="flex items-center gap-3 border-b border-[#e9e4d9] pb-4">
+          <div className="grid h-10 w-10 place-items-center rounded-full bg-[#e8eee8] text-[#4d7463]"><UserPlus className="h-5 w-5" /></div>
+          <div><h2 className="serif text-xl font-bold">Invite a teammate</h2><p className="mt-1 text-xs text-[#788480]">They’ll receive a secure sign-in link by email.</p></div>
+        </div>
+        <form onSubmit={submit} className="mt-5 space-y-4">
+          <Field label="Work email"><input name="email" type="email" required maxLength={320} className="field" placeholder="colleague@firm.com" data-testid="input-invitation-email" /></Field>
+          <Field label="Starting role">
+            <select name="role" defaultValue="professional" className="field" data-testid="select-invitation-role">
+              <option value="admin">Admin — manage invitations and firm access</option>
+              <option value="advisor">Advisor — work with firm records</option>
+              <option value="professional">Professional — work with firm records</option>
+              <option value="assistant">Assistant — view firm records</option>
+            </select>
+          </Field>
+          {createInvitation.isSuccess && <div className="rounded-md border border-[#cbdccd] bg-[#f2f8f1] p-3 text-sm text-[#446b55]" role="status" data-testid="status-invitation-sent">Invitation email sent to {createInvitation.data.email}.</div>}
+          {createInvitation.isError && <p className="text-sm text-[#9b4941]" role="alert" data-testid="status-invitation-error">We couldn’t send that invitation. Check the address or try again.</p>}
+          <Button type="submit" disabled={createInvitation.isPending} testId="button-send-invitation"><Mail className="h-4 w-4" />{createInvitation.isPending ? 'Sending…' : 'Send invitation'}</Button>
+        </form>
+      </section>
+      <section className="rounded-md border border-[#e0dace] bg-[#fbfaf5]">
+        <div className="flex items-center justify-between border-b border-[#e9e4d9] px-5 py-4">
+          <div><h2 className="serif text-xl font-bold">Pending invitations</h2><p className="mt-1 text-xs text-[#87918d]">Invitations expire after seven days.</p></div>
+          <Users className="h-5 w-5 text-[#987747]" />
+        </div>
+        {invitations.isLoading ? <div className="p-5"><Skeleton title="Loading invitations" /></div> :
+          invitations.isError ? <div className="p-5 text-sm text-[#9b4941]">Invitations could not be loaded. <button onClick={() => invitations.refetch()} className="underline" data-testid="button-retry-invitations">Try again</button></div> :
+          !invitations.data?.length ? <div className="p-6"><EmptyState title="No pending invitations" detail="When you invite a colleague, their email and role will appear here until they join." /></div> :
+          <div className="divide-y divide-[#eee9df]">{invitations.data.map(invite => <div key={invite.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" data-testid={`invitation-row-${invite.id}`}>
+            <div className="min-w-0"><div className="break-all text-sm font-semibold">{invite.email}</div><div className="mt-1 text-xs capitalize text-[#7e8985]">{invite.role} · sent {formatTime(invite.createdAt)}</div></div>
+            <span className="shrink-0 rounded-full bg-[#f2eee3] px-3 py-1 text-[10px] font-semibold text-[#806b44]">Expires {formatTime(invite.expiresAt)}</span>
+          </div>)}</div>}
+      </section>
+    </div>
+  </>;
+}
+function InviteAcceptance() {
+  const { isLoaded, isSignedIn } = useUser();
+  const token = new URLSearchParams(window.location.search).get('token') || '';
+  const returnUrl = `${basePath}/invite?token=${encodeURIComponent(token)}`;
+  if (!token) return <AuthFrame><div className="rounded-md border border-[#e0dace] bg-[#fbfaf5] p-7 text-center"><h1 className="serif text-2xl font-bold">Invitation link unavailable</h1><p className="mt-3 text-sm text-[#71807e]">The invitation link is missing or incomplete. Ask your firm admin to send another one.</p></div></AuthFrame>;
+  if (!isLoaded) return <AuthFrame><Skeleton title="Checking your sign-in" /></AuthFrame>;
+  if (isSignedIn) return <AcceptInvitation token={token} />;
+
+  return <AuthFrame>
+    <div className="w-full max-w-lg rounded-md border border-[#e0dace] bg-[#fbfaf5] p-6 sm:p-8">
+      <div className="mb-6 text-center"><div className="mono text-[10px] uppercase tracking-[.16em] text-[#987747]">Firm invitation</div><h1 className="serif mt-2 text-3xl font-bold">Sign in to continue</h1><p className="mt-2 text-sm leading-6 text-[#71807e]">Use the account with the invited email address, then accept the invitation to join the firm workspace.</p></div>
+      <SignIn routing="hash" signUpUrl={`${basePath}/sign-up`} forceRedirectUrl={returnUrl} signUpForceRedirectUrl={returnUrl} />
+    </div>
+  </AuthFrame>;
+}
+function AcceptInvitation({ token }: { token: string }) {
+  const accept = useAcceptWorkspaceInvitation();
+  const qc = useQueryClient();
+  const [, setLocation] = useLocation();
+  function acceptInvitation() {
+    accept.mutate({ data: { token } }, {
+      onSuccess: () => {
+        qc.clear();
+        setLocation('/dashboard');
+      },
+    });
+  }
+
+  return <main className="grain grid min-h-[100dvh] place-items-center bg-[#f3f0e7] p-5 text-[#23353b]">
+    <section className="w-full max-w-lg rounded-md border border-[#e0dace] bg-[#fbfaf5] p-7 text-center shadow-xl sm:p-9" data-testid="panel-accept-invitation">
+      <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#e8eee8] text-[#4d7463]"><Users className="h-5 w-5" /></div>
+      <div className="mono mt-5 text-[10px] uppercase tracking-[.16em] text-[#987747]">Firm invitation</div>
+      <h1 className="serif mt-2 text-3xl font-bold">Join your firm workspace</h1>
+      <p className="mt-3 text-sm leading-6 text-[#71807e]">Accepting will add this signed-in account to the workspace that invited its verified email address.</p>
+      {accept.isError && <p className="mt-4 text-sm text-[#9b4941]" role="alert" data-testid="status-accept-invitation-error">This invitation could not be accepted. Check that you’re signed in with the invited email address, or ask your firm admin for help.</p>}
+      <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row"><Button onClick={acceptInvitation} disabled={accept.isPending} testId="button-accept-invitation">{accept.isPending ? 'Joining…' : 'Accept invitation'}<ArrowRight className="h-4 w-4" /></Button><Link href="/" className="rounded-md border border-[#d9d4c8] px-4 py-2.5 text-[13px] font-semibold text-[#526568]">Not now</Link></div>
+    </section>
+  </main>;
 }
 function NotFound() {return <div className="grid min-h-[100dvh] place-items-center bg-[#f6f3eb] p-6 text-center"><div><div className="mono text-xs uppercase tracking-[.15em] text-[#987747]">404 · Not found</div><h1 className="serif mt-3 text-4xl font-bold">This page is outside the file.</h1><p className="mt-3 text-sm text-[#71807e]">The address may have changed or may not exist.</p><Link href="/" className="mt-6 inline-flex items-center gap-2 rounded bg-[#294651] px-5 py-3 text-sm font-semibold text-[#f6f3eb]" data-testid="link-not-found-home">Return home <ArrowRight className="h-4 w-4" /></Link></div></div>}
 

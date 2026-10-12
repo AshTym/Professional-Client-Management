@@ -66,6 +66,48 @@ export interface WorkspaceInput {
   practiceType: WorkspaceInputPracticeType;
 }
 
+export type WorkspaceInvitationRole = typeof WorkspaceInvitationRole[keyof typeof WorkspaceInvitationRole];
+
+
+export const WorkspaceInvitationRole = {
+  admin: 'admin',
+  advisor: 'advisor',
+  professional: 'professional',
+  assistant: 'assistant',
+} as const;
+
+export interface WorkspaceInvitation {
+  id: number;
+  email: string;
+  role: WorkspaceInvitationRole;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export type WorkspaceInvitationInputRole = typeof WorkspaceInvitationInputRole[keyof typeof WorkspaceInvitationInputRole];
+
+
+export const WorkspaceInvitationInputRole = {
+  admin: 'admin',
+  advisor: 'advisor',
+  professional: 'professional',
+  assistant: 'assistant',
+} as const;
+
+export interface WorkspaceInvitationInput {
+  /** @maxLength 320 */
+  email: string;
+  role: WorkspaceInvitationInputRole;
+}
+
+export interface WorkspaceInvitationAcceptance {
+  /**
+     * @minLength 20
+     * @maxLength 200
+     */
+  token: string;
+}
+
 export type ClientClientType = typeof ClientClientType[keyof typeof ClientClientType];
 
 

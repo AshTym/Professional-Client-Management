@@ -10,6 +10,7 @@ servers:
 tags:
   - name: health
   - name: workspace
+  - name: invitations
   - name: clients
   - name: matters
   - name: dashboard
@@ -56,6 +57,75 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkspaceContext"
+  /workspace/invitations:
+    get:
+      operationId: listWorkspaceInvitations
+      tags: [invitations]
+      summary: List pending invitations for the current firm
+      responses:
+        "200":
+          description: Pending firm invitations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkspaceInvitation"
+        "403":
+          description: The current role cannot view invitations
+    post:
+      operationId: createWorkspaceInvitation
+      tags: [invitations]
+      summary: Invite a teammate to the current firm by email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceInvitationInput"
+      responses:
+        "201":
+          description: Invitation email sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceInvitation"
+        "400":
+          description: Invalid invitation details
+        "403":
+          description: Only owners and admins can invite teammates
+        "409":
+          description: The person is already a member or has a pending invitation
+        "502":
+          description: The invitation email could not be sent
+  /workspace/invitations/accept:
+    post:
+      operationId: acceptWorkspaceInvitation
+      tags: [invitations]
+      summary: Accept a firm invitation as the signed-in user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceInvitationAcceptance"
+      responses:
+        "200":
+          description: Invitation accepted and firm membership established
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceContext"
+        "400":
+          description: Invalid invitation token
+        "403":
+          description: Signed-in email does not match the invitation
+        "404":
+          description: Invitation not found
+        "409":
+          description: User already belongs to another firm
+        "410":
+          description: Invitation expired or already used
   /dashboard:
     get:
       operationId: getDashboard
@@ -326,6 +396,30 @@ components:
         practiceType:
           type: string
           enum: [law, financial, both]
+    WorkspaceInvitation:
+      type: object
+      required: [id, email, role, createdAt, expiresAt]
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        role:
+          type: string
+          enum: [admin, advisor, professional, assistant]
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+    WorkspaceInvitationInput:
+      type: object
+      required: [email, role]
+      properties:
+        email: { type: string, format: email, maxLength: 320 }
+        role:
+          type: string
+          enum: [admin, advisor, professional, assistant]
+    WorkspaceInvitationAcceptance:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string, minLength: 20, maxLength: 200 }
     Client:
       type: object
       required: [id, name, clientType, email, phone, industry, status, owner, matterCount, lastActivityAt, createdAt]

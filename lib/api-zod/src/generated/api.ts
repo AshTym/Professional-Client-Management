@@ -61,6 +61,66 @@ export const CreateWorkspaceResponse = zod.object({
 
 
 /**
+ * @summary List pending invitations for the current firm
+ */
+export const ListWorkspaceInvitationsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "role": zod.enum(['admin', 'advisor', 'professional', 'assistant']),
+  "createdAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date()
+})
+export const ListWorkspaceInvitationsResponse = zod.array(ListWorkspaceInvitationsResponseItem)
+
+
+/**
+ * @summary Invite a teammate to the current firm by email
+ */
+export const createWorkspaceInvitationBodyEmailMax = 320;
+
+
+
+export const CreateWorkspaceInvitationBody = zod.object({
+  "email": zod.string().email().max(createWorkspaceInvitationBodyEmailMax),
+  "role": zod.enum(['admin', 'advisor', 'professional', 'assistant'])
+})
+
+export const CreateWorkspaceInvitationResponse = zod.object({
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "role": zod.enum(['admin', 'advisor', 'professional', 'assistant']),
+  "createdAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Accept a firm invitation as the signed-in user
+ */
+export const acceptWorkspaceInvitationBodyTokenMin = 20;
+export const acceptWorkspaceInvitationBodyTokenMax = 200;
+
+
+
+export const AcceptWorkspaceInvitationBody = zod.object({
+  "token": zod.string().min(acceptWorkspaceInvitationBodyTokenMin).max(acceptWorkspaceInvitationBodyTokenMax)
+})
+
+export const AcceptWorkspaceInvitationResponse = zod.object({
+  "userId": zod.string(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "workspace": zod.union([zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "practiceType": zod.enum(['law', 'financial', 'both']),
+  "createdAt": zod.coerce.date()
+}),zod.null()]),
+  "role": zod.union([zod.literal('owner'),zod.literal('admin'),zod.literal('advisor'),zod.literal('professional'),zod.literal('assistant'),zod.literal(null)]).nullable()
+})
+
+
+/**
  * @summary Get firm-scoped dashboard totals and recent activity
  */
 export const GetDashboardResponse = zod.object({
