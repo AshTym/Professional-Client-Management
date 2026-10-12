@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, mock, test } from "node:test";
 import { createHash, randomUUID } from "node:crypto";
 import express, { type Request } from "express";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { Pool } from "pg";
 import type { Server } from "node:http";
 import { clerkClient } from "@clerk/express";
@@ -319,6 +319,255 @@ async function request(
     body: response.status === 204 ? undefined : await response.json(),
   };
 }
+
+test("dashboard totals and recent activity include only the current firm's records", async () => {
+  const now = Date.now();
+  const overdueAt = new Date(now - 24 * 60 * 60 * 1000);
+  const futureAt = new Date(now + 24 * 60 * 60 * 1000);
+  const insertedClientIds: number[] = [];
+  const insertedMatterIds: number[] = [];
+  const insertedActivityIds: number[] = [];
+
+  try {
+    const [primaryActiveClient, primaryArchivedClient, otherProspectClient] =
+      await db
+        .insert(clientsTable)
+        .values([
+          {
+            workspaceId: firms.primary.workspaceId,
+            name: `Primary Dashboard Active ${randomUUID()}`,
+            owner: "Primary Owner",
+            status: "active",
+          },
+          {
+            workspaceId: firms.primary.workspaceId,
+            name: `Primary Dashboard Archived ${randomUUID()}`,
+            owner: "Primary Owner",
+            status: "archived",
+          },
+          {
+            workspaceId: firms.other.workspaceId,
+            name: `Other Dashboard Prospect ${randomUUID()}`,
+            owner: "Other Firm Owner",
+            status: "prospect",
+          },
+        ])
+        .returning();
+    insertedClientIds.push(
+      primaryActiveClient.id,
+      primaryArchivedClient.id,
+      otherProspectClient.id,
+    );
+
+    const newMatters = await db
+      .insert(mattersTable)
+      .values([
+        {
+          workspaceId: firms.primary.workspaceId,
+          clientId: primaryActiveClient.id,
+          title: `Primary overdue matter ${randomUUID()}`,
+          reference: `PRIMARY-OVERDUE-${randomUUID()}`,
+          matterType: "advisory",
+          status: "open",
+          responsible: "Primary Owner",
+          dueAt: overdueAt,
+        },
+        {
+          workspaceId: firms.primary.workspaceId,
+          clientId: primaryActiveClient.id,
+          title: `Primary future matter ${randomUUID()}`,
+          reference: `PRIMARY-FUTURE-${randomUUID()}`,
+          matterType: "advisory",
+          status: "open",
+          responsible: "Primary Owner",
+          dueAt: futureAt,
+        },
+        {
+          workspaceId: firms.primary.workspaceId,
+          clientId: primaryArchivedClient.id,
+          title: `Primary closed matter ${randomUUID()}`,
+          reference: `PRIMARY-CLOSED-${randomUUID()}`,
+          matterType: "advisory",
+          status: "closed",
+          responsible: "Primary Owner",
+          dueAt: overdueAt,
+        },
+        {
+          workspaceId: firms.other.workspaceId,
+          clientId: otherProspectClient.id,
+          title: `Other overdue matter one ${randomUUID()}`,
+          reference: `OTHER-OVERDUE-ONE-${randomUUID()}`,
+          matterType: "advisory",
+          status: "open",
+          responsible: "Other Firm Owner",
+          dueAt: overdueAt,
+        },
+        {
+          workspaceId: firms.other.workspaceId,
+          clientId: otherProspectClient.id,
+          title: `Other overdue matter two ${randomUUID()}`,
+          reference: `OTHER-OVERDUE-TWO-${randomUUID()}`,
+          matterType: "advisory",
+          status: "open",
+          responsible: "Other Firm Owner",
+          dueAt: overdueAt,
+        },
+        {
+          workspaceId: firms.other.workspaceId,
+          clientId: otherProspectClient.id,
+          title: `Other closed matter ${randomUUID()}`,
+          reference: `OTHER-CLOSED-${randomUUID()}`,
+          matterType: "advisory",
+          status: "closed",
+          responsible: "Other Firm Owner",
+          dueAt: overdueAt,
+        },
+      ])
+      .returning({ id: mattersTable.id });
+    insertedMatterIds.push(...newMatters.map(({ id }) => id));
+
+    const newActivities = await db
+      .insert(activitiesTable)
+      .values([
+        {
+          workspaceId: firms.primary.workspaceId,
+          clerkUserId: firms.primary.ownerId,
+          actor: "Primary Owner",
+          action: "primary dashboard event older",
+          entityType: "client",
+          entityId: primaryActiveClient.id,
+          entityLabel: primaryActiveClient.name,
+          occurredAt: new Date(now + 60_000),
+        },
+        {
+          workspaceId: firms.primary.workspaceId,
+          clerkUserId: firms.primary.ownerId,
+          actor: "Primary Owner",
+          action: "primary dashboard event newest",
+          entityType: "matter",
+          entityId: newMatters[0].id,
+          entityLabel: "Primary dashboard matter",
+          occurredAt: new Date(now + 120_000),
+        },
+        {
+          workspaceId: firms.other.workspaceId,
+          clerkUserId: firms.other.ownerId,
+          actor: "Other Firm Owner",
+          action: "other dashboard event oldest",
+          entityType: "client",
+          entityId: otherProspectClient.id,
+          entityLabel: otherProspectClient.name,
+          occurredAt: new Date(now + 180_000),
+        },
+        {
+          workspaceId: firms.other.workspaceId,
+          clerkUserId: firms.other.ownerId,
+          actor: "Other Firm Owner",
+          action: "other dashboard event newer",
+          entityType: "matter",
+          entityId: newMatters[3].id,
+          entityLabel: "Other dashboard matter",
+          occurredAt: new Date(now + 240_000),
+        },
+      ])
+      .returning({ id: activitiesTable.id });
+    insertedActivityIds.push(...newActivities.map(({ id }) => id));
+
+    const primary = await request("/dashboard", {
+      userId: firms.primary.ownerId,
+    });
+    assert.equal(primary.response.status, 200);
+    assert.deepEqual(primary.body, {
+      clientCount: 3,
+      activeClientCount: 2,
+      openMatterCount: 3,
+      overdueMatterCount: 1,
+      recentActivity: [
+        {
+          id: newActivities[1].id,
+          actor: "Primary Owner",
+          action: "primary dashboard event newest",
+          entityType: "matter",
+          entityId: newMatters[0].id,
+          entityLabel: "Primary dashboard matter",
+          occurredAt: new Date(now + 120_000).toISOString(),
+        },
+        {
+          id: newActivities[0].id,
+          actor: "Primary Owner",
+          action: "primary dashboard event older",
+          entityType: "client",
+          entityId: primaryActiveClient.id,
+          entityLabel: primaryActiveClient.name,
+          occurredAt: new Date(now + 60_000).toISOString(),
+        },
+        {
+          id: firms.primary.activityId,
+          actor: "Primary Owner",
+          action: "primary-only activity",
+          entityType: "client",
+          entityId: firms.primary.clientId,
+          entityLabel: (await db
+            .select({ name: clientsTable.name })
+            .from(clientsTable)
+            .where(eq(clientsTable.id, firms.primary.clientId))
+            .limit(1))[0].name,
+          occurredAt: (await db
+            .select({ occurredAt: activitiesTable.occurredAt })
+            .from(activitiesTable)
+            .where(eq(activitiesTable.id, firms.primary.activityId))
+            .limit(1))[0].occurredAt.toISOString(),
+        },
+      ],
+    });
+
+    const other = await request("/dashboard", { userId: firms.other.ownerId });
+    assert.equal(other.response.status, 200);
+    const otherDashboard = other.body as {
+      clientCount: number;
+      activeClientCount: number;
+      openMatterCount: number;
+      overdueMatterCount: number;
+      recentActivity: Array<{ action: string }>;
+    };
+    assert.equal(otherDashboard.clientCount, 2);
+    assert.equal(otherDashboard.activeClientCount, 1);
+    assert.equal(otherDashboard.openMatterCount, 3);
+    assert.equal(otherDashboard.overdueMatterCount, 2);
+    assert.deepEqual(
+      otherDashboard.recentActivity.map(({ action }) => action),
+      [
+        "other dashboard event newer",
+        "other dashboard event oldest",
+        "other-only activity",
+      ],
+    );
+    assert(
+      otherDashboard.recentActivity.every(({ action }) => !action.startsWith("primary")),
+    );
+
+    const noFirm = await request("/dashboard", {
+      userId: `no-firm-${randomUUID()}`,
+    });
+    assert.equal(noFirm.response.status, 403);
+    assert.deepEqual(noFirm.body, {
+      error: "You do not have access to a firm workspace.",
+      code: "firm_authorization_required",
+    });
+  } finally {
+    if (insertedActivityIds.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, insertedActivityIds));
+    }
+    if (insertedMatterIds.length) {
+      await db.delete(mattersTable).where(inArray(mattersTable.id, insertedMatterIds));
+    }
+    if (insertedClientIds.length) {
+      await db.delete(clientsTable).where(inArray(clientsTable.id, insertedClientIds));
+    }
+  }
+});
 
 test("clients, matters, and activity lists and details stay inside the signed-in firm", async () => {
   const clients = await request("/clients", { userId: firms.primary.ownerId });
