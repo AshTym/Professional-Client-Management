@@ -570,6 +570,75 @@ test("dashboard totals and recent activity include only the current firm's recor
   }
 });
 
+test("dashboard returns only the six newest events for each firm in descending time order", async () => {
+  const baseTime = Date.now() + 60 * 60 * 1000;
+  const eventCount = 8;
+  const insertedActivityIds: number[] = [];
+
+  try {
+    const events = await db
+      .insert(activitiesTable)
+      .values(
+        (["primary", "other"] as const).flatMap((firmName) => {
+          const firm = firms[firmName];
+          return Array.from({ length: eventCount }, (_, index) => ({
+            workspaceId: firm.workspaceId,
+            clerkUserId: firm.ownerId,
+            actor:
+              firmName === "primary" ? "Primary Owner" : "Other Firm Owner",
+            action: `${firmName} controlled dashboard event ${index}`,
+            entityType: "client",
+            entityId: firm.clientId,
+            entityLabel: `${firmName} controlled dashboard client`,
+            occurredAt: new Date(
+              baseTime + index * 1_000 + (firmName === "other" ? 500 : 0),
+            ),
+          }));
+        }),
+      )
+      .returning({ id: activitiesTable.id });
+    insertedActivityIds.push(...events.map(({ id }) => id));
+
+    for (const firmName of ["primary", "other"] as const) {
+      const dashboard = await request("/dashboard", {
+        userId: firms[firmName].ownerId,
+      });
+      assert.equal(dashboard.response.status, 200);
+
+      const recentActivity = (
+        dashboard.body as {
+          recentActivity: Array<{ action: string; occurredAt: string }>;
+        }
+      ).recentActivity;
+      assert.equal(recentActivity.length, 6);
+      assert.deepEqual(
+        recentActivity.map(({ action }) => action),
+        Array.from(
+          { length: 6 },
+          (_, index) =>
+            `${firmName} controlled dashboard event ${eventCount - index - 1}`,
+        ),
+      );
+      assert.deepEqual(
+        recentActivity.map(({ occurredAt }) => occurredAt),
+        Array.from({ length: 6 }, (_, index) =>
+          new Date(
+            baseTime +
+              (eventCount - index - 1) * 1_000 +
+              (firmName === "other" ? 500 : 0),
+          ).toISOString(),
+        ),
+      );
+    }
+  } finally {
+    if (insertedActivityIds.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, insertedActivityIds));
+    }
+  }
+});
+
 test("clients, matters, and activity lists and details stay inside the signed-in firm", async () => {
   const clients = await request("/clients", { userId: firms.primary.ownerId });
   assert.equal(clients.response.status, 200);
