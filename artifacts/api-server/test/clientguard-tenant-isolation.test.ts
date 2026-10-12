@@ -851,6 +851,45 @@ test("firm owners and admins can manage teammate roles with scoped audit events"
   }
 });
 
+test("signed-in users without a firm cannot list or create invitations", async (t) => {
+  const userId = `no-firm-invitations-${randomUUID()}`;
+  const email = `no-firm-invite-${randomUUID()}@example.test`;
+  const before = await db
+    .select({ id: invitationsTable.id })
+    .from(invitationsTable)
+    .orderBy(asc(invitationsTable.id));
+  const createInvitation = t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async () => ({ id: "unexpected_clerk_invitation" }) as never,
+  );
+
+  const listed = await request("/workspace/invitations", { userId });
+  assert.equal(listed.response.status, 403);
+  assert.deepEqual(listed.body, {
+    error: "You do not have access to a firm workspace.",
+    code: "firm_authorization_required",
+  });
+
+  const created = await request("/workspace/invitations", {
+    userId,
+    method: "POST",
+    body: { email, role: "assistant" },
+  });
+  assert.equal(created.response.status, 403);
+  assert.deepEqual(created.body, {
+    error: "You do not have access to a firm workspace.",
+    code: "firm_authorization_required",
+  });
+
+  assert.equal(createInvitation.mock.callCount(), 0);
+  const after = await db
+    .select({ id: invitationsTable.id })
+    .from(invitationsTable)
+    .orderBy(asc(invitationsTable.id));
+  assert.deepEqual(after, before);
+});
+
 test("owners can email an invitation with the selected workspace role", async (t) => {
   const createInvitation = t.mock.method(
     clerkClient.invitations,
