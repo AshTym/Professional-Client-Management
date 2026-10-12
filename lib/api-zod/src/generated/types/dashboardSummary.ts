@@ -10,6 +10,7 @@ import type { Activity } from './activity';
 export interface DashboardSummary {
   clientCount: number;
   activeClientCount: number;
+  matterCount: number;
   openMatterCount: number;
   overdueMatterCount: number;
   recentActivity: Activity[];

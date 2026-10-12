@@ -207,6 +207,7 @@ export const AcceptWorkspaceInvitationResponse = zod.object({
 export const GetDashboardResponse = zod.object({
   "clientCount": zod.number().int(),
   "activeClientCount": zod.number().int(),
+  "matterCount": zod.number().int(),
   "openMatterCount": zod.number().int(),
   "overdueMatterCount": zod.number().int(),
   "recentActivity": zod.array(zod.object({

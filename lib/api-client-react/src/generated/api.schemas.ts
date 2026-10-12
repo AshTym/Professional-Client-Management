@@ -371,6 +371,7 @@ export interface Activity {
 export interface DashboardSummary {
   clientCount: number;
   activeClientCount: number;
+  matterCount: number;
   openMatterCount: number;
   overdueMatterCount: number;
   recentActivity: Activity[];

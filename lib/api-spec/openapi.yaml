@@ -651,10 +651,11 @@ components:
         occurredAt: { type: string, format: date-time }
     DashboardSummary:
       type: object
-      required: [clientCount, activeClientCount, openMatterCount, overdueMatterCount, recentActivity]
+      required: [clientCount, activeClientCount, matterCount, openMatterCount, overdueMatterCount, recentActivity]
       properties:
         clientCount: { type: integer }
         activeClientCount: { type: integer }
+        matterCount: { type: integer }
         openMatterCount: { type: integer }
         overdueMatterCount: { type: integer }
         recentActivity:

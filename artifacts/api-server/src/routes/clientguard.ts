@@ -745,6 +745,10 @@ router.get("/dashboard", async (req, res): Promise<void> => {
         eq(clientsTable.status, "active"),
       ),
     );
+  const [matterCount] = await db
+    .select({ value: count() })
+    .from(mattersTable)
+    .where(eq(mattersTable.workspaceId, access.workspaceId));
   const [openMatterCount] = await db
     .select({ value: count() })
     .from(mattersTable)
@@ -775,6 +779,7 @@ router.get("/dashboard", async (req, res): Promise<void> => {
     GetDashboardResponse.parse({
       clientCount: clientCount.value,
       activeClientCount: activeClientCount.value,
+      matterCount: matterCount.value,
       openMatterCount: openMatterCount.value,
       overdueMatterCount: overdueMatterCount.value,
       recentActivity: activity,

@@ -25,6 +25,7 @@ const firms = {
     activityId: 0,
   },
 };
+const emptyDashboardUserId = `empty-dashboard-${randomUUID()}`;
 
 let bootstrapPool: Pool | undefined;
 let appPool: Pool | undefined;
@@ -143,6 +144,10 @@ before(async () => {
     .insert(workspacesTable)
     .values({ name: `Other ${randomUUID()}`, practiceType: "law" })
     .returning();
+  const [emptyDashboardWorkspace] = await db
+    .insert(workspacesTable)
+    .values({ name: `Empty Dashboard ${randomUUID()}`, practiceType: "law" })
+    .returning();
   firms.primary.workspaceId = primaryWorkspace.id;
   firms.other.workspaceId = otherWorkspace.id;
   const readOnlyUserId = `viewer-${randomUUID()}`;
@@ -175,6 +180,13 @@ before(async () => {
       clerkUserId: firms.other.ownerId,
       email: "owner-other@example.test",
       displayName: "Other Firm Owner",
+      role: "owner",
+    },
+    {
+      workspaceId: emptyDashboardWorkspace.id,
+      clerkUserId: emptyDashboardUserId,
+      email: "empty-dashboard@example.test",
+      displayName: "New Firm Owner",
       role: "owner",
     },
   ]);
@@ -481,6 +493,7 @@ test("dashboard totals and recent activity include only the current firm's recor
     assert.deepEqual(primary.body, {
       clientCount: 3,
       activeClientCount: 2,
+      matterCount: 4,
       openMatterCount: 3,
       overdueMatterCount: 1,
       recentActivity: [
@@ -527,12 +540,14 @@ test("dashboard totals and recent activity include only the current firm's recor
     const otherDashboard = other.body as {
       clientCount: number;
       activeClientCount: number;
+      matterCount: number;
       openMatterCount: number;
       overdueMatterCount: number;
       recentActivity: Array<{ action: string }>;
     };
     assert.equal(otherDashboard.clientCount, 2);
     assert.equal(otherDashboard.activeClientCount, 1);
+    assert.equal(otherDashboard.matterCount, 4);
     assert.equal(otherDashboard.openMatterCount, 3);
     assert.equal(otherDashboard.overdueMatterCount, 2);
     assert.deepEqual(
@@ -568,6 +583,22 @@ test("dashboard totals and recent activity include only the current firm's recor
       await db.delete(clientsTable).where(inArray(clientsTable.id, insertedClientIds));
     }
   }
+});
+
+test("a new firm's dashboard starts with zero client and matter totals", async () => {
+  const dashboard = await request("/dashboard", {
+    userId: emptyDashboardUserId,
+  });
+
+  assert.equal(dashboard.response.status, 200);
+  assert.deepEqual(dashboard.body, {
+    clientCount: 0,
+    activeClientCount: 0,
+    matterCount: 0,
+    openMatterCount: 0,
+    overdueMatterCount: 0,
+    recentActivity: [],
+  });
 });
 
 test("dashboard returns only the six newest events for each firm in descending time order", async () => {
