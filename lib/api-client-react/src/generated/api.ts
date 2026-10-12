@@ -473,6 +473,154 @@ export const useCreateWorkspaceInvitation = <TError = ErrorType<void>,
       return useMutation(getCreateWorkspaceInvitationMutationOptions(options));
     }
 
+export const getResendWorkspaceInvitationUrl = (id: number,) => {
+
+
+
+
+  return `/api/workspace/invitations/${id}/resend`
+}
+
+/**
+ * @summary Send a fresh invitation link to a pending teammate
+ */
+export const resendWorkspaceInvitation = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceInvitation> => {
+
+  return customFetch<WorkspaceInvitation>(getResendWorkspaceInvitationUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getResendWorkspaceInvitationMutationKey = () => ['resendWorkspaceInvitation'] as const;
+
+export const getResendWorkspaceInvitationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resendWorkspaceInvitation>>, TError,ResendWorkspaceInvitationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resendWorkspaceInvitation>>, TError,ResendWorkspaceInvitationMutationVariables, TContext> => {
+
+const mutationKey = getResendWorkspaceInvitationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resendWorkspaceInvitation>>, ResendWorkspaceInvitationMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  resendWorkspaceInvitation(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResendWorkspaceInvitationMutationResult = NonNullable<Awaited<ReturnType<typeof resendWorkspaceInvitation>>>
+
+    export type ResendWorkspaceInvitationMutationError = ErrorType<void>
+    export type ResendWorkspaceInvitationMutationVariables = {id: number}
+
+    /**
+ * @summary Send a fresh invitation link to a pending teammate
+ */
+export const useResendWorkspaceInvitation = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resendWorkspaceInvitation>>, TError,ResendWorkspaceInvitationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resendWorkspaceInvitation>>,
+        TError,
+        ResendWorkspaceInvitationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getResendWorkspaceInvitationMutationOptions(options));
+    }
+
+export const getWithdrawWorkspaceInvitationUrl = (id: number,) => {
+
+
+
+
+  return `/api/workspace/invitations/${id}`
+}
+
+/**
+ * @summary Withdraw a pending invitation
+ */
+export const withdrawWorkspaceInvitation = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getWithdrawWorkspaceInvitationUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getWithdrawWorkspaceInvitationMutationKey = () => ['withdrawWorkspaceInvitation'] as const;
+
+export const getWithdrawWorkspaceInvitationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof withdrawWorkspaceInvitation>>, TError,WithdrawWorkspaceInvitationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof withdrawWorkspaceInvitation>>, TError,WithdrawWorkspaceInvitationMutationVariables, TContext> => {
+
+const mutationKey = getWithdrawWorkspaceInvitationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof withdrawWorkspaceInvitation>>, WithdrawWorkspaceInvitationMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  withdrawWorkspaceInvitation(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type WithdrawWorkspaceInvitationMutationResult = NonNullable<Awaited<ReturnType<typeof withdrawWorkspaceInvitation>>>
+
+    export type WithdrawWorkspaceInvitationMutationError = ErrorType<void>
+    export type WithdrawWorkspaceInvitationMutationVariables = {id: number}
+
+    /**
+ * @summary Withdraw a pending invitation
+ */
+export const useWithdrawWorkspaceInvitation = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof withdrawWorkspaceInvitation>>, TError,WithdrawWorkspaceInvitationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof withdrawWorkspaceInvitation>>,
+        TError,
+        WithdrawWorkspaceInvitationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getWithdrawWorkspaceInvitationMutationOptions(options));
+    }
+
 export const getAcceptWorkspaceInvitationUrl = () => {
 
 

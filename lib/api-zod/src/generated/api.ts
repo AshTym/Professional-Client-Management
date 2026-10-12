@@ -95,6 +95,38 @@ export const CreateWorkspaceInvitationResponse = zod.object({
 
 
 /**
+ * @summary Send a fresh invitation link to a pending teammate
+ */
+
+
+
+export const ResendWorkspaceInvitationParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const ResendWorkspaceInvitationResponse = zod.object({
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "role": zod.enum(['admin', 'advisor', 'professional', 'assistant']),
+  "createdAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Withdraw a pending invitation
+ */
+
+
+
+export const WithdrawWorkspaceInvitationParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const WithdrawWorkspaceInvitationResponse = zod.void()
+
+
+/**
  * @summary Accept a firm invitation as the signed-in user
  */
 export const acceptWorkspaceInvitationBodyTokenMin = 20;

@@ -6,7 +6,8 @@ import { shadcn } from '@clerk/themes';
 import { Route, Switch, Router as WouterRouter, Link, Redirect, useLocation, useRoute } from 'wouter';
 import {
   useHealthCheck, useGetWorkspace, useCreateWorkspace, useGetDashboard, useListActivity,
-  useListWorkspaceInvitations, useCreateWorkspaceInvitation, useAcceptWorkspaceInvitation,
+  useListWorkspaceInvitations, useCreateWorkspaceInvitation, useResendWorkspaceInvitation,
+  useWithdrawWorkspaceInvitation, useAcceptWorkspaceInvitation,
   useListClients, useCreateClient, useGetClient, useUpdateClient, useDeleteClient,
   useListMatters, useCreateMatter, useGetMatter, useUpdateMatter, useCloseMatter,
   getHealthCheckQueryKey, getGetWorkspaceQueryKey, getGetDashboardQueryKey, getListActivityQueryKey,
@@ -264,7 +265,10 @@ function SecurityPage() {
 function TeamPage() {
   const invitations = useListWorkspaceInvitations();
   const createInvitation = useCreateWorkspaceInvitation();
+  const resendInvitation = useResendWorkspaceInvitation();
+  const withdrawInvitation = useWithdrawWorkspaceInvitation();
   const qc = useQueryClient();
+  const [invitationActionMessage, setInvitationActionMessage] = useState('');
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -311,12 +315,37 @@ function TeamPage() {
           <div><h2 className="serif text-xl font-bold">Pending invitations</h2><p className="mt-1 text-xs text-[#87918d]">Invitations expire after seven days.</p></div>
           <Users className="h-5 w-5 text-[#987747]" />
         </div>
+        {invitationActionMessage && <p className="px-5 pt-4 text-sm text-[#446b55]" role="status" data-testid="status-invitation-action">{invitationActionMessage}</p>}
+        {(resendInvitation.isError || withdrawInvitation.isError) && <p className="px-5 pt-4 text-sm text-[#9b4941]" role="alert" data-testid="status-invitation-action-error">That invitation could not be updated. It may no longer be pending; refresh the list and try again.</p>}
         {invitations.isLoading ? <div className="p-5"><Skeleton title="Loading invitations" /></div> :
           invitations.isError ? <div className="p-5 text-sm text-[#9b4941]">Invitations could not be loaded. <button onClick={() => invitations.refetch()} className="underline" data-testid="button-retry-invitations">Try again</button></div> :
           !invitations.data?.length ? <div className="p-6"><EmptyState title="No pending invitations" detail="When you invite a colleague, their email and role will appear here until they join." /></div> :
           <div className="divide-y divide-[#eee9df]">{invitations.data.map(invite => <div key={invite.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" data-testid={`invitation-row-${invite.id}`}>
-            <div className="min-w-0"><div className="break-all text-sm font-semibold">{invite.email}</div><div className="mt-1 text-xs capitalize text-[#7e8985]">{invite.role} · sent {formatTime(invite.createdAt)}</div></div>
-            <span className="shrink-0 rounded-full bg-[#f2eee3] px-3 py-1 text-[10px] font-semibold text-[#806b44]">Expires {formatTime(invite.expiresAt)}</span>
+            <div className="min-w-0"><div className="break-all text-sm font-semibold">{invite.email}</div><div className="mt-1 text-xs capitalize text-[#7e8985]">{invite.role} · sent {formatTime(invite.createdAt)}</div><span className="mt-2 inline-block rounded-full bg-[#f2eee3] px-3 py-1 text-[10px] font-semibold text-[#806b44]">Expires {formatTime(invite.expiresAt)}</span></div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" disabled={resendInvitation.isPending || withdrawInvitation.isPending} testId={`button-resend-invitation-${invite.id}`} onClick={() => {
+                setInvitationActionMessage('');
+                resendInvitation.reset();
+                withdrawInvitation.reset();
+                resendInvitation.mutate({ id: invite.id }, {
+                  onSuccess: async () => {
+                    await qc.invalidateQueries({ queryKey: getListWorkspaceInvitationsQueryKey() });
+                    setInvitationActionMessage(`A fresh invitation was sent to ${invite.email}. Its previous link no longer works.`);
+                  },
+                });
+              }}><RefreshCw className="h-4 w-4" />{resendInvitation.isPending ? 'Resending…' : 'Resend'}</Button>
+              <Button variant="outline" disabled={resendInvitation.isPending || withdrawInvitation.isPending} testId={`button-withdraw-invitation-${invite.id}`} onClick={() => {
+                setInvitationActionMessage('');
+                resendInvitation.reset();
+                withdrawInvitation.reset();
+                withdrawInvitation.mutate({ id: invite.id }, {
+                  onSuccess: async () => {
+                    await qc.invalidateQueries({ queryKey: getListWorkspaceInvitationsQueryKey() });
+                    setInvitationActionMessage(`The invitation to ${invite.email} was withdrawn.`);
+                  },
+                });
+              }}><X className="h-4 w-4" />{withdrawInvitation.isPending ? 'Withdrawing…' : 'Withdraw'}</Button>
+            </div>
           </div>)}</div>}
       </section>
     </div>

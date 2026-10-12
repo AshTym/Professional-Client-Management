@@ -58,6 +58,7 @@ export const invitationsTable = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     acceptedByClerkUserId: text("accepted_by_clerk_user_id"),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

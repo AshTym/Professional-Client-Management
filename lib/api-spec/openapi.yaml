@@ -98,6 +98,50 @@ paths:
           description: The person is already a member or has a pending invitation
         "502":
           description: The invitation email could not be sent
+  /workspace/invitations/{id}/resend:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    post:
+      operationId: resendWorkspaceInvitation
+      tags: [invitations]
+      summary: Send a fresh invitation link to a pending teammate
+      responses:
+        "200":
+          description: A new invitation email was sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceInvitation"
+        "403":
+          description: Only owners and admins can manage invitations
+        "404":
+          description: The invitation is not pending in the current firm
+        "502":
+          description: The invitation email could not be sent
+  /workspace/invitations/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    delete:
+      operationId: withdrawWorkspaceInvitation
+      tags: [invitations]
+      summary: Withdraw a pending invitation
+      responses:
+        "204":
+          description: Invitation withdrawn
+        "403":
+          description: Only owners and admins can manage invitations
+        "404":
+          description: The invitation is not pending in the current firm
   /workspace/invitations/accept:
     post:
       operationId: acceptWorkspaceInvitation

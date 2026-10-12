@@ -44,6 +44,9 @@ import {
   GetMatterResponse,
   GetWorkspaceResponse,
   ListWorkspaceInvitationsResponse,
+  ResendWorkspaceInvitationParams,
+  ResendWorkspaceInvitationResponse,
+  WithdrawWorkspaceInvitationParams,
   ListActivityQueryParams,
   ListActivityResponse,
   ListClientsQueryParams,
@@ -155,6 +158,7 @@ router.get("/workspace/invitations", async (req, res): Promise<void> => {
       and(
         eq(invitationsTable.workspaceId, access.workspaceId),
         isNull(invitationsTable.acceptedAt),
+        isNull(invitationsTable.revokedAt),
         gt(invitationsTable.expiresAt, new Date()),
       ),
     )
@@ -196,6 +200,7 @@ router.post("/workspace/invitations", async (req, res): Promise<void> => {
         eq(invitationsTable.workspaceId, access.workspaceId),
         sql`lower(${invitationsTable.email}) = ${email}`,
         isNull(invitationsTable.acceptedAt),
+        isNull(invitationsTable.revokedAt),
         gt(invitationsTable.expiresAt, new Date()),
       ),
     )
@@ -250,6 +255,170 @@ router.post("/workspace/invitations", async (req, res): Promise<void> => {
   }
 });
 
+router.post(
+  "/workspace/invitations/:id/resend",
+  async (req, res): Promise<void> => {
+    const access = await firmAccess(req, res);
+    if (!access) return;
+    if (!canManageInvitations(access.role)) {
+      res.status(403).json({ error: "Only firm owners and admins can manage invitations." });
+      return;
+    }
+
+    const params = ResendWorkspaceInvitationParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+
+    const token = randomUUID();
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const now = new Date();
+    let createdClerkInvitationId: string | undefined;
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        const [pending] = await tx
+          .select()
+          .from(invitationsTable)
+          .where(
+            and(
+              eq(invitationsTable.id, params.data.id),
+              eq(invitationsTable.workspaceId, access.workspaceId),
+              isNull(invitationsTable.acceptedAt),
+              isNull(invitationsTable.revokedAt),
+              gt(invitationsTable.expiresAt, now),
+            ),
+          )
+          .limit(1)
+          .for("update");
+        if (!pending) return null;
+
+        const clerkInvitation = await clerkClient.invitations.createInvitation({
+          emailAddress: pending.email,
+          expiresInDays: 7,
+          ignoreExisting: true,
+          notify: true,
+          redirectUrl: `/invite?token=${encodeURIComponent(token)}`,
+        });
+        createdClerkInvitationId = clerkInvitation.id;
+
+        const [updated] = await tx
+          .update(invitationsTable)
+          .set({
+            tokenHash,
+            clerkInvitationId: clerkInvitation.id,
+            createdAt: now,
+            expiresAt: new Date(now.getTime() + invitationLifetimeMs),
+          })
+          .where(eq(invitationsTable.id, pending.id))
+          .returning();
+        return { invitation: updated, previousClerkInvitationId: pending.clerkInvitationId };
+      });
+
+      if (!result) {
+        res.status(404).json({ error: "This invitation is no longer pending in your firm." });
+        return;
+      }
+
+      if (result.previousClerkInvitationId) {
+        try {
+          await clerkClient.invitations.revokeInvitation(
+            result.previousClerkInvitationId,
+          );
+        } catch (error) {
+          req.log.warn(
+            { invitationId: params.data.id, error },
+            "Could not revoke the superseded Clerk invitation",
+          );
+        }
+      }
+      res.json(
+        ResendWorkspaceInvitationResponse.parse(
+          invitationResponse(result.invitation),
+        ),
+      );
+    } catch (error) {
+      if (createdClerkInvitationId) {
+        try {
+          await clerkClient.invitations.revokeInvitation(createdClerkInvitationId);
+        } catch (revokeError) {
+          req.log.warn(
+            { invitationId: params.data.id, error: revokeError },
+            "Could not revoke an unsaved Clerk invitation",
+          );
+        }
+      }
+      req.log.error(
+        { invitationId: params.data.id, workspaceId: access.workspaceId, error },
+        "Could not resend firm invitation",
+      );
+      res.status(502).json({ error: "The invitation email could not be sent. Please try again." });
+    }
+  },
+);
+
+router.delete(
+  "/workspace/invitations/:id",
+  async (req, res): Promise<void> => {
+    const access = await firmAccess(req, res);
+    if (!access) return;
+    if (!canManageInvitations(access.role)) {
+      res.status(403).json({ error: "Only firm owners and admins can manage invitations." });
+      return;
+    }
+
+    const params = WithdrawWorkspaceInvitationParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+
+    const now = new Date();
+    const invitation = await db.transaction(async (tx) => {
+      const [pending] = await tx
+        .select()
+        .from(invitationsTable)
+        .where(
+          and(
+            eq(invitationsTable.id, params.data.id),
+            eq(invitationsTable.workspaceId, access.workspaceId),
+            isNull(invitationsTable.acceptedAt),
+            isNull(invitationsTable.revokedAt),
+            gt(invitationsTable.expiresAt, now),
+          ),
+        )
+        .limit(1)
+        .for("update");
+      if (!pending) return null;
+
+      const [withdrawn] = await tx
+        .update(invitationsTable)
+        .set({ revokedAt: now })
+        .where(eq(invitationsTable.id, pending.id))
+        .returning();
+      return withdrawn;
+    });
+
+    if (!invitation) {
+      res.status(404).json({ error: "This invitation is no longer pending in your firm." });
+      return;
+    }
+
+    if (invitation.clerkInvitationId) {
+      try {
+        await clerkClient.invitations.revokeInvitation(invitation.clerkInvitationId);
+      } catch (error) {
+        req.log.warn(
+          { invitationId: params.data.id, error },
+          "Could not revoke the withdrawn Clerk invitation",
+        );
+      }
+    }
+    res.sendStatus(204);
+  },
+);
+
 router.post("/workspace/invitations/accept", async (req, res): Promise<void> => {
   const identity = identify(req, res);
   if (!identity) return;
@@ -269,7 +438,7 @@ router.post("/workspace/invitations/accept", async (req, res): Promise<void> => 
     res.status(404).json({ error: "This invitation could not be found." });
     return;
   }
-  if (initialInvitation.expiresAt <= new Date()) {
+  if (initialInvitation.revokedAt || initialInvitation.expiresAt <= new Date()) {
     res.status(410).json({ error: "This invitation has expired." });
     return;
   }
@@ -302,7 +471,8 @@ router.post("/workspace/invitations/accept", async (req, res): Promise<void> => 
       .select()
       .from(invitationsTable)
       .where(eq(invitationsTable.tokenHash, tokenHash))
-      .limit(1);
+      .limit(1)
+      .for("update");
     if (!invitation) {
       result = "missing";
       return;
@@ -324,6 +494,10 @@ router.post("/workspace/invitations/accept", async (req, res): Promise<void> => 
       return;
     }
     if (invitation.expiresAt <= new Date()) {
+      result = "expired";
+      return;
+    }
+    if (invitation.revokedAt) {
       result = "expired";
       return;
     }

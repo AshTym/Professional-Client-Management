@@ -77,6 +77,7 @@ before(async () => {
       expires_at timestamptz NOT NULL,
       accepted_at timestamptz,
       accepted_by_clerk_user_id text,
+      revoked_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE "${schemaName}".clientguard_clients (
@@ -659,6 +660,136 @@ test("owners can email an invitation with the selected workspace role", async (t
   assert.equal(stored.role, "assistant");
   assert.equal(stored.clerkInvitationId, "clerk_invitation_test");
   assert.equal(createInvitation.mock.callCount(), 1);
+});
+
+test("firm admins can resend a pending invitation and invalidate its previous link", async (t) => {
+  const adminId = `admin-${randomUUID()}`;
+  await db.insert(membershipsTable).values({
+    workspaceId: firms.primary.workspaceId,
+    clerkUserId: adminId,
+    email: "team-admin@example.test",
+    displayName: "Team Admin",
+    role: "admin",
+  });
+  const oldToken = randomUUID();
+  const oldCreatedAt = new Date(Date.now() - 60_000);
+  const [pending] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email: "resend-target@example.test",
+      role: "professional",
+      invitedByClerkUserId: firms.primary.ownerId,
+      clerkInvitationId: "old_clerk_invitation",
+      tokenHash: createHash("sha256").update(oldToken).digest("hex"),
+      expiresAt: new Date(Date.now() + 60_000),
+      createdAt: oldCreatedAt,
+    })
+    .returning();
+  let newToken = "";
+  const createInvitation = t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async (params) => {
+      assert.equal(params.emailAddress, "resend-target@example.test");
+      assert.equal(params.notify, true);
+      const match = params.redirectUrl?.match(/[?&]token=([^&]+)/);
+      assert(match);
+      newToken = decodeURIComponent(match[1]);
+      return { id: "new_clerk_invitation" } as never;
+    },
+  );
+  const revokeInvitation = t.mock.method(
+    clerkClient.invitations,
+    "revokeInvitation",
+    async () => ({ id: "old_clerk_invitation" }) as never,
+  );
+
+  const resent = await request(`/workspace/invitations/${pending.id}/resend`, {
+    userId: adminId,
+    method: "POST",
+  });
+  assert.equal(resent.response.status, 200);
+  assert.equal(createInvitation.mock.callCount(), 1);
+  assert.equal(revokeInvitation.mock.callCount(), 1);
+  assert.equal(revokeInvitation.mock.calls[0].arguments[0], "old_clerk_invitation");
+  assert.equal((resent.body as { id: number }).id, pending.id);
+  assert.equal((resent.body as { email: string }).email, "resend-target@example.test");
+
+  const [updated] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, pending.id));
+  assert.notEqual(updated.tokenHash, createHash("sha256").update(oldToken).digest("hex"));
+  assert.equal(updated.tokenHash, createHash("sha256").update(newToken).digest("hex"));
+  assert.equal(updated.clerkInvitationId, "new_clerk_invitation");
+  assert(updated.createdAt > oldCreatedAt);
+  assert(updated.expiresAt > new Date(Date.now() + 6 * 24 * 60 * 60 * 1000));
+
+  const listed = await request("/workspace/invitations", {
+    userId: adminId,
+  });
+  assert.equal(listed.response.status, 200);
+  assert((listed.body as Array<{ id: number }>).some(({ id }) => id === pending.id));
+
+  const oldLink = await request("/workspace/invitations/accept", {
+    userId: `resend-target-${randomUUID()}`,
+    method: "POST",
+    body: { token: oldToken },
+  });
+  assert.equal(oldLink.response.status, 404);
+});
+
+test("firm owners can withdraw a pending invitation and its link cannot be accepted", async (t) => {
+  const token = randomUUID();
+  const [pending] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email: "withdraw-target@example.test",
+      role: "assistant",
+      invitedByClerkUserId: firms.primary.ownerId,
+      clerkInvitationId: "withdraw_clerk_invitation",
+      tokenHash: createHash("sha256").update(token).digest("hex"),
+      expiresAt: new Date(Date.now() + 60_000),
+    })
+    .returning();
+  const revokeInvitation = t.mock.method(
+    clerkClient.invitations,
+    "revokeInvitation",
+    async () => ({ id: "withdraw_clerk_invitation" }) as never,
+  );
+
+  const wrongFirm = await request(`/workspace/invitations/${pending.id}`, {
+    userId: firms.other.ownerId,
+    method: "DELETE",
+  });
+  assert.equal(wrongFirm.response.status, 404);
+
+  const withdrawn = await request(`/workspace/invitations/${pending.id}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+  });
+  assert.equal(withdrawn.response.status, 204);
+  assert.equal(revokeInvitation.mock.callCount(), 1);
+
+  const [stored] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, pending.id));
+  assert(stored.revokedAt);
+  const listed = await request("/workspace/invitations", {
+    userId: firms.primary.ownerId,
+  });
+  assert.equal(listed.response.status, 200);
+  assert(!(listed.body as Array<{ id: number }>).some(({ id }) => id === pending.id));
+
+  const acceptance = await request("/workspace/invitations/accept", {
+    userId: `withdraw-target-${randomUUID()}`,
+    method: "POST",
+    body: { token },
+  });
+  assert.equal(acceptance.response.status, 410);
 });
 
 test("invitation acceptance adds the verified invitee to the exact firm and role", async (t) => {
