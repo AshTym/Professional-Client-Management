@@ -8,6 +8,12 @@ const apiMocks = vi.hoisted(() => ({
   useListActivity: vi.fn(),
   useListClients: vi.fn(),
   useCreateClient: vi.fn(),
+  useGetIntakeOverview: vi.fn(),
+  useCreateIntake: vi.fn(),
+  useSaveIntakeChecks: vi.fn(),
+  useListWorkspaceAssignmentMembers: vi.fn(),
+  useOpenMatterFromIntake: vi.fn(),
+  useReviewIntake: vi.fn(),
 }));
 
 vi.mock('@workspace/api-client-react', () => ({
@@ -15,9 +21,11 @@ vi.mock('@workspace/api-client-react', () => ({
   getGetDashboardQueryKey: () => ['dashboard'],
   getListActivityQueryKey: () => ['activity'],
   getListClientsQueryKey: () => ['clients'],
+  getGetIntakeOverviewQueryKey: () => ['intake'],
 }));
 
 import { ClientsPage, Dashboard } from './App';
+import Intake from './Intake';
 
 function renderDashboard(initialPath = '/dashboard') {
   window.history.replaceState({}, '', initialPath);
@@ -31,6 +39,7 @@ function renderDashboard(initialPath = '/dashboard') {
         <Switch>
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/clients" component={ClientsPage} />
+          <Route path="/intake" component={Intake} />
         </Switch>
       </Router>
     </QueryClientProvider>,
@@ -68,6 +77,22 @@ describe('new-firm dashboard onboarding', () => {
       isPending: false,
       isError: false,
     });
+    apiMocks.useGetIntakeOverview.mockReturnValue({
+      data: { intakes: [], checks: [] },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    apiMocks.useCreateIntake.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    apiMocks.useSaveIntakeChecks.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    apiMocks.useListWorkspaceAssignmentMembers.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    apiMocks.useOpenMatterFromIntake.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    apiMocks.useReviewIntake.mockReturnValue({ mutate: vi.fn(), isPending: false });
   });
 
   afterEach(() => cleanup());
@@ -84,6 +109,32 @@ describe('new-firm dashboard onboarding', () => {
 
     expect(screen.getByRole('dialog', { name: 'Add a client' })).toBeTruthy();
     expect(screen.getByTestId('input-client-name')).toBeTruthy();
+  });
+
+  it('shows the first-matter prompt for firms with clients and opens the intake form', async () => {
+    apiMocks.useGetDashboard.mockReturnValue({
+      data: {
+        clientCount: 1,
+        matterCount: 0,
+        activeClientCount: 1,
+        openMatterCount: 0,
+        overdueMatterCount: 0,
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderDashboard();
+
+    expect(screen.getByTestId('dashboard-first-matter-onboarding')).toBeTruthy();
+    const firstMatterLink = screen.getByTestId('link-create-first-matter');
+    expect(firstMatterLink.getAttribute('href')).toBe('/intake?create=1');
+
+    fireEvent.click(firstMatterLink);
+
+    expect(await screen.findByRole('dialog', { name: 'Start a client intake' })).toBeTruthy();
+    expect(screen.getByTestId('button-submit-intake')).toBeTruthy();
   });
 
   it('keeps the regular dashboard layout for firms that already have records', () => {
@@ -106,5 +157,6 @@ describe('new-firm dashboard onboarding', () => {
     expect(screen.getByText('Recent activity')).toBeTruthy();
     expect(screen.getByText('Keep work moving.')).toBeTruthy();
     expect(screen.queryByTestId('dashboard-empty-onboarding')).toBeNull();
+    expect(screen.queryByTestId('dashboard-first-matter-onboarding')).toBeNull();
   });
 });
