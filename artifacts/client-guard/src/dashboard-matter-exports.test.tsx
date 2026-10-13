@@ -42,7 +42,7 @@ vi.mock('@workspace/api-client-react', () => ({
   getListWorkspaceAssignmentIssuesQueryKey: () => ['assignment-issues'],
   getGetIntakeOverviewQueryKey: () => ['intake'],
   getGetIntakeDraftsQueryKey: () => ['intake-drafts'],
-  getListMattersQueryKey: () => ['matters'],
+  getListMattersQueryKey: (params?: any) => ['/api/matters', ...(params ? [params] : [])],
 }));
 
 vi.mock('./lib/matters-pdf', () => ({
@@ -53,6 +53,7 @@ vi.mock('./MatterCloseout', () => ({ default: () => null }));
 
 import { ClientDetail, ClientsPage, Dashboard, MatterDetail, MattersPage } from './App';
 import Intake from './Intake';
+import { getListMattersQueryKey } from '@workspace/api-client-react';
 
 const firstMatter = {
   id: 11,
@@ -249,6 +250,40 @@ describe('dashboard shortcuts and matter exports', () => {
 
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Start a client intake' })).toBeTruthy());
     expect((screen.getByTestId('select-intake-client') as HTMLSelectElement).value).toBe('5');
+  });
+
+  it('shows only matters currently associated with the client on its profile', () => {
+    const matters = [firstMatter, secondMatter];
+    mocks.useListMatters.mockImplementation((params?: { clientId?: number }) => ({
+      data: matters.filter(matter => matter.clientId === params?.clientId),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    }));
+
+    renderAt('/clients/5');
+
+    expect(mocks.useListMatters).toHaveBeenCalledWith(
+      { clientId: 5 },
+      { query: { enabled: true } },
+    );
+    expect(screen.getByTestId('client-matters-count').textContent).toBe('1');
+    expect(screen.getByTestId('link-client-matter-11').getAttribute('href')).toBe('/matters/11');
+    expect(screen.queryByTestId('link-client-matter-12')).toBeNull();
+  });
+
+  it('shows a clear empty state when the client has no matters', () => {
+    mocks.useListMatters.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderAt('/clients/5');
+
+    expect(screen.getByTestId('client-matters-empty').textContent).toContain('No matters for this client yet');
+    expect(screen.getByTestId('link-client-start-first-matter').getAttribute('href')).toBe('/intake?create=1&clientId=5');
   });
 
   it('preselects the client from a client profile link and lets staff change it', async () => {
@@ -451,7 +486,7 @@ describe('dashboard shortcuts and matter exports', () => {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['client', 5] });
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] });
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['activity'] });
-      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['matters'] });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['/api/matters'] });
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['intake'] });
     });
     expect(screen.getByRole('status').textContent).toContain('Matter opened');
@@ -546,6 +581,10 @@ describe('dashboard shortcuts and matter exports', () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    const previousClientMattersKey = getListMattersQueryKey({ clientId: 5 });
+    const nextClientMattersKey = getListMattersQueryKey({ clientId: 6 });
+    queryClient.setQueryData(previousClientMattersKey, [firstMatter]);
+    queryClient.setQueryData(nextClientMattersKey, []);
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
     renderAt('/matters/11', queryClient);
 
@@ -557,6 +596,8 @@ describe('dashboard shortcuts and matter exports', () => {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['clients'] });
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['client', 5] });
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['client', 6] });
+      expect(queryClient.getQueryState(previousClientMattersKey)?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(nextClientMattersKey)?.isInvalidated).toBe(true);
     });
   });
 

@@ -2250,6 +2250,11 @@ export const ListClientsStatus = {
 } as const;
 
 export type ListMattersParams = {
+/**
+ * Return only matters currently assigned to this client.
+ * @minimum 1
+ */
+clientId?: number;
 search?: string;
 status?: ListMattersStatus;
 };

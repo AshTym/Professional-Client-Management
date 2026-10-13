@@ -1397,6 +1397,25 @@ test("clients, matters, and activity lists and details stay inside the signed-in
     (matters.body as Array<{ id: number }>).map(({ id }) => id),
     [firms.primary.matterId],
   );
+  const clientMatters = await request(
+    `/matters?clientId=${firms.primary.clientId}`,
+    { userId: firms.primary.ownerId },
+  );
+  assert.equal(clientMatters.response.status, 200);
+  assert.deepEqual(
+    (clientMatters.body as Array<{ id: number }>).map(({ id }) => id),
+    [firms.primary.matterId],
+  );
+  const otherFirmClientMatters = await request(
+    `/matters?clientId=${firms.other.clientId}`,
+    { userId: firms.primary.ownerId },
+  );
+  assert.equal(otherFirmClientMatters.response.status, 200);
+  assert.deepEqual(otherFirmClientMatters.body, []);
+  const invalidClientMatterFilter = await request("/matters?clientId=0", {
+    userId: firms.primary.ownerId,
+  });
+  assert.equal(invalidClientMatterFilter.response.status, 400);
   const matterDetail = await request(`/matters/${firms.other.matterId}`, {
     userId: firms.primary.ownerId,
   });

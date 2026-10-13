@@ -2790,6 +2790,9 @@ router.get("/matters", async (req, res): Promise<void> => {
     return;
   }
   const filters = [eq(mattersTable.workspaceId, access.workspaceId)];
+  if (parsed.data.clientId !== undefined) {
+    filters.push(eq(mattersTable.clientId, parsed.data.clientId));
+  }
   if (parsed.data.status) filters.push(eq(mattersTable.status, parsed.data.status));
   const [rows, members] = await Promise.all([
     db

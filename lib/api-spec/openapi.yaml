@@ -722,6 +722,13 @@ paths:
       tags: [matters]
       summary: Search and filter firm matters
       parameters:
+        - name: clientId
+          in: query
+          required: false
+          description: Return only matters currently assigned to this client.
+          schema:
+            type: integer
+            minimum: 1
         - name: search
           in: query
           required: false
