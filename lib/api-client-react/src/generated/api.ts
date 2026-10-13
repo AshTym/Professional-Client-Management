@@ -4068,6 +4068,80 @@ export const useCompleteDocumentUpload = <TError = ErrorType<void>,
       return useMutation(getCompleteDocumentUploadMutationOptions(options), queryClient);
     }
 
+export const getMarkMatterDocumentReviewedUrl = (id: number,) => {
+
+
+
+
+  return `/api/documents/${id}/review`
+}
+
+/**
+ * @summary Mark a client portal upload reviewed without sharing it
+ */
+export const markMatterDocumentReviewed = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ClientDocument> => {
+
+  return customFetch<ClientDocument>(getMarkMatterDocumentReviewedUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkMatterDocumentReviewedMutationKey = () => ['markMatterDocumentReviewed'] as const;
+
+export const getMarkMatterDocumentReviewedMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markMatterDocumentReviewed>>, TError,MarkMatterDocumentReviewedMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markMatterDocumentReviewed>>, TError,MarkMatterDocumentReviewedMutationVariables, TContext> => {
+
+const mutationKey = getMarkMatterDocumentReviewedMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markMatterDocumentReviewed>>, MarkMatterDocumentReviewedMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  markMatterDocumentReviewed(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkMatterDocumentReviewedMutationResult = NonNullable<Awaited<ReturnType<typeof markMatterDocumentReviewed>>>
+
+    export type MarkMatterDocumentReviewedMutationError = ErrorType<void>
+    export type MarkMatterDocumentReviewedMutationVariables = {id: number}
+
+    /**
+ * @summary Mark a client portal upload reviewed without sharing it
+ */
+export const useMarkMatterDocumentReviewed = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markMatterDocumentReviewed>>, TError,MarkMatterDocumentReviewedMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof markMatterDocumentReviewed>>,
+        TError,
+        MarkMatterDocumentReviewedMutationVariables,
+        TContext
+      > => {
+      return useMutation(getMarkMatterDocumentReviewedMutationOptions(options), queryClient);
+    }
+
 export const getAnalyzeDocumentUrl = (id: number,) => {
 
 

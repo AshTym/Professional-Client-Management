@@ -941,6 +941,27 @@ paths:
                 $ref: "#/components/schemas/ClientDocument"
         "404":
           description: Upload reservation or object not found
+  /documents/{id}/review:
+    post:
+      operationId: markMatterDocumentReviewed
+      tags: [documents]
+      summary: Mark a client portal upload reviewed without sharing it
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Reviewed document remains private unless separately shared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientDocument"
+        "404":
+          description: Document not found
+        "409":
+          description: Document is not a completed client portal upload
   /documents/{id}/analyze:
     post:
       operationId: analyzeDocument
@@ -2772,7 +2793,7 @@ components:
           items: { $ref: "#/components/schemas/PlannerItem" }
     ClientDocument:
       type: object
-      required: [id, matterId, matterTitle, originalName, contentType, sizeBytes, status, clientVisible, lastAnalysisError, createdAt]
+      required: [id, matterId, matterTitle, originalName, contentType, sizeBytes, status, clientVisible, uploadedFromPortal, reviewedAt, lastAnalysisError, createdAt]
       properties:
         id: { type: integer }
         matterId: { type: integer }
@@ -2782,6 +2803,10 @@ components:
         sizeBytes: { type: integer }
         status: { type: string, enum: [uploading, ready, analyzing, analyzed, failed] }
         clientVisible: { type: boolean }
+        uploadedFromPortal:
+          type: boolean
+          description: True when the document was submitted through the client portal.
+        reviewedAt: { type: ["string", "null"], format: date-time }
         lastAnalysisError: { type: ["string", "null"] }
         createdAt: { type: string, format: date-time }
     DocumentUploadInput:

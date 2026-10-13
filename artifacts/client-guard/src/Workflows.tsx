@@ -8,6 +8,7 @@ import {
   useGetBillingOverview, useSaveBillingProfile, useCreateTimeEntry, useUpdateBillingDraft,
   useGetDocumentOverview, useRequestDocumentUpload, useCompleteDocumentUpload, useAnalyzeDocument,
   useDeleteMatterDocument, useReviewDocumentSuggestion, useUpdatePlannerItem,
+  useMarkMatterDocumentReviewed,
   useGetClientUpdateOverview, useSaveClientUpdateSchedule, useCreateClientUpdateDraft,
   useUpdateClientUpdateDraft, useListMatters, useListClients, useSetDocumentClientVisibility,
   useListPortalUpdates, usePublishClientUpdate, useSendReviewedClientUpdateEmail,
@@ -232,6 +233,7 @@ function DocumentsPanel({ overview, isLoading, error, retry, matters, refresh }:
   const review = useReviewDocumentSuggestion();
   const updatePlanner = useUpdatePlannerItem();
   const setVisibility = useSetDocumentClientVisibility();
+  const markDocumentReviewed = useMarkMatterDocumentReviewed();
   const [uploadMatter, setUploadMatter] = useState('');
   const [uploading, setUploading] = useState(false);
   const [localError, setLocalError] = useState('');
@@ -269,10 +271,35 @@ function DocumentsPanel({ overview, isLoading, error, retry, matters, refresh }:
   if (error) return <PanelError message={error} retry={retry} />;
   return <div className="space-y-5">
     <div className="grid gap-3 sm:grid-cols-3"><Metric label="Matter documents" value={documents.length} sub="private firm records" icon={FileText} targetId="document-records" /><Metric label="Suggestions to review" value={pending} sub="requires your decision" icon={Sparkles} targetId="document-suggestions" /><Metric label="Planner items" value={planner.length} sub="confirmed from evidence" icon={CalendarDays} targetId="document-planner" /></div>
-    <PanelCard id="document-records"><SectionTitle number="01" title="Matter documents" body="Private files · PDF, DOCX, or TXT up to 15 MB" action={<label className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-[#294651] px-3.5 py-2.5 text-xs font-bold text-[#f9f6ed] transition hover:bg-[#1c3943] ${uploading ? 'pointer-events-none opacity-50' : ''}`} data-testid="label-upload-document"><UploadCloud className="h-3.5 w-3.5" />{uploading ? 'Uploading…' : 'Upload document'}<input type="file" accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="sr-only" onChange={uploadInput} disabled={uploading} data-testid="input-upload-document" /></label>} />
+    <PanelCard id="document-records"><SectionTitle number="01" title="Matter documents" body="Client portal uploads stay private until you explicitly share them · PDF, DOCX, or TXT up to 15 MB" action={<label className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-[#294651] px-3.5 py-2.5 text-xs font-bold text-[#f9f6ed] transition hover:bg-[#1c3943] ${uploading ? 'pointer-events-none opacity-50' : ''}`} data-testid="label-upload-document"><UploadCloud className="h-3.5 w-3.5" />{uploading ? 'Uploading…' : 'Upload document'}<input type="file" accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="sr-only" onChange={uploadInput} disabled={uploading} data-testid="input-upload-document" /></label>} />
       <div className="border-b border-[#eee9df] bg-[#f5f2e9] px-5 py-3"><Field label="Matter for this upload"><select value={uploadMatter} onChange={e => setUploadMatter(e.target.value)} className={`${inputClass} max-w-xl`} data-testid="select-upload-matter"><option value="">Choose a matter first</option>{matters.map(m => <option key={m.id} value={m.id}>{matterOption(m)}</option>)}</select></Field></div>
       {(localError || remove.isError) && <div className="px-5 pt-3"><FormError message={localError || shortError(remove.error)} /></div>}
-      {!documents.length ? <Empty title="No documents attached" body="Choose a matter and upload a source document to prepare suggestions from its contents." /> : <div className="divide-y divide-[#eee9df]">{documents.map((doc: any) => <article key={doc.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center" data-testid={`client-document-${doc.id}`}><span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-[#e9eee8] text-[#4d7463]"><FileText className="h-4 w-4" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-sm font-bold">{doc.originalName}</h3><Badge tone={doc.status === 'analyzed' ? 'green' : doc.status === 'failed' ? 'red' : 'muted'} testId={`status-document-${doc.id}`}>{doc.status}</Badge><Badge tone={doc.clientVisible ? 'green' : 'muted'}>{doc.clientVisible ? 'Shared with client' : 'Private'}</Badge></div><p className="mt-1 text-[10px] text-[#86918c]">{doc.matterTitle} · {(doc.sizeBytes / 1024 / 1024).toFixed(2)} MB · Added {dateLabel(doc.createdAt)}</p>{doc.lastAnalysisError && <p className="mt-1 text-[10px] text-[#9a554d]">{doc.lastAnalysisError}</p>}</div><div className="flex flex-wrap items-center gap-2"><a href={getGetMatterDocumentFileUrl(doc.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded px-2.5 py-2 text-[10px] font-bold text-[#405c60] hover:bg-[#eeece4]" data-testid={`link-open-document-${doc.id}`}><ArrowDownToLine className="h-3.5 w-3.5" />Open source</a><ActionButton onClick={() => { if (!doc.clientVisible && !window.confirm(`Share ${doc.originalName} with this matter's client?`)) return; setVisibility.mutate({id:doc.id,data:{visible:!doc.clientVisible}},{onSuccess:refresh,onError:err=>setLocalError(shortError(err))}); }} disabled={setVisibility.isPending} kind="outline" testId={`button-toggle-client-visibility-${doc.id}`}>{doc.clientVisible?'Stop sharing':'Share with client'}</ActionButton>{doc.status === 'ready' || doc.status === 'failed' ? <ActionButton onClick={() => analyzeDoc(doc.id)} disabled={analyzingId === doc.id} kind="outline" testId={`button-analyze-document-${doc.id}`}>{analyzingId === doc.id ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}Analyze</ActionButton> : null}<ActionButton onClick={() => setDeleteId(doc.id)} kind="quiet" testId={`button-delete-document-${doc.id}`}><Trash2 className="h-3.5 w-3.5" /><span className="sr-only">Delete {doc.originalName}</span></ActionButton></div></article>)}</div>}
+      {!documents.length
+        ? <Empty title="No documents attached" body="Choose a matter and upload a source document to prepare suggestions from its contents." />
+        : <div className="divide-y divide-[#eee9df]">{documents.map((doc: any) => <article key={doc.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center" data-testid={`client-document-${doc.id}`}>
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-[#e9eee8] text-[#4d7463]"><FileText className="h-4 w-4" /></span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="truncate text-sm font-bold">{doc.originalName}</h3>
+              {doc.uploadedFromPortal && <Badge tone="gold" testId={`source-document-${doc.id}`}>Client upload</Badge>}
+              <Badge tone={doc.status === 'analyzed' ? 'green' : doc.status === 'failed' ? 'red' : 'muted'} testId={`status-document-${doc.id}`}>{doc.status}</Badge>
+              {doc.uploadedFromPortal
+                ? <Badge tone={doc.clientVisible || doc.reviewedAt ? 'green' : 'gold'} testId={`review-document-${doc.id}`}>
+                    {doc.clientVisible ? 'Shared with client' : doc.reviewedAt ? 'Reviewed · private' : 'Needs review'}
+                  </Badge>
+                : <Badge tone={doc.clientVisible ? 'green' : 'muted'}>{doc.clientVisible ? 'Shared with client' : 'Private'}</Badge>}
+            </div>
+            <p className="mt-1 text-[10px] text-[#86918c]">{doc.matterTitle} · {(doc.sizeBytes / 1024 / 1024).toFixed(2)} MB · Added {dateLabel(doc.createdAt)}</p>
+            {doc.lastAnalysisError && <p className="mt-1 text-[10px] text-[#9a554d]">{doc.lastAnalysisError}</p>}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <a href={getGetMatterDocumentFileUrl(doc.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded px-2.5 py-2 text-[10px] font-bold text-[#405c60] hover:bg-[#eeece4]" data-testid={`link-open-document-${doc.id}`}><ArrowDownToLine className="h-3.5 w-3.5" />Open source</a>
+            {doc.uploadedFromPortal && !doc.reviewedAt && !doc.clientVisible && doc.status !== 'uploading' && <ActionButton onClick={() => markDocumentReviewed.mutate({ id: doc.id }, { onSuccess: refresh, onError: err => setLocalError(shortError(err)) })} disabled={markDocumentReviewed.isPending} kind="outline" testId={`button-mark-document-reviewed-${doc.id}`}>Mark reviewed</ActionButton>}
+            <ActionButton onClick={() => { if (!doc.clientVisible && !window.confirm(`Share ${doc.originalName} with this matter's client?`)) return; setVisibility.mutate({id:doc.id,data:{visible:!doc.clientVisible}},{onSuccess:refresh,onError:err=>setLocalError(shortError(err))}); }} disabled={setVisibility.isPending || doc.status === 'uploading'} kind="outline" testId={`button-toggle-client-visibility-${doc.id}`}>{doc.clientVisible?'Stop sharing':'Share with client'}</ActionButton>
+            {doc.status === 'ready' || doc.status === 'failed' ? <ActionButton onClick={() => analyzeDoc(doc.id)} disabled={analyzingId === doc.id} kind="outline" testId={`button-analyze-document-${doc.id}`}>{analyzingId === doc.id ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}Analyze</ActionButton> : null}
+            <ActionButton onClick={() => setDeleteId(doc.id)} kind="quiet" testId={`button-delete-document-${doc.id}`}><Trash2 className="h-3.5 w-3.5" /><span className="sr-only">Delete {doc.originalName}</span></ActionButton>
+          </div>
+        </article>)}</div>}
       <div className="border-t border-[#eee9df] px-5 py-3 text-[10px] leading-5 text-[#74817c]" data-testid="notice-document-disclosure">Before you request analysis, know that document text is sent to the AI service for source-backed suggestions. No analysis starts until you press Analyze.</div>
     </PanelCard>
     <PanelCard id="document-suggestions"><SectionTitle number="02" title="Suggestions from documents" body="Each suggestion includes the exact source passage and page. Confirm or reject it." />

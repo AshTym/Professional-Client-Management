@@ -1006,6 +1006,8 @@ export const GetDocumentOverviewResponse = zod.object({
   "sizeBytes": zod.number().int(),
   "status": zod.enum(['uploading', 'ready', 'analyzing', 'analyzed', 'failed']),
   "clientVisible": zod.boolean(),
+  "uploadedFromPortal": zod.boolean().describe('True when the document was submitted through the client portal.'),
+  "reviewedAt": zod.coerce.date().nullable(),
   "lastAnalysisError": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })),
@@ -1085,6 +1087,31 @@ export const CompleteDocumentUploadResponse = zod.object({
   "sizeBytes": zod.number().int(),
   "status": zod.enum(['uploading', 'ready', 'analyzing', 'analyzed', 'failed']),
   "clientVisible": zod.boolean(),
+  "uploadedFromPortal": zod.boolean().describe('True when the document was submitted through the client portal.'),
+  "reviewedAt": zod.coerce.date().nullable(),
+  "lastAnalysisError": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Mark a client portal upload reviewed without sharing it
+ */
+export const MarkMatterDocumentReviewedParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const MarkMatterDocumentReviewedResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "originalName": zod.string(),
+  "contentType": zod.string(),
+  "sizeBytes": zod.number().int(),
+  "status": zod.enum(['uploading', 'ready', 'analyzing', 'analyzed', 'failed']),
+  "clientVisible": zod.boolean(),
+  "uploadedFromPortal": zod.boolean().describe('True when the document was submitted through the client portal.'),
+  "reviewedAt": zod.coerce.date().nullable(),
   "lastAnalysisError": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })
@@ -2137,6 +2164,8 @@ export const CompletePortalDocumentUploadResponse = zod.object({
   "sizeBytes": zod.number().int(),
   "status": zod.enum(['uploading', 'ready', 'analyzing', 'analyzed', 'failed']),
   "clientVisible": zod.boolean(),
+  "uploadedFromPortal": zod.boolean().describe('True when the document was submitted through the client portal.'),
+  "reviewedAt": zod.coerce.date().nullable(),
   "lastAnalysisError": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })
@@ -2172,6 +2201,8 @@ export const SetDocumentClientVisibilityResponse = zod.object({
   "sizeBytes": zod.number().int(),
   "status": zod.enum(['uploading', 'ready', 'analyzing', 'analyzed', 'failed']),
   "clientVisible": zod.boolean(),
+  "uploadedFromPortal": zod.boolean().describe('True when the document was submitted through the client portal.'),
+  "reviewedAt": zod.coerce.date().nullable(),
   "lastAnalysisError": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })

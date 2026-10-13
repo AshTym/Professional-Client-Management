@@ -154,6 +154,7 @@ export const documentsTable = pgTable(
     status: text("status").notNull().default("uploading"),
     clientVisible: boolean("client_visible").notNull().default(false),
     uploadedFromPortal: boolean("uploaded_from_portal").notNull().default(false),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     lastAnalysisError: text("last_analysis_error"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

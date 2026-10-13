@@ -1317,7 +1317,12 @@ router.patch("/documents/:id/client-visibility", async (req, res): Promise<void>
     res.status(409).json({ error: "Only completed documents can be shared with a client." });
     return;
   }
-  const [updated] = await db.update(documentsTable).set({ clientVisible: parsed.data.visible }).where(eq(documentsTable.id, id)).returning();
+  const [updated] = await db.update(documentsTable).set({
+    clientVisible: parsed.data.visible,
+    ...(parsed.data.visible && row.document.uploadedFromPortal && !row.document.reviewedAt
+      ? { reviewedAt: new Date() }
+      : {}),
+  }).where(eq(documentsTable.id, id)).returning();
   await appendAudit(firm.workspaceId, firm, parsed.data.visible ? "document_shared_with_client" : "document_unshared_from_client", "matter", updated.matterId, row.matterTitle, { documentId: id });
   res.json(api.SetDocumentClientVisibilityResponse.parse({
     ...updated, matterTitle: row.matterTitle,

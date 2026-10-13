@@ -16,6 +16,10 @@ export interface ClientDocument {
   sizeBytes: number;
   status: ClientDocumentStatus;
   clientVisible: boolean;
+  /** True when the document was submitted through the client portal. */
+  uploadedFromPortal: boolean;
+  /** @nullable */
+  reviewedAt: Date | null;
   /** @nullable */
   lastAnalysisError: string | null;
   createdAt: Date;

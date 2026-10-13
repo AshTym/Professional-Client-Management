@@ -5915,6 +5915,40 @@ test("client portal documents stay private across clients and audit upload, down
   );
   assert.equal(completedUpload.response.status, 200);
   assert.equal((completedUpload.body as { status: string }).status, "ready");
+  assert.equal((completedUpload.body as { uploadedFromPortal: boolean }).uploadedFromPortal, true);
+  assert.equal((completedUpload.body as { clientVisible: boolean }).clientVisible, false);
+
+  const staffDocuments = await request("/documents", {
+    userId: firms.primary.ownerId,
+  });
+  assert.equal(staffDocuments.response.status, 200);
+  const listedPortalUpload = (
+    staffDocuments.body as {
+      documents: Array<{
+        id: number;
+        uploadedFromPortal: boolean;
+        clientVisible: boolean;
+        reviewedAt: string | null;
+      }>;
+    }
+  ).documents.find(({ id }) => id === uploadId);
+  assert.ok(listedPortalUpload);
+  assert.equal(listedPortalUpload.uploadedFromPortal, true);
+  assert.equal(listedPortalUpload.clientVisible, false);
+  assert.equal(listedPortalUpload.reviewedAt, null);
+
+  const markedReviewed = await request(`/documents/${uploadId}/review`, {
+    userId: firms.primary.ownerId,
+    method: "POST",
+    body: {},
+  });
+  assert.equal(markedReviewed.response.status, 200);
+  assert.equal((markedReviewed.body as { clientVisible: boolean }).clientVisible, false);
+  assert.ok((markedReviewed.body as { reviewedAt: string | null }).reviewedAt);
+  const privateAfterReview = await request(`/portal/documents/${uploadId}/file`, {
+    userId: portalUserId,
+  });
+  assert.equal(privateAfterReview.response.status, 404);
 
   const events = await db
     .select()

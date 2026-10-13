@@ -34,6 +34,8 @@ import {
   GetBillingOverviewResponse,
   GetClientUpdateOverviewResponse,
   GetDocumentOverviewResponse,
+  MarkMatterDocumentReviewedParams,
+  MarkMatterDocumentReviewedResponse,
   RequestDocumentUploadBody,
   RequestDocumentUploadResponse,
   ReviewDocumentSuggestionBody,
@@ -316,6 +318,59 @@ router.get("/documents", async (req, res): Promise<void> => {
   res.json(
     GetDocumentOverviewResponse.parse(overview),
   );
+});
+
+router.post("/documents/:id/review", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res, true);
+  if (!access) return;
+  const params = MarkMatterDocumentReviewedParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const document = await documentForWorkspace(access.workspaceId, params.data.id);
+  if (!document) {
+    res.status(404).json({ error: "Document not found." });
+    return;
+  }
+  if (!document.uploadedFromPortal || document.status === "uploading") {
+    res.status(409).json({ error: "Only completed client portal uploads can be marked reviewed." });
+    return;
+  }
+
+  const [updated] = document.reviewedAt
+    ? [undefined]
+    : await db
+      .update(documentsTable)
+      .set({ reviewedAt: new Date() })
+      .where(
+        and(
+          eq(documentsTable.id, document.id),
+          eq(documentsTable.workspaceId, access.workspaceId),
+          isNull(documentsTable.reviewedAt),
+        ),
+      )
+      .returning();
+  const reviewed = updated ?? await documentForWorkspace(access.workspaceId, document.id);
+  if (!reviewed) {
+    res.status(404).json({ error: "Document not found." });
+    return;
+  }
+  const matter = await matterForWorkspace(access.workspaceId, reviewed.matterId);
+  if (updated) {
+    await logAuditEvent(
+      access,
+      "client_portal_document_reviewed",
+      "document",
+      reviewed.id,
+      reviewed.originalName,
+      { matterId: reviewed.matterId },
+    );
+  }
+  res.json(MarkMatterDocumentReviewedResponse.parse({
+    ...reviewed,
+    matterTitle: matter?.title ?? "",
+  }));
 });
 
 router.post("/documents/upload-url", async (req, res): Promise<void> => {
