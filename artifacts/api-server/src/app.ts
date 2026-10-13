@@ -8,8 +8,8 @@ import {
   clerkProxyMiddleware,
   getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware";
+import { apiErrorHandler } from "./middlewares/apiErrorHandler";
 import router from "./routes";
-import { logger } from "./lib/logger";
 
 const app: Express = express();
 
@@ -46,5 +46,6 @@ app.use(
 );
 
 app.use("/api", router);
+app.use(apiErrorHandler);
 
 export default app;

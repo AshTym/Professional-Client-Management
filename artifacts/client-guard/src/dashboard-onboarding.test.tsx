@@ -1,10 +1,12 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route, Router, Switch } from 'wouter';
 
 const apiMocks = vi.hoisted(() => ({
   useGetDashboard: vi.fn(),
+  useGetWorkspace: vi.fn(),
+  useCreateWorkspace: vi.fn(),
   useListActivity: vi.fn(),
   useListClients: vi.fn(),
   useCreateClient: vi.fn(),
@@ -19,12 +21,13 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock('@workspace/api-client-react', () => ({
   ...apiMocks,
   getGetDashboardQueryKey: () => ['dashboard'],
+  getGetWorkspaceQueryKey: () => ['workspace'],
   getListActivityQueryKey: () => ['activity'],
   getListClientsQueryKey: () => ['clients'],
   getGetIntakeOverviewQueryKey: () => ['intake'],
 }));
 
-import { ClientsPage, Dashboard } from './App';
+import { ClientsPage, Dashboard, SetupPage } from './App';
 import Intake from './Intake';
 
 function renderDashboard(initialPath = '/dashboard') {
@@ -59,6 +62,14 @@ describe('new-firm dashboard onboarding', () => {
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
+    });
+    apiMocks.useGetWorkspace.mockReturnValue({
+      data: { workspace: null },
+      isLoading: false,
+    });
+    apiMocks.useCreateWorkspace.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
     });
     apiMocks.useListActivity.mockReturnValue({
       data: [],
@@ -193,5 +204,45 @@ describe('new-firm dashboard onboarding', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry activity' }));
 
     expect(refetchActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps firm details and offers a retry when workspace setup fails', () => {
+    const mutate = vi.fn();
+    apiMocks.useCreateWorkspace.mockReturnValue({ mutate, isPending: false });
+    window.history.replaceState({}, '', '/workspace/setup');
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <Router>
+          <SetupPage />
+        </Router>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.change(screen.getByTestId('input-workspace-name'), {
+      target: { value: 'Northline Advisory' },
+    });
+    fireEvent.click(screen.getByTestId('button-create-workspace'));
+
+    const firstRequest = mutate.mock.calls[0];
+    expect(firstRequest[0]).toEqual({
+      data: { name: 'Northline Advisory', practiceType: 'law' },
+    });
+    act(() => {
+      firstRequest[1].onError(new Error('database connection string must stay private'));
+    });
+
+    expect(screen.getByRole('alert').textContent).toContain(
+      "We couldn't save your firm workspace. Your details are still here.",
+    );
+    expect((screen.getByTestId('input-workspace-name') as HTMLInputElement).value).toBe(
+      'Northline Advisory',
+    );
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(mutate).toHaveBeenCalledTimes(2);
   });
 });
