@@ -603,6 +603,100 @@ test("concurrent workspace setup requests create one firm for the signed-in owne
   assert.equal(setupActivities[0].action, "created the firm workspace");
 });
 
+test("failed workspace setup leaves no partial firm and can be retried", async () => {
+  const userId = `workspace-setup-failure-${randomUUID()}`;
+  const workspaceName = `Retryable Workspace ${randomUUID()}`;
+  const functionName = `fail_workspace_setup_${randomUUID().replaceAll("-", "")}`;
+  const triggerName = `fail_workspace_setup_${randomUUID().replaceAll("-", "")}`;
+
+  await bootstrapPool!.query(`
+    CREATE FUNCTION "${schemaName}"."${functionName}"()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+      IF NEW.clerk_user_id = '${userId}' THEN
+        RAISE EXCEPTION 'Forced workspace setup activity failure';
+      END IF;
+      RETURN NEW;
+    END;
+    $$;
+    CREATE TRIGGER "${triggerName}"
+    BEFORE INSERT ON "${schemaName}".clientguard_activities
+    FOR EACH ROW
+    EXECUTE FUNCTION "${schemaName}"."${functionName}"();
+  `);
+
+  try {
+    const failedResponse = await fetch(`${baseUrl}/workspace`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-test-user-id": userId,
+      },
+      body: JSON.stringify({ name: workspaceName, practiceType: "law" }),
+    });
+    assert.equal(failedResponse.status, 500);
+
+    const failedWorkspaces = await db
+      .select()
+      .from(workspacesTable)
+      .where(eq(workspacesTable.name, workspaceName));
+    const failedMemberships = await db
+      .select()
+      .from(membershipsTable)
+      .where(eq(membershipsTable.clerkUserId, userId));
+    const failedActivities = await db
+      .select()
+      .from(activitiesTable)
+      .where(eq(activitiesTable.clerkUserId, userId));
+    assert.equal(failedWorkspaces.length, 0);
+    assert.equal(failedMemberships.length, 0);
+    assert.equal(failedActivities.length, 0);
+
+    await bootstrapPool!.query(
+      `DROP TRIGGER "${triggerName}" ON "${schemaName}".clientguard_activities`,
+    );
+    await bootstrapPool!.query(
+      `DROP FUNCTION "${schemaName}"."${functionName}"()`,
+    );
+
+    const retry = await request("/workspace", {
+      userId,
+      method: "POST",
+      body: { name: workspaceName, practiceType: "law" },
+    });
+    assert.equal(retry.response.status, 201);
+
+    const retriedWorkspaces = await db
+      .select()
+      .from(workspacesTable)
+      .where(eq(workspacesTable.name, workspaceName));
+    const retriedMemberships = await db
+      .select()
+      .from(membershipsTable)
+      .where(eq(membershipsTable.clerkUserId, userId));
+    const retriedActivities = await db
+      .select()
+      .from(activitiesTable)
+      .where(eq(activitiesTable.clerkUserId, userId));
+    assert.equal(retriedWorkspaces.length, 1);
+    assert.equal(retriedMemberships.length, 1);
+    assert.equal(retriedMemberships[0].workspaceId, retriedWorkspaces[0].id);
+    assert.equal(retriedMemberships[0].role, "owner");
+    assert.equal(retriedActivities.length, 1);
+    assert.equal(retriedActivities[0].workspaceId, retriedWorkspaces[0].id);
+    assert.equal(retriedActivities[0].action, "created the firm workspace");
+  } finally {
+    await bootstrapPool!.query(
+      `DROP TRIGGER IF EXISTS "${triggerName}" ON "${schemaName}".clientguard_activities`,
+    );
+    await bootstrapPool!.query(
+      `DROP FUNCTION IF EXISTS "${schemaName}"."${functionName}"()`,
+    );
+  }
+});
+
 test("dashboard totals and recent activity include only the current firm's records", async () => {
   const now = Date.now();
   const overdueAt = new Date(now - 24 * 60 * 60 * 1000);
