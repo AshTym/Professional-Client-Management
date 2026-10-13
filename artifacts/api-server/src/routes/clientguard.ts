@@ -1662,10 +1662,34 @@ router.get("/activity", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  const filters = [eq(activitiesTable.workspaceId, access.workspaceId)];
+  if (parsed.data.actorMemberId !== undefined) {
+    const [actorMember] = await db
+      .select({ clerkUserId: membershipsTable.clerkUserId })
+      .from(membershipsTable)
+      .where(
+        and(
+          eq(membershipsTable.id, parsed.data.actorMemberId),
+          eq(membershipsTable.workspaceId, access.workspaceId),
+        ),
+      )
+      .limit(1);
+    if (!actorMember) {
+      res.json([]);
+      return;
+    }
+    filters.push(eq(activitiesTable.clerkUserId, actorMember.clerkUserId));
+  }
+  if (parsed.data.entityType !== undefined) {
+    filters.push(eq(activitiesTable.entityType, parsed.data.entityType));
+  }
+  if (parsed.data.entityId !== undefined) {
+    filters.push(eq(activitiesTable.entityId, parsed.data.entityId));
+  }
   const activity = await db
     .select()
     .from(activitiesTable)
-    .where(eq(activitiesTable.workspaceId, access.workspaceId))
+    .where(and(...filters))
     .orderBy(desc(activitiesTable.occurredAt), desc(activitiesTable.id))
     .limit(parsed.data.limit)
     .offset(parsed.data.offset);

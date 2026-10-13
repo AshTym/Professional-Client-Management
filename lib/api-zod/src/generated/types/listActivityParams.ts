@@ -5,6 +5,7 @@
  * ClientGuard firm-scoped client and matter management API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListActivityEntityType } from './listActivityEntityType';
 
 export type ListActivityParams = {
 /**
@@ -16,4 +17,18 @@ limit?: number;
  * @minimum 0
  */
 offset?: number;
+/**
+ * Restrict results to activity by a current member of this firm.
+ * @minimum 1
+ */
+actorMemberId?: number;
+/**
+ * Restrict results to a related client, matter, or workspace record.
+ */
+entityType?: ListActivityEntityType;
+/**
+ * ID of the related record to include.
+ * @minimum 1
+ */
+entityId?: number;
 };

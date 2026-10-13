@@ -82,6 +82,7 @@ export * from './legalHold';
 export * from './legalHoldEntityType';
 export * from './legalHoldInput';
 export * from './legalHoldInputEntityType';
+export * from './listActivityEntityType';
 export * from './listActivityParams';
 export * from './listAuditEventsParams';
 export * from './listClientsParams';

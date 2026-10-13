@@ -379,9 +379,14 @@ export const listActivityQueryOffsetMin = 0;
 
 
 
+
+
 export const ListActivityQueryParams = zod.object({
   "limit": zod.coerce.number().int().min(1).max(listActivityQueryLimitMax).default(listActivityQueryLimitDefault),
-  "offset": zod.coerce.number().int().min(listActivityQueryOffsetMin).default(listActivityQueryOffsetDefault)
+  "offset": zod.coerce.number().int().min(listActivityQueryOffsetMin).default(listActivityQueryOffsetDefault),
+  "actorMemberId": zod.coerce.number().int().min(1).optional().describe('Restrict results to activity by a current member of this firm.'),
+  "entityType": zod.enum(['client', 'matter', 'workspace']).optional().describe('Restrict results to a related client, matter, or workspace record.'),
+  "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.')
 })
 
 export const ListActivityResponseItem = zod.object({

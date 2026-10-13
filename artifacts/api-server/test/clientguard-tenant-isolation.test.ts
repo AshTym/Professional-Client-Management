@@ -1430,6 +1430,144 @@ test("activity pagination keeps page boundaries and firm isolation", async () =>
   }
 });
 
+test("activity filters stay firm-scoped and apply before pagination", async () => {
+  const insertedActivityIds: number[] = [];
+  const occurredAt = new Date("2099-01-02T00:00:00.000Z");
+  const ownerActions = [
+    `filtered client event oldest ${randomUUID()}`,
+    `filtered client event middle ${randomUUID()}`,
+    `filtered client event newest ${randomUUID()}`,
+  ];
+  const unrelatedActions = [
+    `filtered matter event ${randomUUID()}`,
+    `filtered teammate event ${randomUUID()}`,
+    `filtered other firm event ${randomUUID()}`,
+  ];
+
+  try {
+    const [primaryOwner] = await db
+      .select({ id: membershipsTable.id })
+      .from(membershipsTable)
+      .where(
+        and(
+          eq(membershipsTable.workspaceId, firms.primary.workspaceId),
+          eq(membershipsTable.clerkUserId, firms.primary.ownerId),
+        ),
+      );
+    const [primaryTeammate] = await db
+      .select({ id: membershipsTable.id, clerkUserId: membershipsTable.clerkUserId })
+      .from(membershipsTable)
+      .where(
+        and(
+          eq(membershipsTable.workspaceId, firms.primary.workspaceId),
+          eq(membershipsTable.displayName, "Read Only User"),
+        ),
+      );
+    const [otherOwner] = await db
+      .select({ id: membershipsTable.id })
+      .from(membershipsTable)
+      .where(
+        and(
+          eq(membershipsTable.workspaceId, firms.other.workspaceId),
+          eq(membershipsTable.clerkUserId, firms.other.ownerId),
+        ),
+      );
+    assert.ok(primaryOwner);
+    assert.ok(primaryTeammate);
+    assert.ok(otherOwner);
+
+    const inserted = await db
+      .insert(activitiesTable)
+      .values([
+        ...ownerActions.map((action, index) => ({
+          workspaceId: firms.primary.workspaceId,
+          clerkUserId: firms.primary.ownerId,
+          actor: "Primary Owner",
+          action,
+          entityType: "client",
+          entityId: firms.primary.clientId,
+          entityLabel: "Primary test client",
+          occurredAt: new Date(occurredAt.getTime() + index * 60_000),
+        })),
+        {
+          workspaceId: firms.primary.workspaceId,
+          clerkUserId: firms.primary.ownerId,
+          actor: "Primary Owner",
+          action: unrelatedActions[0],
+          entityType: "matter",
+          entityId: firms.primary.matterId,
+          entityLabel: "Primary test matter",
+          occurredAt,
+        },
+        {
+          workspaceId: firms.primary.workspaceId,
+          clerkUserId: primaryTeammate.clerkUserId,
+          actor: "Read Only User",
+          action: unrelatedActions[1],
+          entityType: "client",
+          entityId: firms.primary.clientId,
+          entityLabel: "Primary test client",
+          occurredAt,
+        },
+        {
+          workspaceId: firms.other.workspaceId,
+          clerkUserId: firms.other.ownerId,
+          actor: "Other Firm Owner",
+          action: unrelatedActions[2],
+          entityType: "client",
+          entityId: firms.other.clientId,
+          entityLabel: "Other test client",
+          occurredAt,
+        },
+      ])
+      .returning({ id: activitiesTable.id });
+    insertedActivityIds.push(...inserted.map(({ id }) => id));
+
+    const firstPage = await request(
+      `/activity?actorMemberId=${primaryOwner.id}&entityType=client&entityId=${firms.primary.clientId}&limit=2&offset=0`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(firstPage.response.status, 200);
+    assert.deepEqual(
+      (firstPage.body as Array<{ action: string }>).map(({ action }) => action),
+      [ownerActions[2], ownerActions[1]],
+    );
+
+    const secondPage = await request(
+      `/activity?actorMemberId=${primaryOwner.id}&entityType=client&entityId=${firms.primary.clientId}&limit=2&offset=2`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(secondPage.response.status, 200);
+    assert.deepEqual(
+      (secondPage.body as Array<{ action: string }>).map(({ action }) => action),
+      [ownerActions[0], "primary-only activity"],
+    );
+
+    const otherFirmMemberFilter = await request(
+      `/activity?actorMemberId=${otherOwner.id}`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(otherFirmMemberFilter.response.status, 200);
+    assert.deepEqual(otherFirmMemberFilter.body, []);
+
+    const recordFilter = await request(
+      `/activity?entityType=matter&entityId=${firms.primary.matterId}`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(recordFilter.response.status, 200);
+    assert.deepEqual(
+      (recordFilter.body as Array<{ action: string }>).map(({ action }) => action),
+      [unrelatedActions[0]],
+    );
+  } finally {
+    if (insertedActivityIds.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, insertedActivityIds));
+    }
+  }
+});
+
 test("activity orders events with tied timestamps by descending ID for each firm", async () => {
   const insertedActivityIds: number[] = [];
   const occurredAt = new Date("2099-01-01T00:00:00.000Z");

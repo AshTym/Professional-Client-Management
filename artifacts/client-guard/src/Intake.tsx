@@ -1,9 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCreateIntake, useGetIntakeOverview, useListClients, useOpenMatterFromIntake, useReviewIntake, useSaveIntakeChecks, getGetClientQueryKey, getGetDashboardQueryKey, getGetIntakeOverviewQueryKey, getListActivityQueryKey, getListClientsQueryKey, getListMattersQueryKey } from '@workspace/api-client-react';
+import { useCreateIntake, useGetIntakeOverview, useListClients, useListWorkspaceAssignmentMembers, useOpenMatterFromIntake, useReviewIntake, useSaveIntakeChecks, getGetClientQueryKey, getGetDashboardQueryKey, getGetIntakeOverviewQueryKey, getListActivityQueryKey, getListClientsQueryKey, getListMattersQueryKey } from '@workspace/api-client-react';
 import type { IntakeCase, IntakeInput, IntakeRule } from '@workspace/api-client-react';
 import { AlertTriangle, Check, ClipboardCheck, Plus, ShieldCheck } from 'lucide-react';
-import { useCreateIntake, useGetIntakeOverview, useListClients, useListWorkspaceAssignmentMembers, useOpenMatterFromIntake, useReviewIntake, useSaveIntakeChecks, getGetIntakeOverviewQueryKey, getListClientsQueryKey, getListMattersQueryKey } from '@workspace/api-client-react';
 
 const inputClass = 'field';
 const date = (value?: string | null) => value ? new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not set';

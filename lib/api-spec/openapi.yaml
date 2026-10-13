@@ -401,6 +401,27 @@ paths:
             type: integer
             minimum: 0
             default: 0
+        - name: actorMemberId
+          in: query
+          required: false
+          description: Restrict results to activity by a current member of this firm.
+          schema:
+            type: integer
+            minimum: 1
+        - name: entityType
+          in: query
+          required: false
+          description: Restrict results to a related client, matter, or workspace record.
+          schema:
+            type: string
+            enum: [client, matter, workspace]
+        - name: entityId
+          in: query
+          required: false
+          description: ID of the related record to include.
+          schema:
+            type: integer
+            minimum: 1
       responses:
         "200":
           description: Recent audit events

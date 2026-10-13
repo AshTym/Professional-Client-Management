@@ -1424,7 +1424,30 @@ limit?: number;
  * @minimum 0
  */
 offset?: number;
+/**
+ * Restrict results to activity by a current member of this firm.
+ * @minimum 1
+ */
+actorMemberId?: number;
+/**
+ * Restrict results to a related client, matter, or workspace record.
+ */
+entityType?: ListActivityEntityType;
+/**
+ * ID of the related record to include.
+ * @minimum 1
+ */
+entityId?: number;
 };
+
+export type ListActivityEntityType = typeof ListActivityEntityType[keyof typeof ListActivityEntityType];
+
+
+export const ListActivityEntityType = {
+  client: 'client',
+  matter: 'matter',
+  workspace: 'workspace',
+} as const;
 
 export type ListClientsParams = {
 search?: string;
