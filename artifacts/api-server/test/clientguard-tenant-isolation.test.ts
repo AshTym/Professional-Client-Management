@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import express, { type Request } from "express";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { Pool } from "pg";
+import { Readable } from "node:stream";
 import type { Server } from "node:http";
 import { clerkClient } from "@clerk/express";
 
@@ -42,6 +43,9 @@ let activitiesTable: typeof import("@workspace/db").activitiesTable;
 let portalAccessTable: typeof import("@workspace/db").portalAccessTable;
 let portalMessagesTable: typeof import("@workspace/db").portalMessagesTable;
 let portalRequestsTable: typeof import("@workspace/db").portalRequestsTable;
+let documentsTable: typeof import("@workspace/db").documentsTable;
+let auditEventsTable: typeof import("@workspace/db").auditEventsTable;
+let ObjectStorageServiceClass: typeof import("../src/lib/objectStorage.ts").ObjectStorageService;
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -249,6 +253,17 @@ before(async () => {
       generated_at timestamptz NOT NULL DEFAULT now(),
       reviewed_at timestamptz
     );
+    CREATE TABLE "${schemaName}".clientguard_portal_updates (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL,
+      client_id integer NOT NULL,
+      matter_id integer NOT NULL,
+      update_draft_id integer NOT NULL,
+      subject text NOT NULL,
+      body text NOT NULL,
+      published_by_clerk_user_id text NOT NULL,
+      published_at timestamptz NOT NULL DEFAULT now()
+    );
     CREATE TABLE "${schemaName}".clientguard_intake_settings (
       id serial PRIMARY KEY,
       workspace_id integer NOT NULL UNIQUE REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,
@@ -351,6 +366,8 @@ before(async () => {
     portalAccessTable,
     portalMessagesTable,
     portalRequestsTable,
+    documentsTable,
+    auditEventsTable,
   } = database);
 
   const [primaryWorkspace] = await db
@@ -508,6 +525,9 @@ before(async () => {
   const { default: operationsRouter } = await import(
     "../src/routes/clientguard-operations.ts"
   );
+  ({ ObjectStorageService: ObjectStorageServiceClass } = await import(
+    "../src/lib/objectStorage.ts"
+  ));
   app.use("/api", router);
   app.use("/api", workflowRouter);
   app.use("/api", operationsRouter);
@@ -3873,4 +3893,229 @@ test("client portal views stay scoped when a client is also a firm member", asyn
   assert.equal(clientMessages.response.status, 200);
   assert.equal((clientMessages.body as Array<{ senderType: string }>).length, 1);
   assert.equal((clientMessages.body as Array<{ senderType: string }>)[0].senderType, "client");
+});
+
+test("client portal documents stay private across clients and audit upload, download, and denied access", async (t) => {
+  const suffix = randomUUID();
+  const portalUserId = `document-portal-${suffix}`;
+  const [otherClient] = await db
+    .insert(clientsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      name: `Document Test Other Client ${suffix}`,
+      owner: "Primary Owner",
+      status: "active",
+    })
+    .returning();
+  const [otherClientMatter] = await db
+    .insert(mattersTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clientId: otherClient.id,
+      title: `Document Test Other Matter ${suffix}`,
+      reference: `DOCUMENT-${suffix.slice(0, 8)}`,
+      matterType: "advisory",
+      responsible: "Primary Owner",
+    })
+    .returning();
+  await db.insert(portalAccessTable).values({
+    workspaceId: firms.primary.workspaceId,
+    clientId: firms.primary.clientId,
+    email: `${portalUserId}@example.test`,
+    clerkUserId: portalUserId,
+    status: "active",
+    invitedByClerkUserId: firms.primary.ownerId,
+  });
+
+  const [sharedDocument] = await db
+    .insert(documentsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      matterId: firms.primary.matterId,
+      uploadedByClerkUserId: firms.primary.ownerId,
+      objectPath: `/objects/uploads/shared-${suffix}`,
+      originalName: `Shared ${suffix}.txt`,
+      contentType: "text/plain",
+      sizeBytes: 23,
+      status: "ready",
+      clientVisible: true,
+    })
+    .returning();
+  const [internalDocument] = await db
+    .insert(documentsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      matterId: firms.primary.matterId,
+      uploadedByClerkUserId: firms.primary.ownerId,
+      objectPath: `/objects/uploads/internal-${suffix}`,
+      originalName: `Internal ${suffix}.txt`,
+      contentType: "text/plain",
+      sizeBytes: 18,
+      status: "ready",
+      clientVisible: false,
+    })
+    .returning();
+  const [otherClientDocument] = await db
+    .insert(documentsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      matterId: otherClientMatter.id,
+      uploadedByClerkUserId: firms.primary.ownerId,
+      objectPath: `/objects/uploads/other-client-${suffix}`,
+      originalName: `Other Client ${suffix}.txt`,
+      contentType: "text/plain",
+      sizeBytes: 20,
+      status: "ready",
+      clientVisible: true,
+    })
+    .returning();
+  const [otherFirmDocument] = await db
+    .insert(documentsTable)
+    .values({
+      workspaceId: firms.other.workspaceId,
+      matterId: firms.other.matterId,
+      uploadedByClerkUserId: firms.other.ownerId,
+      objectPath: `/objects/uploads/other-firm-${suffix}`,
+      originalName: `Other Firm ${suffix}.txt`,
+      contentType: "text/plain",
+      sizeBytes: 17,
+      status: "ready",
+      clientVisible: true,
+    })
+    .returning();
+
+  const storedFile = (objectPath: string) => ({
+    getMetadata: async () => [{
+      size: objectPath.endsWith("portal-upload-test") ? "5" : "23",
+      contentType: "text/plain",
+    }],
+    createReadStream: () => Readable.from(["shared private document"]),
+  });
+  t.mock.method(
+    ObjectStorageServiceClass.prototype,
+    "getObjectEntityUploadURL",
+    async () => "https://storage.googleapis.com/test/uploads/portal-upload-test",
+  );
+  t.mock.method(
+    ObjectStorageServiceClass.prototype,
+    "normalizeObjectEntityPath",
+    () => "/objects/uploads/portal-upload-test",
+  );
+  t.mock.method(
+    ObjectStorageServiceClass.prototype,
+    "getObjectEntityFile",
+    async (objectPath: string) => storedFile(objectPath) as never,
+  );
+
+  const context = await request("/portal/context", { userId: portalUserId });
+  assert.equal(context.response.status, 200);
+  const listedDocuments = (
+    context.body as { documents: Array<{ id: number; matterId: number }> }
+  ).documents;
+  assert.deepEqual(
+    listedDocuments.map(({ id }) => id),
+    [sharedDocument.id],
+  );
+  assert.equal(listedDocuments[0]?.matterId, firms.primary.matterId);
+
+  const downloaded = await fetch(
+    `${baseUrl}/portal/documents/${sharedDocument.id}/file`,
+    { headers: { "x-test-user-id": portalUserId } },
+  );
+  assert.equal(downloaded.status, 200);
+  assert.equal(await downloaded.text(), "shared private document");
+  assert.equal(downloaded.headers.get("cache-control"), "private, no-store");
+
+  for (const documentId of [
+    internalDocument.id,
+    otherClientDocument.id,
+    otherFirmDocument.id,
+  ]) {
+    const denied = await request(`/portal/documents/${documentId}/file`, {
+      userId: portalUserId,
+    });
+    assert.equal(denied.response.status, 404);
+    assert.deepEqual(denied.body, { error: "Shared document not found." });
+  }
+
+  const rejectedMatterUpload = await request("/portal/documents/upload-url", {
+    userId: portalUserId,
+    method: "POST",
+    body: {
+      matterId: otherClientMatter.id,
+      name: "not-ours.txt",
+      size: 5,
+      contentType: "text/plain",
+    },
+  });
+  assert.equal(rejectedMatterUpload.response.status, 404);
+
+  const rejectedInternalUploadCompletion = await request(
+    `/portal/documents/${internalDocument.id}/complete`,
+    { userId: portalUserId, method: "POST", body: {} },
+  );
+  assert.equal(rejectedInternalUploadCompletion.response.status, 404);
+
+  const upload = await request("/portal/documents/upload-url", {
+    userId: portalUserId,
+    method: "POST",
+    body: {
+      matterId: firms.primary.matterId,
+      name: "client-upload.txt",
+      size: 5,
+      contentType: "text/plain",
+    },
+  });
+  assert.equal(upload.response.status, 200);
+  const uploadId = (upload.body as { id: number }).id;
+  const [uploadRecord] = await db
+    .select()
+    .from(documentsTable)
+    .where(eq(documentsTable.id, uploadId));
+  assert.equal(uploadRecord.clientVisible, false);
+  assert.equal(uploadRecord.uploadedFromPortal, true);
+  assert.equal(uploadRecord.status, "uploading");
+
+  const completedUpload = await request(
+    `/portal/documents/${uploadId}/complete`,
+    { userId: portalUserId, method: "POST", body: {} },
+  );
+  assert.equal(completedUpload.response.status, 200);
+  assert.equal((completedUpload.body as { status: string }).status, "ready");
+
+  const events = await db
+    .select()
+    .from(auditEventsTable)
+    .where(and(
+      eq(auditEventsTable.workspaceId, firms.primary.workspaceId),
+      eq(auditEventsTable.clerkUserId, portalUserId),
+    ));
+  assert.ok(events.some((event) =>
+    event.action === "client_portal_document_downloaded" &&
+    event.entityId === sharedDocument.matterId &&
+    event.details.documentId === sharedDocument.id,
+  ));
+  assert.ok(events.some((event) =>
+    event.action === "client_portal_document_upload_started" &&
+    event.entityId === firms.primary.matterId &&
+    event.details.documentId === uploadId,
+  ));
+  assert.ok(events.some((event) =>
+    event.action === "client_portal_document_uploaded" &&
+    event.entityId === firms.primary.matterId &&
+    event.details.documentId === uploadId,
+  ));
+
+  const deniedEvents = events.filter((event) =>
+    event.action === "client_portal_document_access_denied",
+  );
+  assert.equal(deniedEvents.length, 5);
+  assert.deepEqual(
+    deniedEvents.map((event) => event.details.operation).sort(),
+    ["download", "download", "download", "upload", "upload_complete"],
+  );
+  assert.ok(deniedEvents.every((event) =>
+    event.entityLabel === "Unavailable document" ||
+    event.entityLabel === "Unavailable matter",
+  ));
 });

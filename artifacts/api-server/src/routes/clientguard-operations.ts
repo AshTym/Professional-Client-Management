@@ -219,6 +219,24 @@ async function requireClientGrant(req: Request, res: Response) {
   return { identity, grant };
 }
 
+async function auditPortalDocumentAccessDenied(
+  workspaceId: number,
+  identity: ClientGuardIdentity,
+  operation: "upload" | "upload_complete" | "download",
+  entityType: "matter" | "document",
+  requestedId: number | null,
+) {
+  await appendAudit(
+    workspaceId,
+    identity,
+    "client_portal_document_access_denied",
+    entityType,
+    requestedId,
+    entityType === "matter" ? "Unavailable matter" : "Unavailable document",
+    { operation, requestedId },
+  );
+}
+
 async function getMatterTitle(workspaceId: number, matterId: number) {
   const [matter] = await db
     .select({ title: mattersTable.title })
@@ -924,6 +942,13 @@ router.post("/portal/documents/upload-url", async (req, res): Promise<void> => {
     eq(mattersTable.clientId, session.grant.clientId),
   )).limit(1);
   if (!matter) {
+    await auditPortalDocumentAccessDenied(
+      session.grant.workspaceId,
+      session.identity,
+      "upload",
+      "matter",
+      parsed.data.matterId,
+    );
     res.status(404).json({ error: "Matter not found for this client account." });
     return;
   }
@@ -958,6 +983,13 @@ router.post("/portal/documents/:id/complete", async (req, res): Promise<void> =>
   if (!session) return;
   const id = idFrom(req.params.id);
   if (!id) {
+    await auditPortalDocumentAccessDenied(
+      session.grant.workspaceId,
+      session.identity,
+      "upload_complete",
+      "document",
+      null,
+    );
     res.status(400).json({ error: "Invalid document ID." });
     return;
   }
@@ -968,14 +1000,29 @@ router.post("/portal/documents/:id/complete", async (req, res): Promise<void> =>
     eq(documentsTable.uploadedByClerkUserId, session.identity.userId),
   )).limit(1);
   if (!document) {
+    await auditPortalDocumentAccessDenied(
+      session.grant.workspaceId,
+      session.identity,
+      "upload_complete",
+      "document",
+      id,
+    );
     res.status(404).json({ error: "Portal upload not found." });
     return;
   }
   const [matter] = await db.select().from(mattersTable).where(and(
     eq(mattersTable.id, document.matterId),
+    eq(mattersTable.workspaceId, session.grant.workspaceId),
     eq(mattersTable.clientId, session.grant.clientId),
   )).limit(1);
   if (!matter) {
+    await auditPortalDocumentAccessDenied(
+      session.grant.workspaceId,
+      session.identity,
+      "upload_complete",
+      "document",
+      id,
+    );
     res.status(404).json({ error: "Matter not found for this client account." });
     return;
   }
@@ -1013,6 +1060,13 @@ router.get("/portal/documents/:id/file", async (req, res): Promise<void> => {
   if (!session) return;
   const id = idFrom(req.params.id);
   if (!id) {
+    await auditPortalDocumentAccessDenied(
+      session.grant.workspaceId,
+      session.identity,
+      "download",
+      "document",
+      null,
+    );
     res.status(400).json({ error: "Invalid document ID." });
     return;
   }
@@ -1027,6 +1081,13 @@ router.get("/portal/documents/:id/file", async (req, res): Promise<void> => {
       eq(mattersTable.clientId, session.grant.clientId),
     )).limit(1);
   if (!row) {
+    await auditPortalDocumentAccessDenied(
+      session.grant.workspaceId,
+      session.identity,
+      "download",
+      "document",
+      id,
+    );
     res.status(404).json({ error: "Shared document not found." });
     return;
   }
