@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import { useCreateIntake, useCreateIntakeDraft, useDeleteIntakeDraft, useGetIntakeDrafts, useGetIntakeOverview, useListClients, useListWorkspaceAssignmentMembers, useOpenMatterFromIntake, useReviewIntake, useSaveIntakeChecks, useSubmitIntakeDraft, useUpdateIntakeDraft, getGetClientQueryKey, getGetDashboardQueryKey, getGetIntakeDraftsQueryKey, getGetIntakeOverviewQueryKey, getListActivityQueryKey, getListClientsQueryKey, getListMattersQueryKey } from '@workspace/api-client-react';
 import type { Client, IntakeCase, IntakeDraft, IntakeDraftData, IntakeInput, IntakeRule } from '@workspace/api-client-react';
 import { AlertTriangle, Check, ClipboardCheck, Plus, ShieldCheck } from 'lucide-react';
@@ -43,6 +44,7 @@ const intakeStatusOptions: Array<{ value: IntakeCase['status']; label: string }>
 
 export default function Intake() {
   const qc = useQueryClient();
+  const [, setLocation] = useLocation();
   const overview = useGetIntakeOverview({ query: { queryKey: getGetIntakeOverviewQueryKey() } });
   const draftsQuery = useGetIntakeDrafts({ query: { queryKey: getGetIntakeDraftsQueryKey() } });
   const clients = useListClients(undefined, { query: { queryKey: getListClientsQueryKey() } });
@@ -141,6 +143,10 @@ export default function Intake() {
 
   function closeForm() {
     setFormOpen(false);
+    const params = new URLSearchParams(window.location.search);
+    params.delete('create');
+    const query = params.toString();
+    setLocation(`/intake${query ? `?${query}` : ''}`, { replace: true });
     setSelectedClientId(initialClientId);
     setActiveDraft(null);
     prefilledClientIdRef.current = null;

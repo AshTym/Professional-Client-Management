@@ -301,6 +301,31 @@ describe('dashboard shortcuts and matter exports', () => {
     expect((screen.getByLabelText('Client / entity name') as HTMLInputElement).value).toBe('');
   });
 
+  it('removes the create query when staff close an intake form and keeps it closed after refresh', () => {
+    renderAt('/intake?create=1&clientId=5');
+
+    expect(screen.getByRole('dialog', { name: 'Start a client intake' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close intake' }));
+
+    expect(window.location.search).toBe('?clientId=5');
+    expect(screen.queryByRole('dialog', { name: 'Start a client intake' })).toBeNull();
+
+    const dismissedPath = `${window.location.pathname}${window.location.search}`;
+    cleanup();
+    renderAt(dismissedPath);
+
+    expect(screen.queryByRole('dialog', { name: 'Start a client intake' })).toBeNull();
+  });
+
+  it('removes the create query when staff cancel intake by clicking outside the dialog', () => {
+    renderAt('/intake?create=1&firstMatter=1');
+
+    fireEvent.mouseDown(screen.getByRole('presentation'));
+
+    expect(window.location.search).toBe('?firstMatter=1');
+    expect(screen.queryByRole('dialog', { name: 'Start a client intake' })).toBeNull();
+  });
+
   it('saves an incomplete intake as a draft instead of submitting it for review', () => {
     const saveDraft = vi.fn();
     const submitIntake = vi.fn();
