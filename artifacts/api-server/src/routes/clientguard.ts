@@ -85,8 +85,10 @@ import {
   logActivity,
   logAuditEvent,
   membershipFor,
+  sendOwnershipTransferNotices,
   workspaceContext,
 } from "../lib/clientguard-auth";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -703,6 +705,7 @@ router.post(
       return;
     }
 
+    const transferId = randomUUID();
     const result = await db.transaction(async (tx) => {
       const members = await tx
         .select()
@@ -754,7 +757,11 @@ router.post(
         entityLabel: access.workspaceName,
       });
 
-      return { kind: "transferred" as const, member: updatedOwner };
+      return {
+        kind: "transferred" as const,
+        member: updatedOwner,
+        previousOwner: currentOwner,
+      };
     });
 
     if (result.kind === "not-owner") {
@@ -768,6 +775,30 @@ router.post(
     if (result.kind === "self") {
       res.status(400).json({ error: "Choose another active firm member to receive ownership." });
       return;
+    }
+    const noticeResults = await sendOwnershipTransferNotices({
+      transferId,
+      workspaceName: access.workspaceName,
+      previousOwner: {
+        clerkUserId: result.previousOwner.clerkUserId,
+        displayName: result.previousOwner.displayName || result.previousOwner.email,
+      },
+      newOwner: {
+        clerkUserId: result.member.clerkUserId,
+        displayName: result.member.displayName || result.member.email,
+      },
+    });
+    for (const notice of noticeResults) {
+      if (notice.error) {
+        logger.warn(
+          {
+            workspaceId: access.workspaceId,
+            recipientRole: notice.recipientRole,
+            err: notice.error,
+          },
+          "Could not send firm ownership transfer notice",
+        );
+      }
     }
     res.json(TransferWorkspaceOwnershipResponse.parse(memberResponse(result.member)));
   },

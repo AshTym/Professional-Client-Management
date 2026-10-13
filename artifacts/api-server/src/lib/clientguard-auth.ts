@@ -1,4 +1,4 @@
-import { getAuth } from "@clerk/express";
+import { clerkClient, getAuth } from "@clerk/express";
 import type { Request, Response } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { auditEventsTable, db, membershipsTable, workspacesTable } from "@workspace/db";
@@ -15,6 +15,62 @@ export type FirmAccess = ClientGuardIdentity & {
   practiceType: string;
   role: string;
 };
+
+export type OwnershipTransferNoticeRecipient = {
+  clerkUserId: string;
+  displayName: string;
+};
+
+export async function sendOwnershipTransferNotices(input: {
+  transferId: string;
+  workspaceName: string;
+  previousOwner: OwnershipTransferNoticeRecipient;
+  newOwner: OwnershipTransferNoticeRecipient;
+}): Promise<Array<{ recipientRole: "former_owner" | "new_owner"; error: unknown | null }>> {
+  const senderAddress = process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL?.trim();
+  const notices = [
+    {
+      recipientRole: "former_owner" as const,
+      recipient: input.previousOwner,
+      subject: `Your role changed at ${input.workspaceName}`,
+      text: `Hello ${input.previousOwner.displayName},\n\nFirm ownership of ${input.workspaceName} has been transferred to ${input.newOwner.displayName}. Your role is now admin, and you continue to have admin access to the firm.`,
+      idempotencyKey: `ownership_${input.transferId}_former_owner`,
+    },
+    {
+      recipientRole: "new_owner" as const,
+      recipient: input.newOwner,
+      subject: `You are now the owner of ${input.workspaceName}`,
+      text: `Hello ${input.newOwner.displayName},\n\nYou are now the owner of ${input.workspaceName}. ${input.previousOwner.displayName} is now an admin.`,
+      idempotencyKey: `ownership_${input.transferId}_new_owner`,
+    },
+  ];
+
+  if (!senderAddress) {
+    const error = new Error(
+      "CLIENTGUARD_NOTIFICATION_FROM_EMAIL is not configured.",
+    );
+    return notices.map(({ recipientRole }) => ({ recipientRole, error }));
+  }
+
+  return Promise.all(
+    notices.map(async (notice) => {
+      try {
+        await clerkClient.emails.create(
+          {
+            to: { userId: notice.recipient.clerkUserId },
+            from: { address: senderAddress, name: "ClientGuard" },
+            subject: notice.subject,
+            text: notice.text,
+          },
+          { idempotencyKey: notice.idempotencyKey },
+        );
+        return { recipientRole: notice.recipientRole, error: null };
+      } catch (error) {
+        return { recipientRole: notice.recipientRole, error };
+      }
+    }),
+  );
+}
 
 function claimString(
   claims: Record<string, unknown>,

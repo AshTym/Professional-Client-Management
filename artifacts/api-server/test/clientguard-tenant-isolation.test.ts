@@ -1537,7 +1537,7 @@ test("firm owners and admins can manage teammate roles with scoped audit events"
   }
 });
 
-test("only the current owner can transfer ownership to an active member", async () => {
+test("only the current owner can transfer ownership to an active member and both owners are notified", async (t) => {
   const adminId = `ownership-admin-${randomUUID()}`;
   const successorId = `ownership-successor-${randomUUID()}`;
   const successorName = `Ownership Successor ${randomUUID()}`;
@@ -1572,6 +1572,21 @@ test("only the current owner can transfer ownership to an active member", async 
     })
     .returning();
   const activityIds: number[] = [];
+  const previousNotificationSender = process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL;
+  process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL = "notifications@example.test";
+  const sentNotifications: Array<{
+    to: { userId?: string };
+    subject: string;
+    text: string;
+  }> = [];
+  const createEmail = t.mock.method(
+    clerkClient.emails,
+    "create",
+    async (params) => {
+      sentNotifications.push(params as typeof sentNotifications[number]);
+      return {} as never;
+    },
+  );
 
   try {
     const adminTransfer = await request(
@@ -1599,6 +1614,17 @@ test("only the current owner can transfer ownership to an active member", async 
     assert.equal(transferred.response.status, 200);
     assert.equal((transferred.body as { id: number; role: string }).id, successor.id);
     assert.equal((transferred.body as { role: string }).role, "owner");
+    assert.equal(createEmail.mock.callCount(), 2);
+    assert.deepEqual(
+      sentNotifications.map(({ to }) => to.userId).sort(),
+      [currentOwner.clerkUserId, successorId].sort(),
+    );
+    assert(sentNotifications.some(({ subject, text }) =>
+      subject.includes("role changed") && text.includes("Your role is now admin"),
+    ));
+    assert(sentNotifications.some(({ subject, text }) =>
+      subject.includes("now the owner") && text.includes("You are now the owner"),
+    ));
 
     const oldOwnerContext = await request("/workspace", {
       userId: firms.primary.ownerId,
@@ -1658,6 +1684,94 @@ test("only the current owner can transfer ownership to an active member", async 
       .update(membershipsTable)
       .set({ role: "owner" })
       .where(eq(membershipsTable.id, currentOwner.id));
+    if (previousNotificationSender === undefined) {
+      delete process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL;
+    } else {
+      process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL = previousNotificationSender;
+    }
+  }
+});
+
+test("ownership transfer remains committed when owner notification emails fail", async (t) => {
+  const successorId = `ownership-notice-failure-${randomUUID()}`;
+  const [currentOwner] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, firms.primary.ownerId))
+    .limit(1);
+  const [successor] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: successorId,
+      email: "ownership-notice-failure@example.test",
+      displayName: "Notice Failure Successor",
+      role: "professional",
+    })
+    .returning();
+  const previousNotificationSender = process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL;
+  process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL = "notifications@example.test";
+  const activityIds: number[] = [];
+  const createEmail = t.mock.method(
+    clerkClient.emails,
+    "create",
+    async () => {
+      throw new Error("Email provider unavailable");
+    },
+  );
+
+  try {
+    const transferred = await request(
+      `/workspace/members/${successor.id}/transfer-ownership`,
+      { userId: firms.primary.ownerId, method: "POST" },
+    );
+    assert.equal(transferred.response.status, 200);
+    assert.equal(createEmail.mock.callCount(), 2);
+
+    const [formerOwner] = await db
+      .select()
+      .from(membershipsTable)
+      .where(eq(membershipsTable.clerkUserId, firms.primary.ownerId))
+      .limit(1);
+    const [newOwner] = await db
+      .select()
+      .from(membershipsTable)
+      .where(eq(membershipsTable.clerkUserId, successorId))
+      .limit(1);
+    assert.equal(formerOwner.role, "admin");
+    assert.equal(newOwner.role, "owner");
+    const [noticeTransferEvent] = await db
+      .select({ id: activitiesTable.id })
+      .from(activitiesTable)
+      .where(
+        and(
+          eq(activitiesTable.workspaceId, firms.primary.workspaceId),
+          eq(
+            activitiesTable.action,
+            `transferred firm ownership from ${currentOwner.displayName || currentOwner.email} to Notice Failure Successor`,
+          ),
+        ),
+      )
+      .limit(1);
+    if (noticeTransferEvent) activityIds.push(noticeTransferEvent.id);
+  } finally {
+    if (activityIds.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, activityIds));
+    }
+    await db
+      .update(membershipsTable)
+      .set({ role: "owner" })
+      .where(eq(membershipsTable.id, currentOwner.id));
+    await db
+      .delete(membershipsTable)
+      .where(eq(membershipsTable.id, successor.id));
+    if (previousNotificationSender === undefined) {
+      delete process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL;
+    } else {
+      process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL = previousNotificationSender;
+    }
   }
 });
 
