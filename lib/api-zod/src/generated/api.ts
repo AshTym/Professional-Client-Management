@@ -445,6 +445,15 @@ export const GetDashboardResponse = zod.object({
 
 
 /**
+ * @summary List actor names represented in the current firm's activity history
+ */
+export const ListActivityActorsResponseItem = zod.object({
+  "name": zod.string()
+})
+export const ListActivityActorsResponse = zod.array(ListActivityActorsResponseItem)
+
+
+/**
  * @summary List recent firm audit events
  */
 export const listActivityQueryLimitDefault = 20;
@@ -455,6 +464,7 @@ export const listActivityQueryOffsetMin = 0;
 
 export const listActivityQuerySnapshotIdMin = 0;
 
+export const listActivityQueryActorNameMax = 255;
 
 
 
@@ -463,7 +473,7 @@ export const ListActivityQueryParams = zod.object({
   "limit": zod.coerce.number().int().min(1).max(listActivityQueryLimitMax).default(listActivityQueryLimitDefault),
   "offset": zod.coerce.number().int().min(listActivityQueryOffsetMin).default(listActivityQueryOffsetDefault),
   "snapshotId": zod.coerce.number().int().min(listActivityQuerySnapshotIdMin).optional().describe('Include only events at or below this firm-wide activity snapshot ID.'),
-  "actorMemberId": zod.coerce.number().int().min(1).optional().describe('Restrict results to activity by a current member of this firm.'),
+  "actorName": zod.coerce.string().max(listActivityQueryActorNameMax).optional().describe('Restrict results to activity by this exact actor name in the current firm\'s history.'),
   "entityType": zod.enum(['client', 'matter', 'workspace']).optional().describe('Restrict results to a related client, matter, or workspace record.'),
   "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.')
 })
@@ -489,12 +499,13 @@ export const ListActivityResponse = zod.object({
 /**
  * @summary Export the current firm's activity history
  */
+export const exportActivityQueryActorNameMax = 255;
 
 
 
 
 export const ExportActivityQueryParams = zod.object({
-  "actorMemberId": zod.coerce.number().int().min(1).optional().describe('Restrict results to activity by a current member of this firm.'),
+  "actorName": zod.coerce.string().max(exportActivityQueryActorNameMax).optional().describe('Restrict results to activity by this exact actor name in the current firm\'s history.'),
   "entityType": zod.enum(['client', 'matter', 'workspace']).optional().describe('Restrict results to a related client, matter, or workspace record.'),
   "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.')
 })

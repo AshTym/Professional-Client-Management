@@ -472,6 +472,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DashboardSummary"
+  /activity/actors:
+    get:
+      operationId: listActivityActors
+      tags: [activity]
+      summary: List actor names represented in the current firm's activity history
+      responses:
+        "200":
+          description: Distinct actor names from this firm's activity history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityActorsResponse"
   /activity:
     get:
       operationId: listActivity
@@ -500,13 +512,13 @@ paths:
           schema:
             type: integer
             minimum: 0
-        - name: actorMemberId
+        - name: actorName
           in: query
           required: false
-          description: Restrict results to activity by a current member of this firm.
+          description: Restrict results to activity by this exact actor name in the current firm's history.
           schema:
-            type: integer
-            minimum: 1
+            type: string
+            maxLength: 255
         - name: entityType
           in: query
           required: false
@@ -534,13 +546,13 @@ paths:
       tags: [activity]
       summary: Export the current firm's activity history
       parameters:
-        - name: actorMemberId
+        - name: actorName
           in: query
           required: false
-          description: Restrict results to activity by a current member of this firm.
+          description: Restrict results to activity by this exact actor name in the current firm's history.
           schema:
-            type: integer
-            minimum: 1
+            type: string
+            maxLength: 255
         - name: entityType
           in: query
           required: false
@@ -2485,6 +2497,15 @@ components:
         entityId: { type: integer }
         entityLabel: { type: string }
         occurredAt: { type: string, format: date-time }
+    ActivityActor:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+    ActivityActorsResponse:
+      type: array
+      items:
+        $ref: "#/components/schemas/ActivityActor"
     ActivityPage:
       type: object
       required: [items, snapshotId]

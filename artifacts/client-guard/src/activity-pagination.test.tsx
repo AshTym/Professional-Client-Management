@@ -5,6 +5,7 @@ import { Router } from 'wouter';
 
 const apiMocks = vi.hoisted(() => ({
   useListActivity: vi.fn(),
+  useListActivityActors: vi.fn(),
   getListActivityQueryKey: vi.fn((params) => ['/api/activity', params]),
   useListWorkspaceAssignmentMembers: vi.fn(),
   useListClients: vi.fn(),
@@ -73,6 +74,11 @@ describe('activity pagination', () => {
       isLoading: false,
       isError: false,
     });
+    apiMocks.useListActivityActors.mockReturnValue({
+      data: [{ name: 'A. Morgan' }, { name: 'Former Teammate' }],
+      isLoading: false,
+      isError: false,
+    });
     apiMocks.useListClients.mockReturnValue({
       data: [{ id: 10, name: 'Northline Client' }],
       isLoading: false,
@@ -105,7 +111,7 @@ describe('activity pagination', () => {
 
     renderActivityPage();
     fireEvent.change(screen.getByTestId('select-activity-actor'), {
-      target: { value: '5' },
+      target: { value: 'A. Morgan' },
     });
     fireEvent.change(screen.getByTestId('select-activity-record'), {
       target: { value: 'client:10' },
@@ -113,7 +119,7 @@ describe('activity pagination', () => {
     fireEvent.click(screen.getByTestId('button-export-activity'));
 
     await waitFor(() => expect(apiMocks.exportActivity).toHaveBeenCalledWith({
-      actorMemberId: 5,
+      actorName: 'A. Morgan',
       entityType: 'client',
       entityId: 10,
     }));
@@ -216,15 +222,21 @@ describe('activity pagination', () => {
     expect(screen.getByTestId('text-activity-count').textContent).toBe('Events 1–20');
   });
 
-  it('filters by teammate and record and resets pagination when the filter changes', () => {
+  it('filters by current or former actor name and record and resets pagination', () => {
     renderActivityPage();
+    expect(screen.getByRole('option', { name: 'Former Teammate' })).toBeTruthy();
     fireEvent.click(screen.getByTestId('button-activity-next'));
     fireEvent.change(screen.getByTestId('select-activity-actor'), {
-      target: { value: '5' },
+      target: { value: 'Former Teammate' },
     });
 
     expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
-      expect.objectContaining({ limit: 41, offset: 0, snapshotId: 41, actorMemberId: 5 }),
+      expect.objectContaining({
+        limit: 41,
+        offset: 0,
+        snapshotId: 41,
+        actorName: 'Former Teammate',
+      }),
       expect.any(Object),
     );
 
@@ -237,7 +249,7 @@ describe('activity pagination', () => {
         limit: 41,
         offset: 0,
         snapshotId: 41,
-        actorMemberId: 5,
+        actorName: 'Former Teammate',
         entityType: 'client',
         entityId: 10,
       }),
@@ -277,7 +289,7 @@ describe('activity pagination', () => {
     expect(screen.getByText('No recorded events')).toBeTruthy();
 
     fireEvent.change(screen.getByTestId('select-activity-actor'), {
-      target: { value: '5' },
+      target: { value: 'A. Morgan' },
     });
 
     expect(screen.getByText('No matching activity')).toBeTruthy();

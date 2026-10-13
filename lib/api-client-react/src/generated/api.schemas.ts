@@ -567,6 +567,12 @@ export interface Activity {
   occurredAt: string;
 }
 
+export interface ActivityActor {
+  name: string;
+}
+
+export type ActivityActorsResponse = ActivityActor[];
+
 export interface ActivityPage {
   items: Activity[];
   /** @minimum 0 */
@@ -2100,10 +2106,10 @@ offset?: number;
  */
 snapshotId?: number;
 /**
- * Restrict results to activity by a current member of this firm.
- * @minimum 1
+ * Restrict results to activity by this exact actor name in the current firm's history.
+ * @maxLength 255
  */
-actorMemberId?: number;
+actorName?: string;
 /**
  * Restrict results to a related client, matter, or workspace record.
  */
@@ -2126,10 +2132,10 @@ export const ListActivityEntityType = {
 
 export type ExportActivityParams = {
 /**
- * Restrict results to activity by a current member of this firm.
- * @minimum 1
+ * Restrict results to activity by this exact actor name in the current firm's history.
+ * @maxLength 255
  */
-actorMemberId?: number;
+actorName?: string;
 /**
  * Restrict results to a related client, matter, or workspace record.
  */

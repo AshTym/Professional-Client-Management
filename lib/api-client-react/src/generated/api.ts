@@ -26,6 +26,7 @@ import type {
 
 import type {
   Activity,
+  ActivityActorsResponse,
   ActivityPage,
   AuditEvent,
   AuthorizationUrl,
@@ -2086,6 +2087,107 @@ export function useGetDashboard<TData = Awaited<ReturnType<typeof getDashboard>>
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetDashboardQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListActivityActorsUrl = () => {
+
+
+
+
+  return `/api/activity/actors`
+}
+
+/**
+ * @summary List actor names represented in the current firm's activity history
+ */
+export const listActivityActors = async ( options?: Parameters<typeof customFetch>[1]): Promise<ActivityActorsResponse> => {
+
+  return customFetch<ActivityActorsResponse>(getListActivityActorsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListActivityActorsQueryKey = () => {
+    return [
+    `/api/activity/actors`
+    ] as const;
+    }
+
+
+export const getListActivityActorsQueryOptions = <TData = Awaited<ReturnType<typeof listActivityActors>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listActivityActors>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListActivityActorsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listActivityActors>>> = ({ signal }) => listActivityActors({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listActivityActors>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListActivityActorsQueryResult = NonNullable<Awaited<ReturnType<typeof listActivityActors>>>
+export type ListActivityActorsQueryError = ErrorType<unknown>
+
+
+export function useListActivityActors<TData = Awaited<ReturnType<typeof listActivityActors>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listActivityActors>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listActivityActors>>,
+          TError,
+          Awaited<ReturnType<typeof listActivityActors>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListActivityActors<TData = Awaited<ReturnType<typeof listActivityActors>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listActivityActors>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listActivityActors>>,
+          TError,
+          Awaited<ReturnType<typeof listActivityActors>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListActivityActors<TData = Awaited<ReturnType<typeof listActivityActors>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listActivityActors>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List actor names represented in the current firm's activity history
+ */
+
+export function useListActivityActors<TData = Awaited<ReturnType<typeof listActivityActors>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listActivityActors>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListActivityActorsQueryOptions(options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

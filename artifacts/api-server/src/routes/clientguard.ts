@@ -69,6 +69,7 @@ import {
   WithdrawWorkspaceInvitationResponse,
   ListActivityQueryParams,
   ListActivityResponse,
+  ListActivityActorsResponse,
   ExportActivityQueryParams,
   ListClientsQueryParams,
   ListClientsResponse,
@@ -2345,6 +2346,18 @@ router.get("/dashboard", async (req, res): Promise<void> => {
   );
 });
 
+router.get("/activity/actors", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+
+  const actors = await db
+    .selectDistinct({ name: activitiesTable.actor })
+    .from(activitiesTable)
+    .where(eq(activitiesTable.workspaceId, access.workspaceId))
+    .orderBy(asc(activitiesTable.actor));
+  res.json(ListActivityActorsResponse.parse(actors));
+});
+
 router.get("/activity", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
   if (!access) return;
@@ -2362,22 +2375,8 @@ router.get("/activity", async (req, res): Promise<void> => {
       .where(eq(activitiesTable.workspaceId, access.workspaceId));
     snapshotId = snapshot?.snapshotId ?? 0;
   }
-  if (parsed.data.actorMemberId !== undefined) {
-    const [actorMember] = await db
-      .select({ clerkUserId: membershipsTable.clerkUserId })
-      .from(membershipsTable)
-      .where(
-        and(
-          eq(membershipsTable.id, parsed.data.actorMemberId),
-          eq(membershipsTable.workspaceId, access.workspaceId),
-        ),
-      )
-      .limit(1);
-    if (!actorMember) {
-      res.json(ListActivityResponse.parse({ items: [], snapshotId }));
-      return;
-    }
-    filters.push(eq(activitiesTable.clerkUserId, actorMember.clerkUserId));
+  if (parsed.data.actorName !== undefined) {
+    filters.push(eq(activitiesTable.actor, parsed.data.actorName));
   }
   if (parsed.data.entityType !== undefined) {
     filters.push(eq(activitiesTable.entityType, parsed.data.entityType));
@@ -2406,32 +2405,8 @@ router.get("/activity/export.csv", async (req, res): Promise<void> => {
   }
 
   const filters = [eq(activitiesTable.workspaceId, access.workspaceId)];
-  if (parsed.data.actorMemberId !== undefined) {
-    const [actorMember] = await db
-      .select({ clerkUserId: membershipsTable.clerkUserId })
-      .from(membershipsTable)
-      .where(
-        and(
-          eq(membershipsTable.id, parsed.data.actorMemberId),
-          eq(membershipsTable.workspaceId, access.workspaceId),
-        ),
-      )
-      .limit(1);
-    if (!actorMember) {
-      res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.setHeader(
-        "Content-Disposition",
-        'attachment; filename="clientguard-activity.csv"',
-      );
-      res.send(
-        [
-          "id,actor,action,entityType,entityId,entityLabel,occurredAt",
-          "",
-        ].join("\r\n"),
-      );
-      return;
-    }
-    filters.push(eq(activitiesTable.clerkUserId, actorMember.clerkUserId));
+  if (parsed.data.actorName !== undefined) {
+    filters.push(eq(activitiesTable.actor, parsed.data.actorName));
   }
   if (parsed.data.entityType !== undefined) {
     filters.push(eq(activitiesTable.entityType, parsed.data.entityType));
