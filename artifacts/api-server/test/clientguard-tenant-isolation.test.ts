@@ -2873,6 +2873,39 @@ test("firm admins can create invitations for their firm", async (t) => {
   assert.equal(invitation.clerkInvitationId, "admin_created_clerk_invitation");
 });
 
+test("firm admins cannot invite an email already used by another firm's member", async (t) => {
+  const email = `cross-firm-invite-${randomUUID()}@example.test`;
+  await db.insert(membershipsTable).values({
+    workspaceId: firms.other.workspaceId,
+    clerkUserId: `other-firm-member-${randomUUID()}`,
+    email,
+    displayName: "Other Firm Member",
+    role: "professional",
+  });
+  const createInvitation = t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async () => ({ id: "unexpected_cross_firm_clerk_invitation" }) as never,
+  );
+
+  const created = await request("/workspace/invitations", {
+    userId: firms.primary.ownerId,
+    method: "POST",
+    body: { email, role: "assistant" },
+  });
+
+  assert.equal(created.response.status, 409);
+  assert.deepEqual(created.body, {
+    error: "That email address already belongs to a firm member.",
+  });
+  assert.equal(createInvitation.mock.callCount(), 0);
+  const savedInvitations = await db
+    .select({ id: invitationsTable.id })
+    .from(invitationsTable)
+    .where(eq(invitationsTable.email, email));
+  assert.deepEqual(savedInvitations, []);
+});
+
 test("signed-in users without a firm cannot list or create invitations", async (t) => {
   const userId = `no-firm-invitations-${randomUUID()}`;
   const email = `no-firm-invite-${randomUUID()}@example.test`;
