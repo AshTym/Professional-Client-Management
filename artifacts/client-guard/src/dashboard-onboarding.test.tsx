@@ -159,4 +159,39 @@ describe('new-firm dashboard onboarding', () => {
     expect(screen.queryByTestId('dashboard-empty-onboarding')).toBeNull();
     expect(screen.queryByTestId('dashboard-first-matter-onboarding')).toBeNull();
   });
+
+  it('shows an activity error and retries without hiding dashboard metrics or navigation', () => {
+    const refetchActivity = vi.fn();
+    apiMocks.useGetDashboard.mockReturnValue({
+      data: {
+        clientCount: 3,
+        matterCount: 2,
+        activeClientCount: 2,
+        openMatterCount: 1,
+        overdueMatterCount: 0,
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    apiMocks.useListActivity.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch: refetchActivity,
+    });
+
+    renderDashboard();
+
+    expect(screen.getByRole('alert').textContent).toContain('Activity could not be loaded.');
+    expect(screen.getByTestId('metric-clients')).toBeTruthy();
+    expect(screen.getByTestId('metric-open-matters')).toBeTruthy();
+    expect(screen.getByTestId('link-dashboard-activity')).toBeTruthy();
+    expect(screen.getByTestId('quick-clients')).toBeTruthy();
+    expect(screen.getByTestId('quick-matters')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry activity' }));
+
+    expect(refetchActivity).toHaveBeenCalledTimes(1);
+  });
 });
