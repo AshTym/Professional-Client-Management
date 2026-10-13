@@ -2873,6 +2873,30 @@ test("firm admins can create invitations for their firm", async (t) => {
   assert.equal(invitation.clerkInvitationId, "admin_created_clerk_invitation");
 });
 
+test("firm owners cannot invite a teammate with the owner role", async (t) => {
+  const email = `owner-role-invite-${randomUUID()}@example.test`;
+  const createInvitation = t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async () => ({ id: "unexpected_owner_role_clerk_invitation" }) as never,
+  );
+
+  const created = await request("/workspace/invitations", {
+    userId: firms.primary.ownerId,
+    method: "POST",
+    body: { email, role: "owner" },
+  });
+
+  assert.equal(created.response.status, 400);
+  assert.equal(typeof (created.body as { error?: unknown }).error, "string");
+  assert.equal(createInvitation.mock.callCount(), 0);
+  const savedInvitations = await db
+    .select({ id: invitationsTable.id })
+    .from(invitationsTable)
+    .where(eq(invitationsTable.email, email));
+  assert.deepEqual(savedInvitations, []);
+});
+
 test("firm admins cannot invite an email already used by another firm's member", async (t) => {
   const email = `cross-firm-invite-${randomUUID()}@example.test`;
   await db.insert(membershipsTable).values({
