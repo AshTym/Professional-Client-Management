@@ -93,6 +93,26 @@ export interface WorkspaceMember {
   createdAt: string;
 }
 
+export type OwnershipNoticeFailureRecipientRole = typeof OwnershipNoticeFailureRecipientRole[keyof typeof OwnershipNoticeFailureRecipientRole];
+
+
+export const OwnershipNoticeFailureRecipientRole = {
+  former_owner: 'former_owner',
+  new_owner: 'new_owner',
+} as const;
+
+export interface OwnershipNoticeFailure {
+  transferId: string;
+  recipientRole: OwnershipNoticeFailureRecipientRole;
+  recipientName: string;
+  otherOwnerName: string;
+  failedAt: string;
+}
+
+export interface OwnershipNoticeRetryResult {
+  sent: true;
+}
+
 export interface WorkspaceAssignmentMember {
   id: number;
   name: string;

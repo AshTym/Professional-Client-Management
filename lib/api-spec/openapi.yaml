@@ -296,6 +296,55 @@ paths:
           description: Only the current firm owner can transfer ownership
         "404":
           description: The selected member was not found in this firm
+  /workspace/ownership-notices:
+    get:
+      operationId: listOwnershipNoticeFailures
+      tags: [members]
+      summary: List ownership-transfer notices that still need delivery
+      responses:
+        "200":
+          description: Failed ownership notices for the current firm
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OwnershipNoticeFailure"
+        "403":
+          description: The user does not belong to a firm
+  /workspace/ownership-notices/{transferId}/{recipientRole}/retry:
+    parameters:
+      - name: transferId
+        in: path
+        required: true
+        schema: { type: string, minLength: 1 }
+      - name: recipientRole
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [former_owner, new_owner]
+    post:
+      operationId: retryOwnershipNotice
+      tags: [members]
+      summary: Retry one failed ownership-transfer notice without changing firm access
+      responses:
+        "200":
+          description: The notice was sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnershipNoticeRetryResult"
+        "400":
+          description: Invalid transfer or recipient
+        "403":
+          description: Only firm owners and admins can retry notices
+        "404":
+          description: The failed notice was not found in this firm
+        "409":
+          description: The notice has already been sent or is not currently failed
+        "502":
+          description: Clerk could not send the notice; the failed state remains available for another retry
   /workspace/invitations/{id}/resend:
     parameters:
       - name: id
@@ -2028,6 +2077,22 @@ components:
         name: { type: string }
         role: { type: string }
         createdAt: { type: string, format: date-time }
+    OwnershipNoticeFailure:
+      type: object
+      required: [transferId, recipientRole, recipientName, otherOwnerName, failedAt]
+      properties:
+        transferId: { type: string }
+        recipientRole:
+          type: string
+          enum: [former_owner, new_owner]
+        recipientName: { type: string }
+        otherOwnerName: { type: string }
+        failedAt: { type: string, format: date-time }
+    OwnershipNoticeRetryResult:
+      type: object
+      required: [sent]
+      properties:
+        sent: { type: boolean, enum: [true] }
     WorkspaceAssignmentMember:
       type: object
       required: [id, name, email, role]

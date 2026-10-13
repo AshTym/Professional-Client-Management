@@ -85,6 +85,8 @@ import type {
   OperationsReport,
   OperationsReportExportInput,
   OperationsReportExportResult,
+  OwnershipNoticeFailure,
+  OwnershipNoticeRetryResult,
   PlannerItem,
   PlannerItemUpdate,
   PortalAccess,
@@ -1485,6 +1487,183 @@ export const useTransferWorkspaceOwnership = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getTransferWorkspaceOwnershipMutationOptions(options), queryClient);
+    }
+
+export const getListOwnershipNoticeFailuresUrl = () => {
+
+
+
+
+  return `/api/workspace/ownership-notices`
+}
+
+/**
+ * @summary List ownership-transfer notices that still need delivery
+ */
+export const listOwnershipNoticeFailures = async ( options?: Parameters<typeof customFetch>[1]): Promise<OwnershipNoticeFailure[]> => {
+
+  return customFetch<OwnershipNoticeFailure[]>(getListOwnershipNoticeFailuresUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListOwnershipNoticeFailuresQueryKey = () => {
+    return [
+    `/api/workspace/ownership-notices`
+    ] as const;
+    }
+
+
+export const getListOwnershipNoticeFailuresQueryOptions = <TData = Awaited<ReturnType<typeof listOwnershipNoticeFailures>>, TError = ErrorType<void>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listOwnershipNoticeFailures>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListOwnershipNoticeFailuresQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOwnershipNoticeFailures>>> = ({ signal }) => listOwnershipNoticeFailures({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listOwnershipNoticeFailures>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListOwnershipNoticeFailuresQueryResult = NonNullable<Awaited<ReturnType<typeof listOwnershipNoticeFailures>>>
+export type ListOwnershipNoticeFailuresQueryError = ErrorType<void>
+
+
+export function useListOwnershipNoticeFailures<TData = Awaited<ReturnType<typeof listOwnershipNoticeFailures>>, TError = ErrorType<void>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listOwnershipNoticeFailures>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listOwnershipNoticeFailures>>,
+          TError,
+          Awaited<ReturnType<typeof listOwnershipNoticeFailures>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListOwnershipNoticeFailures<TData = Awaited<ReturnType<typeof listOwnershipNoticeFailures>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listOwnershipNoticeFailures>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listOwnershipNoticeFailures>>,
+          TError,
+          Awaited<ReturnType<typeof listOwnershipNoticeFailures>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListOwnershipNoticeFailures<TData = Awaited<ReturnType<typeof listOwnershipNoticeFailures>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listOwnershipNoticeFailures>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List ownership-transfer notices that still need delivery
+ */
+
+export function useListOwnershipNoticeFailures<TData = Awaited<ReturnType<typeof listOwnershipNoticeFailures>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listOwnershipNoticeFailures>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListOwnershipNoticeFailuresQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRetryOwnershipNoticeUrl = (transferId: string,
+    recipientRole: 'former_owner' | 'new_owner',) => {
+
+
+
+
+  return `/api/workspace/ownership-notices/${transferId}/${recipientRole}/retry`
+}
+
+/**
+ * @summary Retry one failed ownership-transfer notice without changing firm access
+ */
+export const retryOwnershipNotice = async (transferId: string,
+    recipientRole: 'former_owner' | 'new_owner', options?: Parameters<typeof customFetch>[1]): Promise<OwnershipNoticeRetryResult> => {
+
+  return customFetch<OwnershipNoticeRetryResult>(getRetryOwnershipNoticeUrl(transferId,recipientRole),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryOwnershipNoticeMutationKey = () => ['retryOwnershipNotice'] as const;
+
+export const getRetryOwnershipNoticeMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryOwnershipNotice>>, TError,RetryOwnershipNoticeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryOwnershipNotice>>, TError,RetryOwnershipNoticeMutationVariables, TContext> => {
+
+const mutationKey = getRetryOwnershipNoticeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryOwnershipNotice>>, RetryOwnershipNoticeMutationVariables> = (props) => {
+          const {transferId,recipientRole} = props ?? {};
+
+          return  retryOwnershipNotice(transferId,recipientRole,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryOwnershipNoticeMutationResult = NonNullable<Awaited<ReturnType<typeof retryOwnershipNotice>>>
+
+    export type RetryOwnershipNoticeMutationError = ErrorType<void>
+    export type RetryOwnershipNoticeMutationVariables = {transferId: string;recipientRole: 'former_owner' | 'new_owner'}
+
+    /**
+ * @summary Retry one failed ownership-transfer notice without changing firm access
+ */
+export const useRetryOwnershipNotice = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryOwnershipNotice>>, TError,RetryOwnershipNoticeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof retryOwnershipNotice>>,
+        TError,
+        RetryOwnershipNoticeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRetryOwnershipNoticeMutationOptions(options), queryClient);
     }
 
 export const getResendWorkspaceInvitationUrl = (id: number,) => {

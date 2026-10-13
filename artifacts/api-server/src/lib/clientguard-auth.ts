@@ -27,49 +27,55 @@ export async function sendOwnershipTransferNotices(input: {
   previousOwner: OwnershipTransferNoticeRecipient;
   newOwner: OwnershipTransferNoticeRecipient;
 }): Promise<Array<{ recipientRole: "former_owner" | "new_owner"; error: unknown | null }>> {
+  return Promise.all(
+    (["former_owner", "new_owner"] as const).map((recipientRole) =>
+      sendOwnershipTransferNotice({ ...input, recipientRole }),
+    ),
+  );
+}
+
+export async function sendOwnershipTransferNotice(input: {
+  transferId: string;
+  workspaceName: string;
+  previousOwner: OwnershipTransferNoticeRecipient;
+  newOwner: OwnershipTransferNoticeRecipient;
+  recipientRole: "former_owner" | "new_owner";
+}): Promise<{ recipientRole: "former_owner" | "new_owner"; error: unknown | null }> {
   const senderAddress = process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL?.trim();
-  const notices = [
-    {
-      recipientRole: "former_owner" as const,
-      recipient: input.previousOwner,
-      subject: `Your role changed at ${input.workspaceName}`,
-      text: `Hello ${input.previousOwner.displayName},\n\nFirm ownership of ${input.workspaceName} has been transferred to ${input.newOwner.displayName}. Your role is now admin, and you continue to have admin access to the firm.`,
-      idempotencyKey: `ownership_${input.transferId}_former_owner`,
-    },
-    {
-      recipientRole: "new_owner" as const,
-      recipient: input.newOwner,
-      subject: `You are now the owner of ${input.workspaceName}`,
-      text: `Hello ${input.newOwner.displayName},\n\nYou are now the owner of ${input.workspaceName}. ${input.previousOwner.displayName} is now an admin.`,
-      idempotencyKey: `ownership_${input.transferId}_new_owner`,
-    },
-  ];
+  const isFormerOwner = input.recipientRole === "former_owner";
+  const recipient = isFormerOwner ? input.previousOwner : input.newOwner;
+  const notice = {
+    recipient,
+    subject: isFormerOwner
+      ? `Your role changed at ${input.workspaceName}`
+      : `You are now the owner of ${input.workspaceName}`,
+    text: isFormerOwner
+      ? `Hello ${input.previousOwner.displayName},\n\nFirm ownership of ${input.workspaceName} has been transferred to ${input.newOwner.displayName}. Your role is now admin, and you continue to have admin access to the firm.`
+      : `Hello ${input.newOwner.displayName},\n\nYou are now the owner of ${input.workspaceName}. ${input.previousOwner.displayName} is now an admin.`,
+    idempotencyKey: `ownership_${input.transferId}_${input.recipientRole}`,
+  };
 
   if (!senderAddress) {
-    const error = new Error(
-      "CLIENTGUARD_NOTIFICATION_FROM_EMAIL is not configured.",
-    );
-    return notices.map(({ recipientRole }) => ({ recipientRole, error }));
+    return {
+      recipientRole: input.recipientRole,
+      error: new Error("CLIENTGUARD_NOTIFICATION_FROM_EMAIL is not configured."),
+    };
   }
 
-  return Promise.all(
-    notices.map(async (notice) => {
-      try {
-        await clerkClient.emails.create(
-          {
-            to: { userId: notice.recipient.clerkUserId },
-            from: { address: senderAddress, name: "ClientGuard" },
-            subject: notice.subject,
-            text: notice.text,
-          },
-          { idempotencyKey: notice.idempotencyKey },
-        );
-        return { recipientRole: notice.recipientRole, error: null };
-      } catch (error) {
-        return { recipientRole: notice.recipientRole, error };
-      }
-    }),
-  );
+  try {
+    await clerkClient.emails.create(
+      {
+        to: { userId: notice.recipient.clerkUserId },
+        from: { address: senderAddress, name: "ClientGuard" },
+        subject: notice.subject,
+        text: notice.text,
+      },
+      { idempotencyKey: notice.idempotencyKey },
+    );
+    return { recipientRole: input.recipientRole, error: null };
+  } catch (error) {
+    return { recipientRole: input.recipientRole, error };
+  }
 }
 
 function claimString(

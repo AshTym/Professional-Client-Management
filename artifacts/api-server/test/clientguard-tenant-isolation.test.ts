@@ -2061,8 +2061,9 @@ test("only the current owner can transfer ownership to an active member and both
   }
 });
 
-test("ownership transfer remains committed when owner notification emails fail", async (t) => {
+test("failed ownership notices can be retried separately without repeating the transfer", async (t) => {
   const successorId = `ownership-notice-failure-${randomUUID()}`;
+  const viewerId = `ownership-notice-viewer-${randomUUID()}`;
   const [currentOwner] = await db
     .select()
     .from(membershipsTable)
@@ -2078,14 +2079,32 @@ test("ownership transfer remains committed when owner notification emails fail",
       role: "professional",
     })
     .returning();
+  const [viewer] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: viewerId,
+      email: "ownership-notice-viewer@example.test",
+      displayName: "Notice Viewer",
+      role: "professional",
+    })
+    .returning();
   const previousNotificationSender = process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL;
   process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL = "notifications@example.test";
   const activityIds: number[] = [];
+  const auditIds: number[] = [];
+  const allowedRecipients = new Set<string>();
+  const sentNotifications: Array<{ to: { userId?: string } }> = [];
   const createEmail = t.mock.method(
     clerkClient.emails,
     "create",
-    async () => {
-      throw new Error("Email provider unavailable");
+    async (params) => {
+      const email = params as { to: { userId?: string } };
+      sentNotifications.push(email);
+      if (!email.to.userId || !allowedRecipients.has(email.to.userId)) {
+        throw new Error("Email provider unavailable");
+      }
+      return {} as never;
     },
   );
 
@@ -2096,6 +2115,73 @@ test("ownership transfer remains committed when owner notification emails fail",
     );
     assert.equal(transferred.response.status, 200);
     assert.equal(createEmail.mock.callCount(), 2);
+
+    const listedAsFirmMember = await request("/workspace/ownership-notices", {
+      userId: viewerId,
+    });
+    assert.equal(listedAsFirmMember.response.status, 200);
+    const failedNotices = listedAsFirmMember.body as Array<{
+      transferId: string;
+      recipientRole: "former_owner" | "new_owner";
+      recipientName: string;
+      otherOwnerName: string;
+    }>;
+    assert.equal(failedNotices.length, 2);
+    assert.deepEqual(
+      failedNotices.map(({ recipientRole }) => recipientRole).sort(),
+      ["former_owner", "new_owner"],
+    );
+    assert(failedNotices.every((notice) => notice.recipientName && notice.otherOwnerName));
+    const transferId = failedNotices[0]!.transferId;
+    const hiddenFromAnotherFirm = await request("/workspace/ownership-notices", {
+      userId: firms.other.ownerId,
+    });
+    assert.equal(hiddenFromAnotherFirm.response.status, 200);
+    assert.deepEqual(hiddenFromAnotherFirm.body, []);
+
+    const forbiddenRetry = await request(
+      `/workspace/ownership-notices/${transferId}/former_owner/retry`,
+      { userId: viewerId, method: "POST" },
+    );
+    assert.equal(forbiddenRetry.response.status, 403);
+    assert.equal(createEmail.mock.callCount(), 2);
+
+    allowedRecipients.add(firms.primary.ownerId);
+    const formerOwnerRetry = await request(
+      `/workspace/ownership-notices/${transferId}/former_owner/retry`,
+      { userId: firms.primary.ownerId, method: "POST" },
+    );
+    assert.equal(formerOwnerRetry.response.status, 200);
+    assert.deepEqual(sentNotifications[2]?.to.userId, firms.primary.ownerId);
+    const duplicateRetry = await request(
+      `/workspace/ownership-notices/${transferId}/former_owner/retry`,
+      { userId: firms.primary.ownerId, method: "POST" },
+    );
+    assert.equal(duplicateRetry.response.status, 409);
+    assert.equal(createEmail.mock.callCount(), 3);
+
+    const remainingNotice = await request("/workspace/ownership-notices", {
+      userId: viewerId,
+    });
+    assert.equal(remainingNotice.response.status, 200);
+    assert.deepEqual(
+      (remainingNotice.body as Array<{ recipientRole: string }>).map(
+        ({ recipientRole }) => recipientRole,
+      ),
+      ["new_owner"],
+    );
+
+    allowedRecipients.add(successorId);
+    const newOwnerRetry = await request(
+      `/workspace/ownership-notices/${transferId}/new_owner/retry`,
+      { userId: firms.primary.ownerId, method: "POST" },
+    );
+    assert.equal(newOwnerRetry.response.status, 200);
+    assert.deepEqual(sentNotifications[3]?.to.userId, successorId);
+    const noRemainingNotices = await request("/workspace/ownership-notices", {
+      userId: viewerId,
+    });
+    assert.deepEqual(noRemainingNotices.body, []);
 
     const [formerOwner] = await db
       .select()
@@ -2109,6 +2195,20 @@ test("ownership transfer remains committed when owner notification emails fail",
       .limit(1);
     assert.equal(formerOwner.role, "admin");
     assert.equal(newOwner.role, "owner");
+    const allNoticeEvents = await db
+      .select()
+      .from(auditEventsTable)
+      .where(
+        and(
+          eq(auditEventsTable.workspaceId, firms.primary.workspaceId),
+          eq(auditEventsTable.action, "ownership_notice_delivery"),
+        ),
+      );
+    auditIds.push(
+      ...allNoticeEvents
+        .filter((event) => event.details.transferId === transferId)
+        .map(({ id }) => id),
+    );
     const [noticeTransferEvent] = await db
       .select({ id: activitiesTable.id })
       .from(activitiesTable)
@@ -2129,13 +2229,18 @@ test("ownership transfer remains committed when owner notification emails fail",
         .delete(activitiesTable)
         .where(inArray(activitiesTable.id, activityIds));
     }
+    if (auditIds.length) {
+      await db
+        .delete(auditEventsTable)
+        .where(inArray(auditEventsTable.id, auditIds));
+    }
     await db
       .update(membershipsTable)
       .set({ role: "owner" })
       .where(eq(membershipsTable.id, currentOwner.id));
     await db
       .delete(membershipsTable)
-      .where(eq(membershipsTable.id, successor.id));
+      .where(inArray(membershipsTable.id, [successor.id, viewer.id]));
     if (previousNotificationSender === undefined) {
       delete process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL;
     } else {

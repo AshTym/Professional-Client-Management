@@ -9,6 +9,7 @@ import {
   useListWorkspaceInvitations, useCreateWorkspaceInvitation, useResendWorkspaceInvitation,
   useWithdrawWorkspaceInvitation, useAcceptWorkspaceInvitation, useListWorkspaceMembers,
   useUpdateWorkspaceMember, useRemoveWorkspaceMember, useTransferWorkspaceOwnership,
+  useListOwnershipNoticeFailures, useRetryOwnershipNotice,
   useGetWorkspaceMemberAssignments,
   useListWorkspaceAssignmentMembers, useListWorkspaceAssignmentIssues,
   useGetMatterCloseout, getGetMatterCloseoutQueryKey,
@@ -16,6 +17,7 @@ import {
   useListMatters, useGetMatter, useUpdateMatter, useCloseMatter, useLogMatterExportRequest,
   getHealthCheckQueryKey, getGetWorkspaceQueryKey, getGetDashboardQueryKey, getListActivityQueryKey,
   getListWorkspaceInvitationsQueryKey, getListWorkspaceMembersQueryKey,
+  getListOwnershipNoticeFailuresQueryKey,
   getListWorkspaceAssignmentIssuesQueryKey,
   getListClientsQueryKey, getGetClientQueryKey, getListMattersQueryKey, getGetMatterQueryKey,
 } from '@workspace/api-client-react';
@@ -497,11 +499,16 @@ function TeamPage() {
   const updateMember = useUpdateWorkspaceMember();
   const removeMember = useRemoveWorkspaceMember();
   const transferOwnership = useTransferWorkspaceOwnership();
+  const ownershipNoticeFailures = useListOwnershipNoticeFailures({
+    query: { staleTime: 0 },
+  });
+  const retryOwnershipNotice = useRetryOwnershipNotice();
   const assignmentIssues = useListWorkspaceAssignmentIssues({ query: { staleTime: 0 } });
   const workspace = useGetWorkspace();
   const qc = useQueryClient();
   const [invitationActionMessage, setInvitationActionMessage] = useState('');
   const [memberActionMessage, setMemberActionMessage] = useState('');
+  const [ownershipNoticeMessage, setOwnershipNoticeMessage] = useState('');
   const [removingMemberId, setRemovingMemberId] = useState<number | null>(null);
   const [replacementMemberId, setReplacementMemberId] = useState<number | null>(null);
   const assignments = useGetWorkspaceMemberAssignments(removingMemberId ?? 0, {
@@ -512,6 +519,7 @@ function TeamPage() {
   async function refreshAccessViews() {
     await Promise.all([
       qc.invalidateQueries({ queryKey: getListWorkspaceMembersQueryKey() }),
+      qc.invalidateQueries({ queryKey: getListOwnershipNoticeFailuresQueryKey() }),
       qc.invalidateQueries({ queryKey: getGetWorkspaceQueryKey() }),
       qc.invalidateQueries({ queryKey: getListActivityQueryKey() }),
       qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
@@ -583,6 +591,29 @@ function TeamPage() {
       },
       onError: async () => {
         await qc.invalidateQueries({ queryKey: getListWorkspaceMembersQueryKey() });
+      },
+    });
+  }
+
+  function retryFailedOwnershipNotice(
+    transferId: string,
+    recipientRole: 'former_owner' | 'new_owner',
+    recipientName: string,
+  ) {
+    setOwnershipNoticeMessage('');
+    retryOwnershipNotice.reset();
+    retryOwnershipNotice.mutate({ transferId, recipientRole }, {
+      onSuccess: async () => {
+        await qc.invalidateQueries({
+          queryKey: getListOwnershipNoticeFailuresQueryKey(),
+        });
+        setOwnershipNoticeMessage(`The ownership notice to ${recipientName} was sent.`);
+      },
+      onError: async () => {
+        await qc.invalidateQueries({
+          queryKey: getListOwnershipNoticeFailuresQueryKey(),
+        });
+        setOwnershipNoticeMessage(`The ownership notice to ${recipientName} could not be sent. You can try again.`);
       },
     });
   }
@@ -675,6 +706,28 @@ function TeamPage() {
       </section>
     </div>
       {(workspace.data?.role === 'owner' || workspace.data?.role === 'admin') && <MembershipConflicts />}
+    {(ownershipNoticeFailures.isLoading || ownershipNoticeFailures.isError ||
+      (ownershipNoticeFailures.data?.length ?? 0) > 0 || ownershipNoticeMessage) && <section className="mt-6 overflow-hidden rounded-md border border-[#e5d4b1] bg-[#fbf5e8]" aria-labelledby="ownership-notice-heading" data-testid="panel-ownership-notice-failures">
+      <div className="border-b border-[#eadcbe] px-5 py-4">
+        <h2 id="ownership-notice-heading" className="serif text-xl font-bold text-[#725a31]">Ownership notices</h2>
+        <p className="mt-1 text-xs text-[#766b55]">Ownership changes are complete even when an email could not be delivered.</p>
+      </div>
+      {ownershipNoticeMessage && <p className="px-5 pt-4 text-sm text-[#446b55]" role="status" data-testid="status-ownership-notice-action">{ownershipNoticeMessage}</p>}
+      {ownershipNoticeFailures.isLoading ? <div className="p-5 text-sm text-[#766b55]">Checking ownership notices…</div> :
+        ownershipNoticeFailures.isError ? <div className="p-5 text-sm text-[#9b4941]" role="alert">Ownership notices could not be loaded. <button onClick={() => ownershipNoticeFailures.refetch()} className="underline" data-testid="button-retry-ownership-notices">Try again</button></div> :
+        !ownershipNoticeFailures.data?.length ? <div className="p-5 text-sm text-[#536d5c]">No ownership notices are waiting to be sent.</div> :
+        <div className="divide-y divide-[#eadcbe]">{ownershipNoticeFailures.data.map(notice => {
+          const recipientLabel = notice.recipientRole === 'former_owner' ? 'outgoing owner' : 'incoming owner';
+          return <div key={`${notice.transferId}-${notice.recipientRole}`} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between" data-testid={`ownership-notice-failure-${notice.transferId}-${notice.recipientRole}`}>
+            <div className="text-sm text-[#53625f]">
+              <span className="font-semibold">{notice.recipientName}</span> ({recipientLabel}) wasn’t emailed after ownership transferred to <span className="font-semibold">{notice.otherOwnerName}</span>.
+            </div>
+            {(workspace.data?.role === 'owner' || workspace.data?.role === 'admin') && <Button variant="outline" disabled={retryOwnershipNotice.isPending} testId={`button-retry-ownership-notice-${notice.transferId}-${notice.recipientRole}`} onClick={() => retryFailedOwnershipNotice(notice.transferId, notice.recipientRole, notice.recipientName)}>
+              <RefreshCw className="h-4 w-4" />{retryOwnershipNotice.isPending ? 'Sending…' : 'Retry notice'}
+            </Button>}
+          </div>;
+        })}</div>}
+    </section>}
     <section className="mt-6 overflow-hidden rounded-md border border-[#e0dace] bg-[#fbfaf5]" data-testid="panel-workspace-members">
       <div className="flex items-center justify-between border-b border-[#e9e4d9] px-5 py-4">
         <div><h2 className="serif text-xl font-bold">Current members</h2><p className="mt-1 text-xs text-[#87918d]">Review who can access this firm and update teammate roles.</p></div>
