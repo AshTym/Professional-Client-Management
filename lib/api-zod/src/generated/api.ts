@@ -771,6 +771,7 @@ export const GetDocumentOverviewResponse = zod.object({
   "contentType": zod.string(),
   "sizeBytes": zod.number().int(),
   "status": zod.enum(['uploading', 'ready', 'analyzing', 'analyzed', 'failed']),
+  "clientVisible": zod.boolean(),
   "lastAnalysisError": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })),
@@ -849,6 +850,7 @@ export const CompleteDocumentUploadResponse = zod.object({
   "contentType": zod.string(),
   "sizeBytes": zod.number().int(),
   "status": zod.enum(['uploading', 'ready', 'analyzing', 'analyzed', 'failed']),
+  "clientVisible": zod.boolean(),
   "lastAnalysisError": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })
@@ -1064,6 +1066,827 @@ export const UpdateClientUpdateDraftResponse = zod.object({
   "generatedBy": zod.enum(['user', 'schedule']),
   "generatedAt": zod.coerce.date(),
   "reviewedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Get firm intake checks and pending intake records
+ */
+export const getIntakeOverviewResponseChecksItemKeyMax = 80;
+
+export const getIntakeOverviewResponseChecksItemLabelMax = 160;
+
+export const getIntakeOverviewResponseChecksItemDescriptionMax = 500;
+
+export const getIntakeOverviewResponseChecksItemCategoryMax = 80;
+
+
+
+export const GetIntakeOverviewResponse = zod.object({
+  "checks": zod.array(zod.object({
+  "key": zod.string().min(1).max(getIntakeOverviewResponseChecksItemKeyMax),
+  "label": zod.string().min(1).max(getIntakeOverviewResponseChecksItemLabelMax),
+  "description": zod.string().max(getIntakeOverviewResponseChecksItemDescriptionMax),
+  "required": zod.boolean(),
+  "category": zod.string().min(1).max(getIntakeOverviewResponseChecksItemCategoryMax)
+})),
+  "intakes": zod.array(zod.object({
+  "id": zod.number().int(),
+  "clientId": zod.number().int().nullable(),
+  "clientName": zod.string(),
+  "clientType": zod.string(),
+  "email": zod.string().nullable(),
+  "phone": zod.string().nullable(),
+  "industry": zod.string().nullable(),
+  "matterTitle": zod.string(),
+  "matterType": zod.string(),
+  "responsible": zod.string(),
+  "dueAt": zod.coerce.date().nullable(),
+  "partyNames": zod.array(zod.string()),
+  "answers": zod.record(zod.string(), zod.string()),
+  "conflictFindings": zod.array(zod.object({
+  "name": zod.string(),
+  "recordType": zod.enum(['client', 'matter']),
+  "recordId": zod.number().int(),
+  "recordLabel": zod.string()
+})),
+  "status": zod.enum(['review_required', 'cleared', 'rejected', 'converted']),
+  "reviewNote": zod.string().nullable(),
+  "reviewerClerkUserId": zod.string().nullable(),
+  "openedMatterId": zod.number().int().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Configure the firm's client onboarding checks
+ */
+export const saveIntakeChecksBodyChecksItemKeyMax = 80;
+
+export const saveIntakeChecksBodyChecksItemLabelMax = 160;
+
+export const saveIntakeChecksBodyChecksItemDescriptionMax = 500;
+
+export const saveIntakeChecksBodyChecksItemCategoryMax = 80;
+
+export const saveIntakeChecksBodyChecksMax = 40;
+
+
+
+export const SaveIntakeChecksBody = zod.object({
+  "checks": zod.array(zod.object({
+  "key": zod.string().min(1).max(saveIntakeChecksBodyChecksItemKeyMax),
+  "label": zod.string().min(1).max(saveIntakeChecksBodyChecksItemLabelMax),
+  "description": zod.string().max(saveIntakeChecksBodyChecksItemDescriptionMax),
+  "required": zod.boolean(),
+  "category": zod.string().min(1).max(saveIntakeChecksBodyChecksItemCategoryMax)
+})).max(saveIntakeChecksBodyChecksMax)
+})
+
+export const saveIntakeChecksResponseChecksItemKeyMax = 80;
+
+export const saveIntakeChecksResponseChecksItemLabelMax = 160;
+
+export const saveIntakeChecksResponseChecksItemDescriptionMax = 500;
+
+export const saveIntakeChecksResponseChecksItemCategoryMax = 80;
+
+export const saveIntakeChecksResponseChecksMax = 40;
+
+
+
+export const SaveIntakeChecksResponse = zod.object({
+  "checks": zod.array(zod.object({
+  "key": zod.string().min(1).max(saveIntakeChecksResponseChecksItemKeyMax),
+  "label": zod.string().min(1).max(saveIntakeChecksResponseChecksItemLabelMax),
+  "description": zod.string().max(saveIntakeChecksResponseChecksItemDescriptionMax),
+  "required": zod.boolean(),
+  "category": zod.string().min(1).max(saveIntakeChecksResponseChecksItemCategoryMax)
+})).max(saveIntakeChecksResponseChecksMax)
+})
+
+
+/**
+ * @summary Start client and matter intake with conflict screening
+ */
+
+export const createIntakeBodyClientNameMax = 200;
+
+export const createIntakeBodyPhoneMax = 80;
+
+export const createIntakeBodyIndustryMax = 160;
+
+export const createIntakeBodyMatterTitleMax = 240;
+
+export const createIntakeBodyMatterTypeMax = 160;
+
+export const createIntakeBodyResponsibleMax = 160;
+
+export const createIntakeBodyPartyNamesItemMax = 200;
+
+export const createIntakeBodyPartyNamesMax = 100;
+
+export const createIntakeBodyAnswersMaxOne = 5000;
+
+
+
+export const CreateIntakeBody = zod.object({
+  "clientId": zod.number().int().min(1).nullish(),
+  "clientName": zod.string().min(1).max(createIntakeBodyClientNameMax),
+  "clientType": zod.enum(['individual', 'organization']),
+  "email": zod.string().email().nullish(),
+  "phone": zod.string().max(createIntakeBodyPhoneMax).nullish(),
+  "industry": zod.string().max(createIntakeBodyIndustryMax).nullish(),
+  "matterTitle": zod.string().min(1).max(createIntakeBodyMatterTitleMax),
+  "matterType": zod.string().min(1).max(createIntakeBodyMatterTypeMax),
+  "responsible": zod.string().min(1).max(createIntakeBodyResponsibleMax),
+  "dueAt": zod.coerce.date().nullish(),
+  "partyNames": zod.array(zod.string().min(1).max(createIntakeBodyPartyNamesItemMax)).max(createIntakeBodyPartyNamesMax),
+  "answers": zod.record(zod.string(), zod.string().max(createIntakeBodyAnswersMaxOne))
+})
+
+export const CreateIntakeResponse = zod.object({
+  "id": zod.number().int(),
+  "clientId": zod.number().int().nullable(),
+  "clientName": zod.string(),
+  "clientType": zod.string(),
+  "email": zod.string().nullable(),
+  "phone": zod.string().nullable(),
+  "industry": zod.string().nullable(),
+  "matterTitle": zod.string(),
+  "matterType": zod.string(),
+  "responsible": zod.string(),
+  "dueAt": zod.coerce.date().nullable(),
+  "partyNames": zod.array(zod.string()),
+  "answers": zod.record(zod.string(), zod.string()),
+  "conflictFindings": zod.array(zod.object({
+  "name": zod.string(),
+  "recordType": zod.enum(['client', 'matter']),
+  "recordId": zod.number().int(),
+  "recordLabel": zod.string()
+})),
+  "status": zod.enum(['review_required', 'cleared', 'rejected', 'converted']),
+  "reviewNote": zod.string().nullable(),
+  "reviewerClerkUserId": zod.string().nullable(),
+  "openedMatterId": zod.number().int().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Clear or reject an intake after professional review
+ */
+export const ReviewIntakeParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const reviewIntakeBodyNoteMax = 4000;
+
+
+
+export const ReviewIntakeBody = zod.object({
+  "decision": zod.enum(['cleared', 'rejected']),
+  "note": zod.string().min(1).max(reviewIntakeBodyNoteMax),
+  "conflictsResolved": zod.boolean()
+})
+
+export const ReviewIntakeResponse = zod.object({
+  "id": zod.number().int(),
+  "clientId": zod.number().int().nullable(),
+  "clientName": zod.string(),
+  "clientType": zod.string(),
+  "email": zod.string().nullable(),
+  "phone": zod.string().nullable(),
+  "industry": zod.string().nullable(),
+  "matterTitle": zod.string(),
+  "matterType": zod.string(),
+  "responsible": zod.string(),
+  "dueAt": zod.coerce.date().nullable(),
+  "partyNames": zod.array(zod.string()),
+  "answers": zod.record(zod.string(), zod.string()),
+  "conflictFindings": zod.array(zod.object({
+  "name": zod.string(),
+  "recordType": zod.enum(['client', 'matter']),
+  "recordId": zod.number().int(),
+  "recordLabel": zod.string()
+})),
+  "status": zod.enum(['review_required', 'cleared', 'rejected', 'converted']),
+  "reviewNote": zod.string().nullable(),
+  "reviewerClerkUserId": zod.string().nullable(),
+  "openedMatterId": zod.number().int().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Open a matter from a professionally cleared intake
+ */
+export const OpenMatterFromIntakeParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const OpenMatterFromIntakeResponse = zod.object({
+  "id": zod.number().int(),
+  "clientId": zod.number().int(),
+  "clientName": zod.string(),
+  "title": zod.string(),
+  "reference": zod.string(),
+  "matterType": zod.string(),
+  "status": zod.enum(['open', 'on_hold', 'closed']),
+  "riskLevel": zod.enum(['low', 'medium', 'high']),
+  "responsible": zod.string(),
+  "dueAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List client portal invitations and access
+ */
+export const ListPortalAccessResponseItem = zod.object({
+  "id": zod.number().int(),
+  "clientId": zod.number().int(),
+  "clientName": zod.string(),
+  "email": zod.string().email(),
+  "status": zod.enum(['invited', 'active', 'revoked']),
+  "createdAt": zod.coerce.date(),
+  "activatedAt": zod.coerce.date().nullable(),
+  "revokedAt": zod.coerce.date().nullable()
+})
+export const ListPortalAccessResponse = zod.array(ListPortalAccessResponseItem)
+
+
+/**
+ * @summary Invite a verified client account to a specific client record
+ */
+
+
+
+export const InvitePortalClientBody = zod.object({
+  "clientId": zod.number().int().min(1),
+  "email": zod.string().email()
+})
+
+export const InvitePortalClientResponse = zod.object({
+  "id": zod.number().int(),
+  "clientId": zod.number().int(),
+  "clientName": zod.string(),
+  "email": zod.string().email(),
+  "status": zod.enum(['invited', 'active', 'revoked']),
+  "createdAt": zod.coerce.date(),
+  "activatedAt": zod.coerce.date().nullable(),
+  "revokedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Revoke client portal access
+ */
+export const RevokePortalAccessParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const RevokePortalAccessResponse = zod.void()
+
+
+/**
+ * @summary Get only the signed-in client's explicitly shared matters
+ */
+export const GetClientPortalContextResponse = zod.object({
+  "client": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string()
+}),
+  "matters": zod.array(zod.object({
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "reference": zod.string(),
+  "status": zod.string(),
+  "dueAt": zod.coerce.date().nullable()
+})),
+  "documents": zod.array(zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "name": zod.string(),
+  "contentType": zod.string(),
+  "sizeBytes": zod.number().int(),
+  "createdAt": zod.coerce.date()
+})),
+  "updates": zod.array(zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "subject": zod.string(),
+  "body": zod.string(),
+  "publishedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary List client-visible messages for the portal session
+ */
+export const ListPortalMessagesQueryParams = zod.object({
+  "view": zod.enum(['firm', 'client']).optional().describe('Use client to scope a signed-in portal user to their granted client; firm is the default staff view.')
+})
+
+export const ListPortalMessagesResponseItem = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "senderType": zod.enum(['client', 'firm']),
+  "senderName": zod.string(),
+  "body": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const ListPortalMessagesResponse = zod.array(ListPortalMessagesResponseItem)
+
+
+/**
+ * @summary Send a message through the client portal
+ */
+export const SendPortalMessageQueryParams = zod.object({
+  "view": zod.enum(['firm', 'client']).optional().describe('Use client to scope a signed-in portal user to their granted client; firm is the default staff view.')
+})
+
+
+export const sendPortalMessageBodyBodyMax = 10000;
+
+
+
+export const SendPortalMessageBody = zod.object({
+  "matterId": zod.number().int().min(1),
+  "body": zod.string().min(1).max(sendPortalMessageBodyBodyMax)
+})
+
+export const SendPortalMessageResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "senderType": zod.enum(['client', 'firm']),
+  "senderName": zod.string(),
+  "body": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List client-visible requests for a firm or client portal session
+ */
+export const GetPortalRequestsQueryParams = zod.object({
+  "view": zod.enum(['firm', 'client']).optional().describe('Use client to scope a signed-in portal user to their granted client; firm is the default staff view.')
+})
+
+export const GetPortalRequestsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "title": zod.string(),
+  "details": zod.string(),
+  "status": zod.enum(['open', 'responded', 'closed']),
+  "createdAt": zod.coerce.date(),
+  "respondedAt": zod.coerce.date().nullable(),
+  "responseMessage": zod.string().nullable()
+})
+export const GetPortalRequestsResponse = zod.array(GetPortalRequestsResponseItem)
+
+
+/**
+ * @summary Create a client-facing request for a matter
+ */
+export const CreatePortalRequestQueryParams = zod.object({
+  "view": zod.enum(['firm', 'client']).optional().describe('Use client to scope a signed-in portal user to their granted client; firm is the default staff view.')
+})
+
+
+export const createPortalRequestBodyTitleMax = 200;
+
+export const createPortalRequestBodyDetailsMax = 5000;
+
+
+
+export const CreatePortalRequestBody = zod.object({
+  "matterId": zod.number().int().min(1),
+  "title": zod.string().min(1).max(createPortalRequestBodyTitleMax),
+  "details": zod.string().min(1).max(createPortalRequestBodyDetailsMax)
+})
+
+export const CreatePortalRequestResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "title": zod.string(),
+  "details": zod.string(),
+  "status": zod.enum(['open', 'responded', 'closed']),
+  "createdAt": zod.coerce.date(),
+  "respondedAt": zod.coerce.date().nullable(),
+  "responseMessage": zod.string().nullable()
+})
+
+
+/**
+ * @summary Respond to an open client portal request
+ */
+
+
+
+export const RespondToPortalRequestParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const respondToPortalRequestBodyBodyMax = 10000;
+
+
+
+export const RespondToPortalRequestBody = zod.object({
+  "body": zod.string().min(1).max(respondToPortalRequestBodyBodyMax)
+})
+
+export const RespondToPortalRequestResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "title": zod.string(),
+  "details": zod.string(),
+  "status": zod.enum(['open', 'responded', 'closed']),
+  "createdAt": zod.coerce.date(),
+  "respondedAt": zod.coerce.date().nullable(),
+  "responseMessage": zod.string().nullable()
+})
+
+
+/**
+ * @summary Close a responded client request
+ */
+
+
+
+export const ClosePortalRequestParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const ClosePortalRequestResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "title": zod.string(),
+  "details": zod.string(),
+  "status": zod.enum(['open', 'responded', 'closed']),
+  "createdAt": zod.coerce.date(),
+  "respondedAt": zod.coerce.date().nullable(),
+  "responseMessage": zod.string().nullable()
+})
+
+
+/**
+ * @summary Create a private upload URL for a portal client
+ */
+
+export const requestPortalDocumentUploadBodyNameMax = 255;
+
+export const requestPortalDocumentUploadBodySizeMax = 15728640;
+
+
+
+export const RequestPortalDocumentUploadBody = zod.object({
+  "matterId": zod.number().int().min(1),
+  "name": zod.string().min(1).max(requestPortalDocumentUploadBodyNameMax),
+  "size": zod.number().int().min(1).max(requestPortalDocumentUploadBodySizeMax),
+  "contentType": zod.enum(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'])
+})
+
+export const RequestPortalDocumentUploadResponse = zod.object({
+  "id": zod.number().int(),
+  "uploadURL": zod.string().url(),
+  "objectPath": zod.string(),
+  "originalName": zod.string()
+})
+
+
+/**
+ * @summary Finalize a client portal document upload
+ */
+export const CompletePortalDocumentUploadParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const CompletePortalDocumentUploadResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "originalName": zod.string(),
+  "contentType": zod.string(),
+  "sizeBytes": zod.number().int(),
+  "status": zod.enum(['uploading', 'ready', 'analyzing', 'analyzed', 'failed']),
+  "clientVisible": zod.boolean(),
+  "lastAnalysisError": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Download a document explicitly shared with this client
+ */
+export const DownloadPortalDocumentParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const DownloadPortalDocumentResponse = zod.unknown()
+
+
+/**
+ * @summary Share or unshare a matter document with the client
+ */
+export const SetDocumentClientVisibilityParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const SetDocumentClientVisibilityBody = zod.object({
+  "visible": zod.boolean()
+})
+
+export const SetDocumentClientVisibilityResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "originalName": zod.string(),
+  "contentType": zod.string(),
+  "sizeBytes": zod.number().int(),
+  "status": zod.enum(['uploading', 'ready', 'analyzing', 'analyzed', 'failed']),
+  "clientVisible": zod.boolean(),
+  "lastAnalysisError": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List published client updates
+ */
+export const ListPortalUpdatesResponseItem = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "subject": zod.string(),
+  "body": zod.string(),
+  "publishedAt": zod.coerce.date()
+})
+export const ListPortalUpdatesResponse = zod.array(ListPortalUpdatesResponseItem)
+
+
+/**
+ * @summary Publish a reviewed update draft to the client portal
+ */
+
+
+
+export const PublishClientUpdateBody = zod.object({
+  "draftId": zod.number().int().min(1)
+})
+
+export const PublishClientUpdateResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "subject": zod.string(),
+  "body": zod.string(),
+  "publishedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Search sensitive access and approval audit events
+ */
+export const listAuditEventsQueryLimitDefault = 100;
+export const listAuditEventsQueryLimitMax = 200;
+
+
+
+export const ListAuditEventsQueryParams = zod.object({
+  "limit": zod.coerce.number().int().min(1).max(listAuditEventsQueryLimitMax).default(listAuditEventsQueryLimitDefault)
+})
+
+export const ListAuditEventsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "actor": zod.string(),
+  "action": zod.string(),
+  "entityType": zod.string(),
+  "entityId": zod.number().int().nullable(),
+  "entityLabel": zod.string(),
+  "details": zod.record(zod.string(), zod.unknown()),
+  "occurredAt": zod.coerce.date()
+})
+export const ListAuditEventsResponse = zod.array(ListAuditEventsResponseItem)
+
+
+/**
+ * @summary Audit a matter PDF export request
+ */
+
+export const logMatterExportRequestBodyMatterIdsMax = 2000;
+
+
+
+export const LogMatterExportRequestBody = zod.object({
+  "scope": zod.enum(['selected', 'all']),
+  "matterIds": zod.array(zod.number().int().min(1)).min(1).max(logMatterExportRequestBodyMatterIdsMax)
+})
+
+export const LogMatterExportRequestResponse = zod.void()
+
+
+/**
+ * @summary Get retention settings and legal holds
+ */
+export const getGovernanceOverviewResponseRetentionMatterRetentionDaysMin = 365;
+export const getGovernanceOverviewResponseRetentionMatterRetentionDaysMax = 36500;
+
+export const getGovernanceOverviewResponseRetentionAuditRetentionDaysMin = 365;
+export const getGovernanceOverviewResponseRetentionAuditRetentionDaysMax = 36500;
+
+
+
+export const GetGovernanceOverviewResponse = zod.object({
+  "retention": zod.object({
+  "matterRetentionDays": zod.number().int().min(getGovernanceOverviewResponseRetentionMatterRetentionDaysMin).max(getGovernanceOverviewResponseRetentionMatterRetentionDaysMax),
+  "auditRetentionDays": zod.number().int().min(getGovernanceOverviewResponseRetentionAuditRetentionDaysMin).max(getGovernanceOverviewResponseRetentionAuditRetentionDaysMax)
+}),
+  "legalHolds": zod.array(zod.object({
+  "id": zod.number().int(),
+  "entityType": zod.enum(['client', 'matter']),
+  "entityId": zod.number().int(),
+  "entityLabel": zod.string(),
+  "reason": zod.string(),
+  "placedBy": zod.string(),
+  "placedAt": zod.coerce.date(),
+  "releasedAt": zod.coerce.date().nullable()
+}))
+})
+
+
+/**
+ * @summary Configure retention periods for closed matters and audit records
+ */
+export const updateRetentionSettingsBodyOneMatterRetentionDaysMin = 365;
+export const updateRetentionSettingsBodyOneMatterRetentionDaysMax = 36500;
+
+export const updateRetentionSettingsBodyOneAuditRetentionDaysMin = 365;
+export const updateRetentionSettingsBodyOneAuditRetentionDaysMax = 36500;
+
+
+
+export const UpdateRetentionSettingsBody = zod.object({
+  "matterRetentionDays": zod.number().int().min(updateRetentionSettingsBodyOneMatterRetentionDaysMin).max(updateRetentionSettingsBodyOneMatterRetentionDaysMax),
+  "auditRetentionDays": zod.number().int().min(updateRetentionSettingsBodyOneAuditRetentionDaysMin).max(updateRetentionSettingsBodyOneAuditRetentionDaysMax)
+})
+
+export const updateRetentionSettingsResponseMatterRetentionDaysMin = 365;
+export const updateRetentionSettingsResponseMatterRetentionDaysMax = 36500;
+
+export const updateRetentionSettingsResponseAuditRetentionDaysMin = 365;
+export const updateRetentionSettingsResponseAuditRetentionDaysMax = 36500;
+
+
+
+export const UpdateRetentionSettingsResponse = zod.object({
+  "matterRetentionDays": zod.number().int().min(updateRetentionSettingsResponseMatterRetentionDaysMin).max(updateRetentionSettingsResponseMatterRetentionDaysMax),
+  "auditRetentionDays": zod.number().int().min(updateRetentionSettingsResponseAuditRetentionDaysMin).max(updateRetentionSettingsResponseAuditRetentionDaysMax)
+})
+
+
+/**
+ * @summary Place a legal hold on a client or matter
+ */
+
+export const placeLegalHoldBodyReasonMax = 4000;
+
+
+
+export const PlaceLegalHoldBody = zod.object({
+  "entityType": zod.enum(['client', 'matter']),
+  "entityId": zod.number().int().min(1),
+  "reason": zod.string().min(1).max(placeLegalHoldBodyReasonMax)
+})
+
+export const PlaceLegalHoldResponse = zod.object({
+  "id": zod.number().int(),
+  "entityType": zod.enum(['client', 'matter']),
+  "entityId": zod.number().int(),
+  "entityLabel": zod.string(),
+  "reason": zod.string(),
+  "placedBy": zod.string(),
+  "placedAt": zod.coerce.date(),
+  "releasedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Release a legal hold
+ */
+export const ReleaseLegalHoldParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const ReleaseLegalHoldResponse = zod.object({
+  "id": zod.number().int(),
+  "entityType": zod.enum(['client', 'matter']),
+  "entityId": zod.number().int(),
+  "entityLabel": zod.string(),
+  "reason": zod.string(),
+  "placedBy": zod.string(),
+  "placedAt": zod.coerce.date(),
+  "releasedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary List per-firm Google, Microsoft, Xero, and QuickBooks connections
+ */
+export const ListWorkspaceIntegrationsResponseItem = zod.object({
+  "provider": zod.enum(['google', 'microsoft', 'xero', 'quickbooks']),
+  "connected": zod.boolean(),
+  "ready": zod.boolean(),
+  "accountLabel": zod.string(),
+  "lastSyncAt": zod.coerce.date().nullable()
+})
+export const ListWorkspaceIntegrationsResponse = zod.array(ListWorkspaceIntegrationsResponseItem)
+
+
+/**
+ * @summary Start firm-owned OAuth authorization for a provider
+ */
+export const AuthorizeWorkspaceIntegrationParams = zod.object({
+  "provider": zod.enum(['google', 'microsoft', 'xero', 'quickbooks'])
+})
+
+export const AuthorizeWorkspaceIntegrationResponse = zod.object({
+  "authorizationUrl": zod.string().url()
+})
+
+
+/**
+ * @summary Complete provider OAuth authorization using code and state query parameters
+ */
+export const CompleteWorkspaceIntegrationAuthorizationParams = zod.object({
+  "provider": zod.enum(['google', 'microsoft', 'xero', 'quickbooks'])
+})
+
+export const CompleteWorkspaceIntegrationAuthorizationResponse = zod.void()
+
+
+/**
+ * @summary Sync a confirmed planner item to the connected firm calendar
+ */
+export const SyncApprovedPlannerItemParams = zod.object({
+  "provider": zod.enum(['google', 'microsoft']),
+  "id": zod.coerce.number().int()
+})
+
+export const SyncApprovedPlannerItemResponse = zod.object({
+  "provider": zod.string(),
+  "externalId": zod.string(),
+  "message": zod.string()
+})
+
+
+/**
+ * @summary Sync a reviewed billing draft to firm accounting software
+ */
+export const SyncReviewedBillParams = zod.object({
+  "provider": zod.enum(['xero', 'quickbooks']),
+  "id": zod.coerce.number().int()
+})
+
+export const SyncReviewedBillResponse = zod.object({
+  "provider": zod.string(),
+  "externalId": zod.string(),
+  "message": zod.string()
+})
+
+
+/**
+ * @summary Send a reviewed client update only after a professional's explicit action
+ */
+export const SendReviewedClientUpdateEmailParams = zod.object({
+  "provider": zod.enum(['google', 'microsoft'])
+})
+
+
+
+
+export const SendReviewedClientUpdateEmailBody = zod.object({
+  "draftId": zod.number().int().min(1)
+})
+
+export const SendReviewedClientUpdateEmailResponse = zod.object({
+  "provider": zod.string(),
+  "externalId": zod.string(),
+  "message": zod.string()
 })
 
 

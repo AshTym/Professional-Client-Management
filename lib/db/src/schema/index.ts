@@ -19,3 +19,4 @@
 
 export * from "./clientguard";
 export * from "./clientguard-workflows";
+export * from "./clientguard-operations";

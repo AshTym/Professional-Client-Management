@@ -15,6 +15,7 @@ export interface ClientDocument {
   contentType: string;
   sizeBytes: number;
   status: ClientDocumentStatus;
+  clientVisible: boolean;
   /** @nullable */
   lastAnalysisError: string | null;
   createdAt: Date;

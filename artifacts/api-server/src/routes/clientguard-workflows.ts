@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { pipeline } from "node:stream/promises";
 import { db } from "@workspace/db";
 import {
@@ -8,6 +8,7 @@ import {
   clientsTable,
   documentSuggestionsTable,
   documentsTable,
+  legalHoldsTable,
   mattersTable,
   plannerItemsTable,
   timeEntriesTable,
@@ -46,7 +47,7 @@ import {
   UpdatePlannerItemParams,
   UpdatePlannerItemResponse,
 } from "@workspace/api-zod";
-import { firmAccess, logActivity } from "../lib/clientguard-auth";
+import { firmAccess, logActivity, logAuditEvent } from "../lib/clientguard-auth";
 import { ObjectNotFoundError, ObjectStorageService } from "../lib/objectStorage";
 import {
   analyzeDocument as analyzeDocumentContent,
@@ -117,6 +118,9 @@ router.get("/billing", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
   if (!access) return;
   const overview = await getBillingOverview(access.workspaceId);
+  await logAuditEvent(access, "billing_records_viewed", "billing", null, "Billing overview", {
+    draftCount: overview.drafts.length,
+  });
   res.json(GetBillingOverviewResponse.parse(overview));
 });
 
@@ -289,6 +293,9 @@ router.patch("/billing/drafts/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Draft bill not found." });
     return;
   }
+  if (body.data.status === "reviewed") {
+    await logAuditEvent(access, "ai_bill_draft_approved", "billing_draft", draft.id, `Billing draft ${draft.id}`);
+  }
   const matter = await matterForWorkspace(access.workspaceId, draft.matterId);
   res.json(
     UpdateBillingDraftResponse.parse({
@@ -302,10 +309,12 @@ router.patch("/billing/drafts/:id", async (req, res): Promise<void> => {
 router.get("/documents", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
   if (!access) return;
+  const overview = await getDocumentOverview(access.workspaceId);
+  await logAuditEvent(access, "document_records_viewed", "documents", null, "Matter documents", {
+    documentCount: overview.documents.length,
+  });
   res.json(
-    GetDocumentOverviewResponse.parse(
-      await getDocumentOverview(access.workspaceId),
-    ),
+    GetDocumentOverviewResponse.parse(overview),
   );
 });
 
@@ -505,6 +514,7 @@ router.get("/documents/:id/file", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Document not found." });
     return;
   }
+  await logAuditEvent(access, "document_downloaded", "document", document.id, document.originalName);
   try {
     const file = await objectStorage.getObjectEntityFile(document.objectPath);
     const [metadata] = await file.getMetadata();
@@ -531,6 +541,27 @@ router.delete("/documents/:id", async (req, res): Promise<void> => {
   const document = await documentForWorkspace(access.workspaceId, params.data.id);
   if (!document) {
     res.status(404).json({ error: "Document not found." });
+    return;
+  }
+  const [matter] = await db.select({ clientId: mattersTable.clientId }).from(mattersTable)
+    .where(and(eq(mattersTable.id, document.matterId), eq(mattersTable.workspaceId, access.workspaceId)))
+    .limit(1);
+  const [matterHold] = await db.select({ id: legalHoldsTable.id }).from(legalHoldsTable).where(and(
+    eq(legalHoldsTable.workspaceId, access.workspaceId),
+    eq(legalHoldsTable.entityType, "matter"),
+    eq(legalHoldsTable.entityId, document.matterId),
+    isNull(legalHoldsTable.releasedAt),
+  )).limit(1);
+  const [clientHold] = matter?.clientId
+    ? await db.select({ id: legalHoldsTable.id }).from(legalHoldsTable).where(and(
+      eq(legalHoldsTable.workspaceId, access.workspaceId),
+      eq(legalHoldsTable.entityType, "client"),
+      eq(legalHoldsTable.entityId, matter.clientId),
+      isNull(legalHoldsTable.releasedAt),
+    )).limit(1)
+    : [];
+  if (matterHold || clientHold) {
+    res.status(409).json({ error: "This record is protected by an active legal hold." });
     return;
   }
   try {
@@ -619,6 +650,14 @@ router.patch("/document-suggestions/:id", async (req, res): Promise<void> => {
     res.status(409).json({ error: "This suggestion has already been reviewed." });
     return;
   }
+  await logAuditEvent(
+    access,
+    "ai_document_suggestion_reviewed",
+    "document_suggestion",
+    result.suggestion.id,
+    result.suggestion.title,
+    { decision: result.suggestion.status },
+  );
   const [document] = await db
     .select({ originalName: documentsTable.originalName })
     .from(documentsTable)
@@ -681,10 +720,12 @@ router.patch("/planner-items/:id", async (req, res): Promise<void> => {
 router.get("/updates", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
   if (!access) return;
+  const overview = await getClientUpdateOverview(access.workspaceId);
+  await logAuditEvent(access, "client_update_records_viewed", "client_updates", null, "Client updates", {
+    draftCount: overview.drafts.length,
+  });
   res.json(
-    GetClientUpdateOverviewResponse.parse(
-      await getClientUpdateOverview(access.workspaceId),
-    ),
+    GetClientUpdateOverviewResponse.parse(overview),
   );
 });
 
@@ -800,6 +841,9 @@ router.patch("/updates/drafts/:id", async (req, res): Promise<void> => {
   if (!draft) {
     res.status(404).json({ error: "Client update draft not found." });
     return;
+  }
+  if (body.data.status === "reviewed") {
+    await logAuditEvent(access, "ai_client_update_approved", "client_update_draft", draft.id, draft.subject);
   }
   const matter = await matterForWorkspace(access.workspaceId, draft.matterId);
   res.json(

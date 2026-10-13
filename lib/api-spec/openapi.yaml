@@ -849,6 +849,600 @@ paths:
         "404":
           description: Client update draft not found
 
+  /intake:
+    get:
+      operationId: getIntakeOverview
+      tags: [intake]
+      summary: Get firm intake checks and pending intake records
+      responses:
+        "200":
+          description: Intake checks and cases
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntakeOverview"
+    put:
+      operationId: saveIntakeChecks
+      tags: [intake]
+      summary: Configure the firm's client onboarding checks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntakeChecksInput"
+      responses:
+        "200":
+          description: Saved intake checks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntakeChecksInput"
+  /intakes:
+    post:
+      operationId: createIntake
+      tags: [intake]
+      summary: Start client and matter intake with conflict screening
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntakeInput"
+      responses:
+        "201":
+          description: Intake record requiring professional review
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntakeCase"
+        "400":
+          description: Required onboarding information is missing
+  /intakes/{id}/review:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    patch:
+      operationId: reviewIntake
+      tags: [intake]
+      summary: Clear or reject an intake after professional review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntakeReviewInput"
+      responses:
+        "200":
+          description: Reviewed intake
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntakeCase"
+        "409":
+          description: Intake has unresolved conflict findings or is already closed
+  /intakes/{id}/open-matter:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      operationId: openMatterFromIntake
+      tags: [intake]
+      summary: Open a matter from a professionally cleared intake
+      responses:
+        "201":
+          description: Matter opened from the cleared intake
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Matter"
+        "409":
+          description: Intake has not been cleared or was already converted
+  /portal/access:
+    get:
+      operationId: listPortalAccess
+      tags: [portal]
+      summary: List client portal invitations and access
+      responses:
+        "200":
+          description: Client portal access records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalAccess"
+    post:
+      operationId: invitePortalClient
+      tags: [portal]
+      summary: Invite a verified client account to a specific client record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalInviteInput"
+      responses:
+        "201":
+          description: Client portal invitation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalAccess"
+  /portal/access/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    delete:
+      operationId: revokePortalAccess
+      tags: [portal]
+      summary: Revoke client portal access
+      responses:
+        "204":
+          description: Portal access revoked
+  /portal/context:
+    get:
+      operationId: getClientPortalContext
+      tags: [portal]
+      summary: Get only the signed-in client's explicitly shared matters
+      responses:
+        "200":
+          description: Client portal context, approved updates, and shared files
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientPortalContext"
+        "403":
+          description: This account has no active client portal access
+  /portal/messages:
+    parameters:
+      - name: view
+        in: query
+        required: false
+        description: Use client to scope a signed-in portal user to their granted client; firm is the default staff view.
+        schema:
+          type: string
+          enum: [firm, client]
+    get:
+      operationId: listPortalMessages
+      tags: [portal]
+      summary: List client-visible messages for the portal session
+      responses:
+        "200":
+          description: Messages exchanged through the client portal
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalMessage"
+    post:
+      operationId: sendPortalMessage
+      tags: [portal]
+      summary: Send a message through the client portal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalMessageInput"
+      responses:
+        "201":
+          description: Portal message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalMessage"
+  /portal/requests:
+    parameters:
+      - name: view
+        in: query
+        required: false
+        description: Use client to scope a signed-in portal user to their granted client; firm is the default staff view.
+        schema:
+          type: string
+          enum: [firm, client]
+    get:
+      operationId: getPortalRequests
+      tags: [portal]
+      summary: List client-visible requests for a firm or client portal session
+      responses:
+        "200":
+          description: Requests with their current response status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalRequest"
+    post:
+      operationId: createPortalRequest
+      tags: [portal]
+      summary: Create a client-facing request for a matter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePortalRequestInput"
+      responses:
+        "201":
+          description: Request created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalRequest"
+  /portal/requests/{id}/respond:
+    post:
+      operationId: respondToPortalRequest
+      tags: [portal]
+      summary: Respond to an open client portal request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RespondPortalRequestInput"
+      responses:
+        "200":
+          description: Request updated with the client's response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalRequest"
+  /portal/requests/{id}:
+    patch:
+      operationId: closePortalRequest
+      tags: [portal]
+      summary: Close a responded client request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Request closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalRequest"
+  /portal/documents/upload-url:
+    post:
+      operationId: requestPortalDocumentUpload
+      tags: [portal]
+      summary: Create a private upload URL for a portal client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalDocumentUploadInput"
+      responses:
+        "200":
+          description: Private document upload URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentUpload"
+  /portal/documents/{id}/complete:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      operationId: completePortalDocumentUpload
+      tags: [portal]
+      summary: Finalize a client portal document upload
+      responses:
+        "200":
+          description: Uploaded document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientDocument"
+  /portal/documents/{id}/file:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      operationId: downloadPortalDocument
+      tags: [portal]
+      summary: Download a document explicitly shared with this client
+      responses:
+        "200":
+          description: Private document bytes
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+  /documents/{id}/client-visibility:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    patch:
+      operationId: setDocumentClientVisibility
+      tags: [documents]
+      summary: Share or unshare a matter document with the client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientVisibilityInput"
+      responses:
+        "200":
+          description: Updated document visibility
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientDocument"
+  /portal/updates:
+    get:
+      operationId: listPortalUpdates
+      tags: [portal]
+      summary: List published client updates
+      responses:
+        "200":
+          description: Published updates only
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalUpdate"
+    post:
+      operationId: publishClientUpdate
+      tags: [portal]
+      summary: Publish a reviewed update draft to the client portal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishClientUpdateInput"
+      responses:
+        "201":
+          description: Published client update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalUpdate"
+        "409":
+          description: Update draft must be reviewed before publishing
+  /audit:
+    get:
+      operationId: listAuditEvents
+      tags: [governance]
+      summary: Search sensitive access and approval audit events
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        "200":
+          description: Append-only audit events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditEvent"
+  /audit/exports:
+    post:
+      operationId: logMatterExportRequest
+      tags: [governance]
+      summary: Audit a matter PDF export request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MatterExportAuditInput"
+      responses:
+        "204":
+          description: Export request recorded
+  /governance:
+    get:
+      operationId: getGovernanceOverview
+      tags: [governance]
+      summary: Get retention settings and legal holds
+      responses:
+        "200":
+          description: Firm governance settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GovernanceOverview"
+    put:
+      operationId: updateRetentionSettings
+      tags: [governance]
+      summary: Configure retention periods for closed matters and audit records
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetentionSettingsInput"
+      responses:
+        "200":
+          description: Saved retention settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetentionSettings"
+  /governance/legal-holds:
+    post:
+      operationId: placeLegalHold
+      tags: [governance]
+      summary: Place a legal hold on a client or matter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LegalHoldInput"
+      responses:
+        "201":
+          description: Active legal hold
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegalHold"
+  /governance/legal-holds/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    patch:
+      operationId: releaseLegalHold
+      tags: [governance]
+      summary: Release a legal hold
+      responses:
+        "200":
+          description: Released legal hold
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LegalHold"
+  /integrations:
+    get:
+      operationId: listWorkspaceIntegrations
+      tags: [integrations]
+      summary: List per-firm Google, Microsoft, Xero, and QuickBooks connections
+      responses:
+        "200":
+          description: Connection status without credentials
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProviderConnectionStatus"
+  /integrations/{provider}/authorize:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [google, microsoft, xero, quickbooks]
+    post:
+      operationId: authorizeWorkspaceIntegration
+      tags: [integrations]
+      summary: Start firm-owned OAuth authorization for a provider
+      responses:
+        "200":
+          description: Provider authorization URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthorizationUrl"
+        "503":
+          description: Provider OAuth credentials are not configured
+  /integrations/{provider}/callback:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [google, microsoft, xero, quickbooks]
+    get:
+      operationId: completeWorkspaceIntegrationAuthorization
+      tags: [integrations]
+      summary: Complete provider OAuth authorization using code and state query parameters
+      responses:
+        "302":
+          description: Redirect back to firm integration settings
+  /integrations/{provider}/calendar/{id}/sync:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema: { type: string, enum: [google, microsoft] }
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      operationId: syncApprovedPlannerItem
+      tags: [integrations]
+      summary: Sync a confirmed planner item to the connected firm calendar
+      responses:
+        "200":
+          description: Calendar event created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderSyncResult"
+        "409":
+          description: Planner item has not been confirmed
+  /integrations/{provider}/billing/{id}/sync:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema: { type: string, enum: [xero, quickbooks] }
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      operationId: syncReviewedBill
+      tags: [integrations]
+      summary: Sync a reviewed billing draft to firm accounting software
+      responses:
+        "200":
+          description: Accounting record created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderSyncResult"
+        "409":
+          description: Billing draft has not been reviewed
+  /integrations/{provider}/email:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema: { type: string, enum: [google, microsoft] }
+    post:
+      operationId: sendReviewedClientUpdateEmail
+      tags: [integrations]
+      summary: Send a reviewed client update only after a professional's explicit action
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendReviewedUpdateEmailInput"
+      responses:
+        "200":
+          description: Reviewed update email sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderSyncResult"
+        "409":
+          description: Update draft has not been reviewed or was already sent
+
 components:
   schemas:
     HealthStatus:
@@ -1201,7 +1795,7 @@ components:
           items: { $ref: "#/components/schemas/PlannerItem" }
     ClientDocument:
       type: object
-      required: [id, matterId, matterTitle, originalName, contentType, sizeBytes, status, lastAnalysisError, createdAt]
+      required: [id, matterId, matterTitle, originalName, contentType, sizeBytes, status, clientVisible, lastAnalysisError, createdAt]
       properties:
         id: { type: integer }
         matterId: { type: integer }
@@ -1210,6 +1804,7 @@ components:
         contentType: { type: string }
         sizeBytes: { type: integer }
         status: { type: string, enum: [uploading, ready, analyzing, analyzed, failed] }
+        clientVisible: { type: boolean }
         lastAnalysisError: { type: ["string", "null"] }
         createdAt: { type: string, format: date-time }
     DocumentUploadInput:
@@ -1332,3 +1927,310 @@ components:
         subject: { type: string, minLength: 1, maxLength: 200 }
         body: { type: string, minLength: 1, maxLength: 10000 }
         status: { type: string, enum: [draft, reviewed] }
+    IntakeRule:
+      type: object
+      required: [key, label, description, required, category]
+      properties:
+        key: { type: string, minLength: 1, maxLength: 80 }
+        label: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: string, maxLength: 500 }
+        required: { type: boolean }
+        category: { type: string, minLength: 1, maxLength: 80 }
+    IntakeChecksInput:
+      type: object
+      required: [checks]
+      properties:
+        checks:
+          type: array
+          maxItems: 40
+          items: { $ref: "#/components/schemas/IntakeRule" }
+    IntakeCase:
+      type: object
+      required: [id, clientId, clientName, clientType, email, phone, industry, matterTitle, matterType, responsible, dueAt, partyNames, answers, conflictFindings, status, reviewNote, reviewerClerkUserId, openedMatterId, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        clientId: { type: ["integer", "null"] }
+        clientName: { type: string }
+        clientType: { type: string }
+        email: { type: ["string", "null"] }
+        phone: { type: ["string", "null"] }
+        industry: { type: ["string", "null"] }
+        matterTitle: { type: string }
+        matterType: { type: string }
+        responsible: { type: string }
+        dueAt: { type: ["string", "null"], format: date-time }
+        partyNames:
+          type: array
+          items: { type: string }
+        answers:
+          type: object
+          additionalProperties: { type: string }
+        conflictFindings:
+          type: array
+          items:
+            type: object
+            required: [name, recordType, recordId, recordLabel]
+            properties:
+              name: { type: string }
+              recordType: { type: string, enum: [client, matter] }
+              recordId: { type: integer }
+              recordLabel: { type: string }
+        status: { type: string, enum: [review_required, cleared, rejected, converted] }
+        reviewNote: { type: ["string", "null"] }
+        reviewerClerkUserId: { type: ["string", "null"] }
+        openedMatterId: { type: ["integer", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    IntakeOverview:
+      type: object
+      required: [checks, intakes]
+      properties:
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/IntakeRule" }
+        intakes:
+          type: array
+          items: { $ref: "#/components/schemas/IntakeCase" }
+    IntakeInput:
+      type: object
+      required: [clientName, clientType, matterTitle, matterType, responsible, partyNames, answers]
+      properties:
+        clientId: { type: ["integer", "null"], minimum: 1 }
+        clientName: { type: string, minLength: 1, maxLength: 200 }
+        clientType: { type: string, enum: [individual, organization] }
+        email: { type: ["string", "null"], format: email }
+        phone: { type: ["string", "null"], maxLength: 80 }
+        industry: { type: ["string", "null"], maxLength: 160 }
+        matterTitle: { type: string, minLength: 1, maxLength: 240 }
+        matterType: { type: string, minLength: 1, maxLength: 160 }
+        responsible: { type: string, minLength: 1, maxLength: 160 }
+        dueAt: { type: ["string", "null"], format: date-time }
+        partyNames:
+          type: array
+          maxItems: 100
+          items: { type: string, minLength: 1, maxLength: 200 }
+        answers:
+          type: object
+          additionalProperties: { type: string, maxLength: 5000 }
+    IntakeReviewInput:
+      type: object
+      required: [decision, note, conflictsResolved]
+      properties:
+        decision: { type: string, enum: [cleared, rejected] }
+        note: { type: string, minLength: 1, maxLength: 4000 }
+        conflictsResolved: { type: boolean }
+    PortalAccess:
+      type: object
+      required: [id, clientId, clientName, email, status, createdAt, activatedAt, revokedAt]
+      properties:
+        id: { type: integer }
+        clientId: { type: integer }
+        clientName: { type: string }
+        email: { type: string, format: email }
+        status: { type: string, enum: [invited, active, revoked] }
+        createdAt: { type: string, format: date-time }
+        activatedAt: { type: ["string", "null"], format: date-time }
+        revokedAt: { type: ["string", "null"], format: date-time }
+    PortalInviteInput:
+      type: object
+      required: [clientId, email]
+      properties:
+        clientId: { type: integer, minimum: 1 }
+        email: { type: string, format: email }
+    PortalMatter:
+      type: object
+      required: [id, title, reference, status, dueAt]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        reference: { type: string }
+        status: { type: string }
+        dueAt: { type: ["string", "null"], format: date-time }
+    PortalDocument:
+      type: object
+      required: [id, matterId, matterTitle, name, contentType, sizeBytes, createdAt]
+      properties:
+        id: { type: integer }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        name: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer }
+        createdAt: { type: string, format: date-time }
+    PortalUpdate:
+      type: object
+      required: [id, matterId, matterTitle, subject, body, publishedAt]
+      properties:
+        id: { type: integer }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        subject: { type: string }
+        body: { type: string }
+        publishedAt: { type: string, format: date-time }
+    ClientPortalContext:
+      type: object
+      required: [client, matters, documents, updates]
+      properties:
+        client:
+          type: object
+          required: [id, name]
+          properties:
+            id: { type: integer }
+            name: { type: string }
+        matters:
+          type: array
+          items: { $ref: "#/components/schemas/PortalMatter" }
+        documents:
+          type: array
+          items: { $ref: "#/components/schemas/PortalDocument" }
+        updates:
+          type: array
+          items: { $ref: "#/components/schemas/PortalUpdate" }
+    PortalMessage:
+      type: object
+      required: [id, matterId, matterTitle, senderType, senderName, body, createdAt]
+      properties:
+        id: { type: integer }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        senderType: { type: string, enum: [client, firm] }
+        senderName: { type: string }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+    PortalMessageInput:
+      type: object
+      required: [matterId, body]
+      properties:
+        matterId: { type: integer, minimum: 1 }
+        body: { type: string, minLength: 1, maxLength: 10000 }
+    CreatePortalRequestInput:
+      type: object
+      required: [matterId, title, details]
+      properties:
+        matterId: { type: integer, minimum: 1 }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        details: { type: string, minLength: 1, maxLength: 5000 }
+    RespondPortalRequestInput:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 10000 }
+    PortalRequest:
+      type: object
+      required: [id, matterId, matterTitle, title, details, status, createdAt, respondedAt, responseMessage]
+      properties:
+        id: { type: integer }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        title: { type: string }
+        details: { type: string }
+        status: { type: string, enum: [open, responded, closed] }
+        createdAt: { type: string, format: date-time }
+        respondedAt: { type: ["string", "null"], format: date-time }
+        responseMessage: { type: ["string", "null"] }
+    PortalDocumentUploadInput:
+      type: object
+      required: [matterId, name, size, contentType]
+      properties:
+        matterId: { type: integer, minimum: 1 }
+        name: { type: string, minLength: 1, maxLength: 255 }
+        size: { type: integer, minimum: 1, maximum: 15728640 }
+        contentType:
+          type: string
+          enum: [application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, text/plain]
+    ClientVisibilityInput:
+      type: object
+      required: [visible]
+      properties:
+        visible: { type: boolean }
+    PublishClientUpdateInput:
+      type: object
+      required: [draftId]
+      properties:
+        draftId: { type: integer, minimum: 1 }
+    AuditEvent:
+      type: object
+      required: [id, actor, action, entityType, entityId, entityLabel, details, occurredAt]
+      properties:
+        id: { type: integer }
+        actor: { type: string }
+        action: { type: string }
+        entityType: { type: string }
+        entityId: { type: ["integer", "null"] }
+        entityLabel: { type: string }
+        details:
+          type: object
+          additionalProperties: true
+        occurredAt: { type: string, format: date-time }
+    MatterExportAuditInput:
+      type: object
+      required: [scope, matterIds]
+      properties:
+        scope: { type: string, enum: [selected, all] }
+        matterIds:
+          type: array
+          minItems: 1
+          maxItems: 2000
+          items: { type: integer, minimum: 1 }
+    RetentionSettings:
+      type: object
+      required: [matterRetentionDays, auditRetentionDays]
+      properties:
+        matterRetentionDays: { type: integer, minimum: 365, maximum: 36500 }
+        auditRetentionDays: { type: integer, minimum: 365, maximum: 36500 }
+    RetentionSettingsInput:
+      allOf:
+        - $ref: "#/components/schemas/RetentionSettings"
+    LegalHold:
+      type: object
+      required: [id, entityType, entityId, entityLabel, reason, placedBy, placedAt, releasedAt]
+      properties:
+        id: { type: integer }
+        entityType: { type: string, enum: [client, matter] }
+        entityId: { type: integer }
+        entityLabel: { type: string }
+        reason: { type: string }
+        placedBy: { type: string }
+        placedAt: { type: string, format: date-time }
+        releasedAt: { type: ["string", "null"], format: date-time }
+    LegalHoldInput:
+      type: object
+      required: [entityType, entityId, reason]
+      properties:
+        entityType: { type: string, enum: [client, matter] }
+        entityId: { type: integer, minimum: 1 }
+        reason: { type: string, minLength: 1, maxLength: 4000 }
+    GovernanceOverview:
+      type: object
+      required: [retention, legalHolds]
+      properties:
+        retention: { $ref: "#/components/schemas/RetentionSettings" }
+        legalHolds:
+          type: array
+          items: { $ref: "#/components/schemas/LegalHold" }
+    ProviderConnectionStatus:
+      type: object
+      required: [provider, connected, ready, accountLabel, lastSyncAt]
+      properties:
+        provider: { type: string, enum: [google, microsoft, xero, quickbooks] }
+        connected: { type: boolean }
+        ready: { type: boolean }
+        accountLabel: { type: string }
+        lastSyncAt: { type: ["string", "null"], format: date-time }
+    AuthorizationUrl:
+      type: object
+      required: [authorizationUrl]
+      properties:
+        authorizationUrl: { type: string, format: uri }
+    ProviderSyncResult:
+      type: object
+      required: [provider, externalId, message]
+      properties:
+        provider: { type: string }
+        externalId: { type: string }
+        message: { type: string }
+    SendReviewedUpdateEmailInput:
+      type: object
+      required: [draftId]
+      properties:
+        draftId: { type: integer, minimum: 1 }

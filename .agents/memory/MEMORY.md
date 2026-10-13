@@ -1,2 +1,3 @@
 - [Clerk route tests](clerk-route-tests.md) — custom requests passed through Clerk's real getAuth helper need Clerk's branded session shape, not just a user ID.
 - [ClientGuard AI safeguards](clientguard-ai-safeguards.md) — keep AI bills/updates as review drafts and document suggestions source-cited and human-confirmed.
+- [ClientGuard provider OAuth](clientguard-provider-oauth.md) — firm integrations use firm-scoped OAuth grants, encrypted tokens, and reviewed actions rather than a shared provider identity.

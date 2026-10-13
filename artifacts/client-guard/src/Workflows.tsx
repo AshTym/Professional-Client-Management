@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,18 +9,21 @@ import {
   useGetDocumentOverview, useRequestDocumentUpload, useCompleteDocumentUpload, useAnalyzeDocument,
   useDeleteMatterDocument, useReviewDocumentSuggestion, useUpdatePlannerItem,
   useGetClientUpdateOverview, useSaveClientUpdateSchedule, useCreateClientUpdateDraft,
-  useUpdateClientUpdateDraft, useListMatters, useListClients,
-  getGetBillingOverviewQueryKey, getGetDocumentOverviewQueryKey, getGetClientUpdateOverviewQueryKey,
+  useUpdateClientUpdateDraft, useListMatters, useListClients, useSetDocumentClientVisibility,
+  useListPortalUpdates, usePublishClientUpdate, useSendReviewedClientUpdateEmail,
+  useGetPortalRequests, useCreatePortalRequest, useClosePortalRequest,
+  getGetBillingOverviewQueryKey, getGetDocumentOverviewQueryKey, getGetClientUpdateOverviewQueryKey, getListPortalUpdatesQueryKey,
+  getGetPortalRequestsQueryKey,
   getGetMatterDocumentFileUrl,
 } from '@workspace/api-client-react';
-import type { BillingProfileInput, ClientUpdateDraft, Matter } from '@workspace/api-client-react';
+import type { BillingProfileInput, ClientUpdateDraft, Matter, PortalRequest } from '@workspace/api-client-react';
 import {
   Activity, ArrowDownToLine, ArrowRight, CalendarDays, Check, CheckCheck, Clipboard,
   Clock3, FileText, LoaderCircle, Plus, RefreshCw, Sparkles, Trash2, UploadCloud,
-  WalletCards, X,
+  WalletCards, X, Inbox,
 } from 'lucide-react';
 
-type Tab = 'billing' | 'documents' | 'updates';
+type Tab = 'billing' | 'documents' | 'updates' | 'requests';
 const money = (cents: number, currency: string) => new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(cents / 100);
 const dateLabel = (date?: string | null) => date ? new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not scheduled';
 const shortError = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
@@ -58,11 +61,13 @@ export default function Workflows() {
   const refreshBilling = () => qc.invalidateQueries({ queryKey: getGetBillingOverviewQueryKey() });
   const refreshDocuments = () => qc.invalidateQueries({ queryKey: getGetDocumentOverviewQueryKey() });
   const refreshUpdates = () => qc.invalidateQueries({ queryKey: getGetClientUpdateOverviewQueryKey() });
+  const refreshRequests = () => qc.invalidateQueries({ queryKey: getGetPortalRequestsQueryKey() });
 
   const tabs = [
     { id: 'billing' as const, label: 'Bill drafts', icon: WalletCards, detail: 'Scheduled billing' },
     { id: 'documents' as const, label: 'Document actions', icon: FileText, detail: 'Source-backed suggestions' },
     { id: 'updates' as const, label: 'Client updates', icon: Activity, detail: 'Matter-based correspondence' },
+    { id: 'requests' as const, label: 'Portal requests', icon: Inbox, detail: 'Client response workflow' },
   ];
   return <div data-testid="page-workflows">
     <div className="mb-8 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
@@ -81,6 +86,7 @@ export default function Workflows() {
     {tab === 'billing' && <BillingPanel overview={billing.data} isLoading={billing.isLoading} error={billing.isError ? shortError(billing.error) : ''} retry={() => billing.refetch()} matters={matters.data || []} refresh={refreshBilling} />}
     {tab === 'documents' && <DocumentsPanel overview={documents.data} isLoading={documents.isLoading} error={documents.isError ? shortError(documents.error) : ''} retry={() => documents.refetch()} matters={matters.data || []} refresh={refreshDocuments} />}
     {tab === 'updates' && <UpdatesPanel overview={updates.data} isLoading={updates.isLoading} error={updates.isError ? shortError(updates.error) : ''} retry={() => updates.refetch()} matters={matters.data || []} clients={clients.data || []} refresh={refreshUpdates} />}
+    {tab === 'requests' && <RequestsPanel matters={matters.data||[]} refresh={refreshRequests} />}
     {(matters.isError || clients.isError) && <p className="mt-4 text-xs text-[#9a554d]" data-testid="status-matter-selector-error">Matter and client selectors could not be fully loaded. Retry by refreshing this page.</p>}
     <div className="mt-9 flex items-center gap-2 border-t border-[#e1ddd2] pt-4 text-[11px] text-[#818c87]"><span className="grid h-5 w-5 place-items-center rounded-full bg-[#e9eee8] text-[#4f765f]"><Check className="h-3 w-3" /></span>Private to this firm · Human review remains part of every workflow</div>
   </div>;
@@ -225,6 +231,7 @@ function DocumentsPanel({ overview, isLoading, error, retry, matters, refresh }:
   const remove = useDeleteMatterDocument();
   const review = useReviewDocumentSuggestion();
   const updatePlanner = useUpdatePlannerItem();
+  const setVisibility = useSetDocumentClientVisibility();
   const [uploadMatter, setUploadMatter] = useState('');
   const [uploading, setUploading] = useState(false);
   const [localError, setLocalError] = useState('');
@@ -265,7 +272,7 @@ function DocumentsPanel({ overview, isLoading, error, retry, matters, refresh }:
     <PanelCard id="document-records"><SectionTitle number="01" title="Matter documents" body="Private files · PDF, DOCX, or TXT up to 15 MB" action={<label className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-[#294651] px-3.5 py-2.5 text-xs font-bold text-[#f9f6ed] transition hover:bg-[#1c3943] ${uploading ? 'pointer-events-none opacity-50' : ''}`} data-testid="label-upload-document"><UploadCloud className="h-3.5 w-3.5" />{uploading ? 'Uploading…' : 'Upload document'}<input type="file" accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="sr-only" onChange={uploadInput} disabled={uploading} data-testid="input-upload-document" /></label>} />
       <div className="border-b border-[#eee9df] bg-[#f5f2e9] px-5 py-3"><Field label="Matter for this upload"><select value={uploadMatter} onChange={e => setUploadMatter(e.target.value)} className={`${inputClass} max-w-xl`} data-testid="select-upload-matter"><option value="">Choose a matter first</option>{matters.map(m => <option key={m.id} value={m.id}>{matterOption(m)}</option>)}</select></Field></div>
       {(localError || remove.isError) && <div className="px-5 pt-3"><FormError message={localError || shortError(remove.error)} /></div>}
-      {!documents.length ? <Empty title="No documents attached" body="Choose a matter and upload a source document to prepare suggestions from its contents." /> : <div className="divide-y divide-[#eee9df]">{documents.map((doc: any) => <article key={doc.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center" data-testid={`client-document-${doc.id}`}><span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-[#e9eee8] text-[#4d7463]"><FileText className="h-4 w-4" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-sm font-bold">{doc.originalName}</h3><Badge tone={doc.status === 'analyzed' ? 'green' : doc.status === 'failed' ? 'red' : 'muted'} testId={`status-document-${doc.id}`}>{doc.status}</Badge></div><p className="mt-1 text-[10px] text-[#86918c]">{doc.matterTitle} · {(doc.sizeBytes / 1024 / 1024).toFixed(2)} MB · Added {dateLabel(doc.createdAt)}</p>{doc.lastAnalysisError && <p className="mt-1 text-[10px] text-[#9a554d]">{doc.lastAnalysisError}</p>}</div><div className="flex flex-wrap items-center gap-2"><a href={getGetMatterDocumentFileUrl(doc.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded px-2.5 py-2 text-[10px] font-bold text-[#405c60] hover:bg-[#eeece4]" data-testid={`link-open-document-${doc.id}`}><ArrowDownToLine className="h-3.5 w-3.5" />Open source</a>{doc.status === 'ready' || doc.status === 'failed' ? <ActionButton onClick={() => analyzeDoc(doc.id)} disabled={analyzingId === doc.id} kind="outline" testId={`button-analyze-document-${doc.id}`}>{analyzingId === doc.id ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}Analyze</ActionButton> : null}<ActionButton onClick={() => setDeleteId(doc.id)} kind="quiet" testId={`button-delete-document-${doc.id}`}><Trash2 className="h-3.5 w-3.5" /><span className="sr-only">Delete {doc.originalName}</span></ActionButton></div></article>)}</div>}
+      {!documents.length ? <Empty title="No documents attached" body="Choose a matter and upload a source document to prepare suggestions from its contents." /> : <div className="divide-y divide-[#eee9df]">{documents.map((doc: any) => <article key={doc.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center" data-testid={`client-document-${doc.id}`}><span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-[#e9eee8] text-[#4d7463]"><FileText className="h-4 w-4" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-sm font-bold">{doc.originalName}</h3><Badge tone={doc.status === 'analyzed' ? 'green' : doc.status === 'failed' ? 'red' : 'muted'} testId={`status-document-${doc.id}`}>{doc.status}</Badge><Badge tone={doc.clientVisible ? 'green' : 'muted'}>{doc.clientVisible ? 'Shared with client' : 'Private'}</Badge></div><p className="mt-1 text-[10px] text-[#86918c]">{doc.matterTitle} · {(doc.sizeBytes / 1024 / 1024).toFixed(2)} MB · Added {dateLabel(doc.createdAt)}</p>{doc.lastAnalysisError && <p className="mt-1 text-[10px] text-[#9a554d]">{doc.lastAnalysisError}</p>}</div><div className="flex flex-wrap items-center gap-2"><a href={getGetMatterDocumentFileUrl(doc.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded px-2.5 py-2 text-[10px] font-bold text-[#405c60] hover:bg-[#eeece4]" data-testid={`link-open-document-${doc.id}`}><ArrowDownToLine className="h-3.5 w-3.5" />Open source</a><ActionButton onClick={() => { if (!doc.clientVisible && !window.confirm(`Share ${doc.originalName} with this matter's client?`)) return; setVisibility.mutate({id:doc.id,data:{visible:!doc.clientVisible}},{onSuccess:refresh,onError:err=>setLocalError(shortError(err))}); }} disabled={setVisibility.isPending} kind="outline" testId={`button-toggle-client-visibility-${doc.id}`}>{doc.clientVisible?'Stop sharing':'Share with client'}</ActionButton>{doc.status === 'ready' || doc.status === 'failed' ? <ActionButton onClick={() => analyzeDoc(doc.id)} disabled={analyzingId === doc.id} kind="outline" testId={`button-analyze-document-${doc.id}`}>{analyzingId === doc.id ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}Analyze</ActionButton> : null}<ActionButton onClick={() => setDeleteId(doc.id)} kind="quiet" testId={`button-delete-document-${doc.id}`}><Trash2 className="h-3.5 w-3.5" /><span className="sr-only">Delete {doc.originalName}</span></ActionButton></div></article>)}</div>}
       <div className="border-t border-[#eee9df] px-5 py-3 text-[10px] leading-5 text-[#74817c]" data-testid="notice-document-disclosure">Before you request analysis, know that document text is sent to the AI service for source-backed suggestions. No analysis starts until you press Analyze.</div>
     </PanelCard>
     <PanelCard id="document-suggestions"><SectionTitle number="02" title="Suggestions from documents" body="Each suggestion includes the exact source passage and page. Confirm or reject it." />
@@ -282,11 +289,17 @@ function UpdatesPanel({ overview, isLoading, error, retry, matters, clients, ref
   const saveSchedule = useSaveClientUpdateSchedule();
   const createDraft = useCreateClientUpdateDraft();
   const updateDraft = useUpdateClientUpdateDraft();
+  const sendEmail = useSendReviewedClientUpdateEmail();
+  const publishUpdate = usePublishClientUpdate();
+  const published = useListPortalUpdates({ query: { queryKey: getListPortalUpdatesQueryKey() } });
+  const qc = useQueryClient();
   const [matterId, setMatterId] = useState('');
   const [cadence, setCadence] = useState<'weekly' | 'fortnightly' | 'monthly'>('fortnightly');
   const [editing, setEditing] = useState<number | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
   const [errorText, setErrorText] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [emailNotice, setEmailNotice] = useState('');
   const schedules = overview?.schedules || [];
   const drafts = overview?.drafts || [];
   const schedulesByMatter = useMemo(() => new Map(schedules.map((s: any) => [s.matterId, s])), [schedules]);
@@ -297,6 +310,12 @@ function UpdatesPanel({ overview, isLoading, error, retry, matters, clients, ref
   const copyDraft = async (draft: any) => {
     try { await navigator.clipboard.writeText(`Subject: ${draft.subject}\n\n${draft.body}`); setCopied(draft.id); window.setTimeout(() => setCopied(null), 1800); }
     catch { setErrorText('Clipboard access is unavailable in this browser. Select and copy the draft text instead.'); }
+  };
+  const sendDraftEmail = (draft: ClientUpdateDraft, provider: 'google'|'microsoft') => {
+    const providerName = provider === 'google' ? 'Google' : 'Microsoft';
+    if (!window.confirm(`Send “${draft.subject}” to ${draft.clientName} via ${providerName}? This sends an email immediately using the connected account.`)) return;
+    setEmailError('');setEmailNotice('');
+    sendEmail.mutate({provider,data:{draftId:draft.id}},{onSuccess:()=>setEmailNotice(`${providerName} accepted the email request for “${draft.subject}.”`),onError:error=>setEmailError(`Could not confirm that ${providerName} sent this email. Check the connected account’s Sent folder before retrying. ${shortError(error)}`)});
   };
   return <div className="space-y-5">
     <div className="grid gap-3 sm:grid-cols-3"><Metric label="Update schedules" value={schedules.filter((s: any) => s.enabled).length} sub="matter cadence settings" icon={CalendarDays} targetId="client-update-schedules" /><Metric label="Drafts for review" value={drafts.filter((d: any) => d.status === 'draft').length} sub="professional review required" icon={FileText} targetId="client-update-drafts" /><Metric label="Recent drafts" value={drafts.length} sub="not sent by the system" icon={Activity} targetId="client-update-drafts" /></div>
@@ -309,9 +328,35 @@ function UpdatesPanel({ overview, isLoading, error, retry, matters, clients, ref
       {errorText && <div className="px-5 pb-4"><FormError message={errorText} /></div>}
       {clients.length > 0 && <div className="border-t border-[#eee9df] bg-[#f5f2e9] px-5 py-3 text-[10px] text-[#7b8782]" data-testid="text-update-client-context">{clients.length} firm client relationships available · drafts use activity tied to the selected matter.</div>}
     </PanelCard>
-    <PanelCard id="client-update-drafts"><SectionTitle number="03" title="Client update drafts" body="Edit the subject and body, mark reviewed, or copy for use outside ClientGuard." />
-      {!drafts.length ? <Empty title="No client-update drafts" body="Create a draft from a matter with recent activity. You remain in control of every message." /> : <div className="divide-y divide-[#eee9df]">{drafts.map((draft: ClientUpdateDraft) => <UpdateDraft key={draft.id} draft={draft} editing={editing === draft.id} copied={copied === draft.id} busy={updateDraft.isPending} onEdit={() => setEditing(draft.id)} onCancel={() => setEditing(null)} onCopy={() => copyDraft(draft)} onSave={(subject, body) => updateDraft.mutate({ id: draft.id, data: { subject, body } }, { onSuccess: () => { setEditing(null); refresh(); }, onError: err => setErrorText(shortError(err)) })} onReview={() => updateDraft.mutate({ id: draft.id, data: { status: 'reviewed' } }, { onSuccess: refresh, onError: err => setErrorText(shortError(err)) })} />)}</div>}
+    <PanelCard id="client-update-drafts"><SectionTitle number="03" title="Client update drafts" body="Only reviewed drafts may be published to the portal or explicitly sent by email." />
+      {emailNotice&&<div role="status" className="border-b border-[#c9d8cc] bg-[#edf3ed] px-5 py-3 text-xs text-[#42664f]" data-testid="status-client-update-email-sent">{emailNotice}</div>}{emailError&&<div role="alert" className="border-b border-[#e6c7c1] bg-[#fff9f6] px-5 py-3 text-xs leading-5 text-[#843f38]" data-testid="status-client-update-email-error">{emailError}</div>}
+      {!drafts.length ? <Empty title="No client-update drafts" body="Create a draft from a matter with recent activity. You remain in control of every message." /> : <div className="divide-y divide-[#eee9df]">{drafts.map((draft: ClientUpdateDraft) => <UpdateDraft key={draft.id} draft={draft} editing={editing === draft.id} copied={copied === draft.id} busy={updateDraft.isPending} busyPublish={publishUpdate.isPending} busyEmail={sendEmail.isPending} onEdit={() => setEditing(draft.id)} onCancel={() => setEditing(null)} onCopy={() => copyDraft(draft)} onSave={(subject, body) => updateDraft.mutate({ id: draft.id, data: { subject, body } }, { onSuccess: () => { setEditing(null); refresh(); }, onError: err => setErrorText(shortError(err)) })} onReview={() => updateDraft.mutate({ id: draft.id, data: { status: 'reviewed' } }, { onSuccess: refresh, onError: err => setErrorText(shortError(err)) })} onPublish={() => publishUpdate.mutate({data:{draftId:draft.id}},{onSuccess:()=>{refresh();qc.invalidateQueries({queryKey:getListPortalUpdatesQueryKey()});},onError:err=>setErrorText(shortError(err))})} onSendEmail={provider=>sendDraftEmail(draft,provider)} />)}</div>}
       <div className="border-t border-[#eee9df] bg-[#f5f2e9] px-5 py-3 text-[10px] leading-5 text-[#697873]" data-testid="notice-update-no-send">AI-assisted writing creates drafts only. Copying places text on your clipboard; no email or message is sent.</div>
+    </PanelCard>
+    <PanelCard id="client-published-updates"><SectionTitle number="04" title="Published to client portal" body="These are the only update records shown to clients." />
+      {published.isError?<div className="p-5 text-xs text-[#9a554d]">Published updates could not be loaded. <button onClick={()=>published.refetch()} className="underline">Retry</button></div>:!published.data?.length?<Empty title="Nothing published yet" body="Review a client update draft before publishing it to the portal."/>:<div className="divide-y divide-[#eee9df]">{published.data.map(item=><article key={item.id} className="px-5 py-4" data-testid={`published-client-update-${item.id}`}><div className="flex flex-wrap justify-between gap-2"><h3 className="text-sm font-bold">{item.subject}</h3><span className="mono text-[9px] text-[#89938e]">{dateLabel(item.publishedAt)}</span></div><p className="mt-1 text-[10px] text-[#89938e]">{item.matterTitle}</p><p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-[#667571]">{item.body}</p></article>)}</div>}
+    </PanelCard>
+  </div>;
+}
+function RequestsPanel({matters,refresh}:{matters:Matter[];refresh:()=>void}){
+  const firmPortalView={view:'firm'} as const;
+  const requests=useGetPortalRequests(firmPortalView,{query:{queryKey:getGetPortalRequestsQueryKey(firmPortalView)}});
+  const create=useCreatePortalRequest();
+  const close=useClosePortalRequest();
+  const [matterId,setMatterId]=useState('');
+  const [title,setTitle]=useState('');
+  const [details,setDetails]=useState('');
+  const [notice,setNotice]=useState('');
+  const [error,setError]=useState('');
+  const submit=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();if(!matterId||!title.trim()||!details.trim())return;setError('');setNotice('');create.mutate({data:{matterId:Number(matterId),title:title.trim(),details:details.trim()}},{onSuccess:()=>{refresh();setTitle('');setDetails('');setNotice('Request created. It is now visible to the client in their portal.');},onError:reason=>setError(shortError(reason))});};
+  const closeRequest=(request:PortalRequest)=>{if(request.status!=='responded'||!window.confirm(`Close the responded request “${request.title}”?`))return;setError('');close.mutate({id:request.id},{onSuccess:()=>{refresh();setNotice('Responded request closed.');},onError:reason=>setError(shortError(reason))});};
+  return <div className="space-y-5">
+    <PanelCard><SectionTitle number="01" title="Create a client request" body="Requests are visible to the client assigned to the selected matter."/>
+      <form onSubmit={submit} className="grid gap-3 p-5 md:grid-cols-2"><Field label="Matter"><select required value={matterId} onChange={event=>setMatterId(event.target.value)} className={inputClass} data-testid="select-create-portal-request-matter"><option value="">Choose a matter</option>{matters.map(matter=><option key={matter.id} value={matter.id}>{matterOption(matter)}</option>)}</select></Field><Field label="Request title"><input required maxLength={200} value={title} onChange={event=>setTitle(event.target.value)} className={inputClass} placeholder="e.g. Confirm current mailing address" data-testid="input-portal-request-title"/></Field><Field label="Details"><textarea required maxLength={5000} rows={4} value={details} onChange={event=>setDetails(event.target.value)} className={`${inputClass} h-auto py-2`} placeholder="Explain what information or action would help move this matter forward." data-testid="input-portal-request-details"/></Field><div className="flex flex-col justify-end gap-2"><ActionButton type="submit" disabled={!matterId||!title.trim()||!details.trim()||create.isPending} testId="button-create-portal-request">{create.isPending?'Creating request':'Create portal request'}</ActionButton><p className="text-[10px] leading-4 text-[#87918d]">The client can respond in their portal. No email is sent from this action.</p></div></form>
+      {(notice||error)&&<div className={`border-t px-5 py-3 text-xs ${error?'border-[#e6c7c1] bg-[#fff9f6] text-[#843f38]':'border-[#c9d8cc] bg-[#edf3ed] text-[#42664f]'}`} role={error?'alert':'status'}>{error||notice}</div>}
+    </PanelCard>
+    <PanelCard><SectionTitle number="02" title="Client request activity" body="Close a request only after the client has responded."/>
+      {requests.isLoading?<PanelLoading/>:requests.isError?<div className="p-5"><PanelError message={shortError(requests.error)} retry={()=>requests.refetch()}/></div>:!requests.data?.length?<Empty title="No portal requests yet" body="Create a matter-specific request above. Responses will appear here."/>:<div className="divide-y divide-[#eee9df]">{requests.data.map(request=><article key={request.id} className="px-5 py-4" data-testid={`firm-portal-request-${request.id}`}><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-bold">{request.title}</h3><Badge tone={request.status==='responded'?'green':request.status==='open'?'gold':'muted'}>{request.status}</Badge></div><p className="mt-1 text-[10px] text-[#89938e]">{request.matterTitle} · Created {dateLabel(request.createdAt)}</p></div>{request.status==='responded'&&<ActionButton kind="outline" disabled={close.isPending} onClick={()=>closeRequest(request)} testId={`button-close-portal-request-${request.id}`}>Close request</ActionButton>}</div><p className="mt-3 whitespace-pre-wrap text-xs leading-5 text-[#65756f]">{request.details}</p>{request.responseMessage&&<div className="mt-3 rounded bg-[#e9eee8] p-3"><div className="mono text-[9px] uppercase tracking-wide text-[#547262]">Client response · {request.respondedAt?dateLabel(request.respondedAt):''}</div><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-[#52655e]">{request.responseMessage}</p></div>}</article>)}</div>}
     </PanelCard>
   </div>;
 }
@@ -319,10 +364,10 @@ function ScheduleRow({ matter, schedule, onChange, busy }: { matter: Matter; sch
   const [cadence, setCadence] = useState<'weekly' | 'fortnightly' | 'monthly'>(schedule?.cadence || 'fortnightly');
   return <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center" data-testid={`update-schedule-${matter.id}`}><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-bold">{matter.title}</h3><Badge tone={schedule?.enabled ? 'green' : 'muted'}>{schedule?.enabled ? 'Enabled' : 'Off'}</Badge></div><p className="mt-1 text-[10px] text-[#87918d]">{matter.clientName} · {schedule?.nextDraftAt ? `Next draft ${dateLabel(schedule.nextDraftAt)}` : 'No upcoming draft'}</p></div><div className="flex flex-wrap items-center gap-2"><select value={cadence} onChange={e => setCadence(e.target.value as typeof cadence)} className="field h-9 w-32" aria-label={`Cadence for ${matter.title}`} data-testid={`select-schedule-cadence-${matter.id}`}><option value="weekly">Weekly</option><option value="fortnightly">Fortnightly</option><option value="monthly">Monthly</option></select><ActionButton onClick={() => onChange(matter.id, !schedule?.enabled, cadence)} disabled={busy} kind={schedule?.enabled ? 'outline' : 'primary'} testId={`button-toggle-schedule-${matter.id}`}>{schedule?.enabled ? 'Pause' : 'Enable'}</ActionButton></div></div>;
 }
-function UpdateDraft({ draft, editing, copied, busy, onEdit, onCancel, onCopy, onSave, onReview }: { draft: ClientUpdateDraft; editing: boolean; copied: boolean; busy: boolean; onEdit: () => void; onCancel: () => void; onCopy: () => void; onSave: (subject: string, body: string) => void; onReview: () => void }) {
+function UpdateDraft({ draft, editing, copied, busy, busyPublish, busyEmail, onEdit, onCancel, onCopy, onSave, onReview, onPublish, onSendEmail }: { draft: ClientUpdateDraft; editing: boolean; copied: boolean; busy: boolean; busyPublish: boolean; busyEmail:boolean; onEdit: () => void; onCancel: () => void; onCopy: () => void; onSave: (subject: string, body: string) => void; onReview: () => void; onPublish: () => void; onSendEmail:(provider:'google'|'microsoft')=>void }) {
   const [subject, setSubject] = useState(draft.subject);
   const [body, setBody] = useState(draft.body);
-  return <article className="px-5 py-4" data-testid={`client-update-draft-${draft.id}`}><div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start"><div><div className="flex flex-wrap items-center gap-2"><Badge tone={draft.status === 'reviewed' ? 'green' : 'gold'} testId={`status-client-update-${draft.id}`}>{draft.status}</Badge><span className="text-[10px] text-[#89938e]">{draft.clientName} · {draft.matterTitle} · {draft.generatedBy === 'schedule' ? 'Scheduled draft' : 'Created by you'}</span></div></div><div className="flex flex-wrap gap-1"><ActionButton onClick={onCopy} kind="quiet" testId={`button-copy-update-${draft.id}`}><Clipboard className="h-3.5 w-3.5" />{copied ? 'Copied' : 'Copy'}</ActionButton>{draft.status === 'draft' && !editing && <><ActionButton onClick={onEdit} kind="quiet" testId={`button-edit-update-${draft.id}`}>Edit</ActionButton><ActionButton onClick={onReview} disabled={busy} kind="outline" testId={`button-review-update-${draft.id}`}><Check className="h-3.5 w-3.5" />Mark reviewed</ActionButton></>}</div></div>
+  return <article className="px-5 py-4" data-testid={`client-update-draft-${draft.id}`}><div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start"><div><div className="flex flex-wrap items-center gap-2"><Badge tone={draft.status === 'reviewed' ? 'green' : 'gold'} testId={`status-client-update-${draft.id}`}>{draft.status}</Badge><span className="text-[10px] text-[#89938e]">{draft.clientName} · {draft.matterTitle} · {draft.generatedBy === 'schedule' ? 'Scheduled draft' : 'Created by you'}</span></div></div><div className="flex flex-wrap gap-1"><ActionButton onClick={onCopy} kind="quiet" testId={`button-copy-update-${draft.id}`}><Clipboard className="h-3.5 w-3.5" />{copied ? 'Copied' : 'Copy'}</ActionButton>{draft.status === 'draft' && !editing && <><ActionButton onClick={onEdit} kind="quiet" testId={`button-edit-update-${draft.id}`}>Edit</ActionButton><ActionButton onClick={onReview} disabled={busy} kind="outline" testId={`button-review-update-${draft.id}`}><Check className="h-3.5 w-3.5" />Mark reviewed</ActionButton></>}{draft.status==='reviewed'&&<><ActionButton onClick={onPublish} disabled={busyPublish} kind="outline" testId={`button-publish-update-${draft.id}`}>{busyPublish?'Publishing…':'Publish to portal'}</ActionButton><ActionButton onClick={()=>onSendEmail('google')} disabled={busyEmail} kind="outline" testId={`button-send-update-google-${draft.id}`}>{busyEmail?'Sending…':'Send by Google'}</ActionButton><ActionButton onClick={()=>onSendEmail('microsoft')} disabled={busyEmail} kind="outline" testId={`button-send-update-microsoft-${draft.id}`}>{busyEmail?'Sending…':'Send by Microsoft'}</ActionButton></>}</div></div>
     {editing ? <form className="mt-4 space-y-3" onSubmit={event => { event.preventDefault(); onSave(subject, body); }} data-testid={`form-edit-update-${draft.id}`}><Field label="Subject"><input value={subject} onChange={e => setSubject(e.target.value)} maxLength={200} required className={inputClass} data-testid={`input-update-subject-${draft.id}`} /></Field><Field label="Message body"><textarea value={body} onChange={e => setBody(e.target.value)} rows={7} maxLength={10000} required className={`${inputClass} h-auto py-2`} data-testid={`input-update-body-${draft.id}`} /></Field><div className="flex justify-end gap-2"><ActionButton type="button" onClick={onCancel} kind="quiet" testId={`button-cancel-update-${draft.id}`}>Cancel</ActionButton><ActionButton type="submit" disabled={busy || !subject.trim() || !body.trim()} testId={`button-save-update-${draft.id}`}>{busy ? 'Saving…' : 'Save changes'}</ActionButton></div></form> : <div className="mt-4 rounded bg-[#f5f2e9] p-4"><h3 className="text-sm font-bold" data-testid={`text-update-subject-${draft.id}`}>{draft.subject}</h3><p className="mt-3 whitespace-pre-wrap text-xs leading-6 text-[#5f706b]" data-testid={`text-update-body-${draft.id}`}>{draft.body}</p><p className="mt-3 border-t border-[#e5dfd1] pt-2 text-[10px] text-[#8a938d]">Generated {dateLabel(draft.generatedAt)} · Based on {draft.sourceActivityIds.length} recorded activity {draft.sourceActivityIds.length === 1 ? 'item' : 'items'}</p></div>}
   </article>;
 }

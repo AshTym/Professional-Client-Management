@@ -1,0 +1,698 @@
+import { and, desc, eq, gt } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { Router, type IRouter } from "express";
+import {
+  auditEventsTable,
+  billingDraftsTable,
+  billingProfilesTable,
+  clientsTable,
+  intakesTable,
+  mattersTable,
+  oauthStatesTable,
+  plannerItemsTable,
+  providerConnectionsTable,
+  providerSyncsTable,
+  updateDraftsTable,
+} from "@workspace/db";
+import { db } from "@workspace/db";
+import * as api from "@workspace/api-zod";
+import { firmAccess } from "../lib/clientguard-auth";
+import {
+  authorizationUrl,
+  decryptToken,
+  encryptToken,
+  exchangeAuthorizationCode,
+  getProviderProfile,
+  hashOAuthState,
+  providerJson,
+  providerReady,
+  providers,
+  randomOAuthState,
+  redirectUriFor,
+  refreshProviderToken,
+  tokenExpiry,
+  type Provider,
+} from "../lib/clientguard-provider-service";
+
+const router: IRouter = Router();
+
+function providerValue(value: string | string[] | undefined): Provider | null {
+  const normalized = Array.isArray(value) ? value[0] : value;
+  return providers.includes(normalized as Provider) ? normalized as Provider : null;
+}
+
+function idFrom(value: string | string[] | undefined): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw || !/^\d+$/.test(raw)) return null;
+  const id = Number(raw);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function appOrigin(req: Parameters<typeof redirectUriFor>[0]) {
+  const host = (req.get("x-forwarded-host") ?? req.get("host") ?? "").split(",")[0].trim();
+  const protocol = req.get("x-forwarded-proto")?.split(",")[0].trim() || req.protocol || "https";
+  if (!host || /[\s/@]/.test(host)) throw new Error("Cannot determine the public host.");
+  return `${protocol}://${host}`;
+}
+
+function safeReturnPath(req: Parameters<typeof redirectUriFor>[0]) {
+  const fallback = "/settings/integrations";
+  try {
+    const referer = req.get("referer");
+    if (!referer) return fallback;
+    const path = new URL(referer).pathname;
+    return path.startsWith("/") && !path.startsWith("//") ? path : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function audit(
+  workspaceId: number,
+  clerkUserId: string,
+  actor: string,
+  action: string,
+  entityType: string,
+  entityId: number,
+  entityLabel: string,
+  details: Record<string, string | number | boolean | null> = {},
+) {
+  await db.insert(auditEventsTable).values({
+    workspaceId, clerkUserId, actor, action, entityType, entityId, entityLabel, details,
+  });
+}
+
+function providerLabel(provider: Provider) {
+  return {
+    google: "Google Calendar and Gmail",
+    microsoft: "Microsoft Outlook",
+    xero: "Xero",
+    quickbooks: "QuickBooks Online",
+  }[provider];
+}
+
+router.get("/integrations", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+  const saved = await db.select().from(providerConnectionsTable)
+    .where(eq(providerConnectionsTable.workspaceId, access.workspaceId));
+  const byProvider = new Map(saved.map((connection) => [connection.provider, connection]));
+  res.json(api.ListWorkspaceIntegrationsResponse.parse(providers.map((provider) => {
+    const connection = byProvider.get(provider);
+    return {
+      provider,
+      connected: Boolean(connection),
+      ready: providerReady(provider),
+      accountLabel: connection?.accountLabel ?? providerLabel(provider),
+      lastSyncAt: connection?.lastSyncAt ?? null,
+    };
+  })));
+});
+
+router.post("/integrations/:provider/authorize", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res, true);
+  if (!access) return;
+  const parsed = api.AuthorizeWorkspaceIntegrationParams.safeParse(req.params);
+  const provider = parsed.success ? providerValue(parsed.data.provider) : null;
+  if (!provider) {
+    res.status(400).json({ error: "Unsupported integration provider." });
+    return;
+  }
+  if (!providerReady(provider)) {
+    res.status(503).json({
+      error: `${providerLabel(provider)} cannot be connected until its OAuth app credentials and the ClientGuard token-encryption secret are configured.`,
+      code: "provider_oauth_not_configured",
+    });
+    return;
+  }
+  const state = randomOAuthState();
+  const redirectPath = safeReturnPath(req);
+  await db.insert(oauthStatesTable).values({
+    stateHash: hashOAuthState(state),
+    workspaceId: access.workspaceId,
+    provider,
+    clerkUserId: access.userId,
+    redirectPath,
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+  });
+  try {
+    res.json(api.AuthorizeWorkspaceIntegrationResponse.parse({
+      authorizationUrl: authorizationUrl(provider, redirectUriFor(req, provider), state),
+    }));
+  } catch (error) {
+    req.log.warn({ err: error, provider }, "Provider OAuth authorization could not be started");
+    res.status(503).json({ error: "Provider authorization could not be started. Check its OAuth configuration." });
+  }
+});
+
+router.get("/integrations/:provider/callback", async (req, res): Promise<void> => {
+  const provider = providerValue(req.params.provider);
+  const code = typeof req.query.code === "string" ? req.query.code : "";
+  const state = typeof req.query.state === "string" ? req.query.state : "";
+  const redirectError = (path: string, status: string) => {
+    const url = new URL(path, appOrigin(req));
+    url.searchParams.set("integration", status);
+    if (provider) url.searchParams.set("provider", provider);
+    res.redirect(302, url.toString());
+  };
+  if (!provider || !code || !state || !providerReady(provider)) {
+    redirectError("/settings/integrations", "error");
+    return;
+  }
+  const [oauthState] = await db.delete(oauthStatesTable).where(and(
+    eq(oauthStatesTable.stateHash, hashOAuthState(state)),
+    eq(oauthStatesTable.provider, provider),
+    gt(oauthStatesTable.expiresAt, new Date()),
+  )).returning();
+  if (!oauthState) {
+    res.status(400).send("This connection request has expired or was already used. Start again from ClientGuard.");
+    return;
+  }
+  try {
+    const token = await exchangeAuthorizationCode(provider, code, redirectUriFor(req, provider));
+    const realmId = typeof req.query.realmId === "string" ? req.query.realmId : undefined;
+    const profile = await getProviderProfile(provider, token.access_token, realmId);
+    const [existing] = await db.select().from(providerConnectionsTable).where(and(
+      eq(providerConnectionsTable.workspaceId, oauthState.workspaceId),
+      eq(providerConnectionsTable.provider, provider),
+    )).limit(1);
+    const refreshToken = token.refresh_token
+      ? encryptToken(token.refresh_token)
+      : existing?.refreshTokenCiphertext ?? null;
+    const values = {
+      workspaceId: oauthState.workspaceId,
+      provider,
+      accountLabel: profile.label,
+      remoteAccountId: profile.remoteAccountId || null,
+      accessTokenCiphertext: encryptToken(token.access_token),
+      refreshTokenCiphertext: refreshToken,
+      tokenExpiresAt: tokenExpiry(token),
+      scopes: (token.scope ?? "").split(/\s+/).filter(Boolean),
+      connectedByClerkUserId: oauthState.clerkUserId,
+      updatedAt: new Date(),
+    };
+    await db.insert(providerConnectionsTable).values(values).onConflictDoUpdate({
+      target: [providerConnectionsTable.workspaceId, providerConnectionsTable.provider],
+      set: values,
+    });
+    await audit(
+      oauthState.workspaceId,
+      oauthState.clerkUserId,
+      "Firm member",
+      "provider_connected",
+      "integration",
+      oauthState.workspaceId,
+      providerLabel(provider),
+      { provider, accountLabel: profile.label },
+    );
+    redirectError(oauthState.redirectPath, "connected");
+  } catch (error) {
+    req.log.warn({ err: error, provider, workspaceId: oauthState.workspaceId }, "Provider OAuth callback failed");
+    redirectError(oauthState.redirectPath, "error");
+  }
+});
+
+async function accessTokenFor(
+  connection: typeof providerConnectionsTable.$inferSelect,
+) {
+  if (connection.tokenExpiresAt && connection.tokenExpiresAt.getTime() > Date.now() + 30_000) {
+    return decryptToken(connection.accessTokenCiphertext);
+  }
+  if (!connection.refreshTokenCiphertext) {
+    throw new Error("This provider session expired. Reconnect the account.");
+  }
+  const provider = providerValue(connection.provider);
+  if (!provider) throw new Error("Unsupported provider.");
+  const refreshed = await refreshProviderToken(provider, decryptToken(connection.refreshTokenCiphertext));
+  const [updated] = await db.update(providerConnectionsTable).set({
+    accessTokenCiphertext: encryptToken(refreshed.access_token),
+    refreshTokenCiphertext: refreshed.refresh_token
+      ? encryptToken(refreshed.refresh_token)
+      : connection.refreshTokenCiphertext,
+    tokenExpiresAt: tokenExpiry(refreshed),
+    scopes: (refreshed.scope ?? connection.scopes.join(" ")).split(/\s+/).filter(Boolean),
+    updatedAt: new Date(),
+  }).where(eq(providerConnectionsTable.id, connection.id)).returning();
+  return decryptToken(updated.accessTokenCiphertext);
+}
+
+async function connectionFor(workspaceId: number, provider: Provider) {
+  const [connection] = await db.select().from(providerConnectionsTable).where(and(
+    eq(providerConnectionsTable.workspaceId, workspaceId),
+    eq(providerConnectionsTable.provider, provider),
+  )).limit(1);
+  return connection ?? null;
+}
+
+async function reserveSync(
+  workspaceId: number,
+  provider: Provider,
+  entityType: string,
+  entityId: number,
+  clerkUserId: string,
+) {
+  const [existing] = await db.select().from(providerSyncsTable).where(and(
+    eq(providerSyncsTable.workspaceId, workspaceId),
+    eq(providerSyncsTable.provider, provider),
+    eq(providerSyncsTable.entityType, entityType),
+    eq(providerSyncsTable.entityId, entityId),
+  )).limit(1);
+  if (existing) return null;
+  try {
+    const [sync] = await db.insert(providerSyncsTable).values({
+      workspaceId, provider, entityType, entityId,
+      externalId: "pending",
+      syncedByClerkUserId: clerkUserId,
+    }).returning();
+    return sync;
+  } catch {
+    return null;
+  }
+}
+
+async function finishSync(
+  syncId: number,
+  externalId: string,
+  connectionId: number,
+  workspaceId: number,
+  provider: Provider,
+  entityType: string,
+  entityId: number,
+  actor: string,
+  label: string,
+) {
+  await db.update(providerSyncsTable).set({
+    externalId, syncedAt: new Date(),
+  }).where(eq(providerSyncsTable.id, syncId));
+  await db.update(providerConnectionsTable).set({ lastSyncAt: new Date() }).where(eq(providerConnectionsTable.id, connectionId));
+  await audit(workspaceId, actor, "Firm user", "record_synced", entityType, entityId, label, {
+    provider, externalId,
+  });
+}
+
+async function removePendingSync(id: number) {
+  await db.delete(providerSyncsTable).where(eq(providerSyncsTable.id, id));
+}
+
+router.post("/integrations/:provider/calendar/:id/sync", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res, true);
+  if (!access) return;
+  const parsed = api.SyncApprovedPlannerItemParams.safeParse(req.params);
+  const provider = parsed.success ? providerValue(parsed.data.provider) : null;
+  const id = parsed.success ? parsed.data.id : null;
+  if (!provider || !["google", "microsoft"].includes(provider) || !id) {
+    res.status(400).json({ error: "Choose Google or Microsoft and a valid planner item." });
+    return;
+  }
+  const [item] = await db.select().from(plannerItemsTable).where(and(
+    eq(plannerItemsTable.id, id),
+    eq(plannerItemsTable.workspaceId, access.workspaceId),
+  )).limit(1);
+  if (!item || item.status !== "open" || !item.dueAt) {
+    res.status(409).json({ error: "Only a confirmed planner item with a due date can be synced." });
+    return;
+  }
+  const connection = await connectionFor(access.workspaceId, provider);
+  if (!connection) {
+    res.status(409).json({ error: `Connect ${providerLabel(provider)} before syncing this item.` });
+    return;
+  }
+  const sync = await reserveSync(access.workspaceId, provider, "planner_item", id, access.userId);
+  if (!sync) {
+    res.status(409).json({ error: "This planner item has already been synced or is currently syncing." });
+    return;
+  }
+  try {
+    const token = await accessTokenFor(connection);
+    const start = new Date(item.dueAt);
+    const end = new Date(start.getTime() + 30 * 60 * 1000);
+    const description = [item.details, item.sourceQuote ? `Source: ${item.sourceQuote}` : ""].filter(Boolean).join("\n\n");
+    let externalId = "";
+    if (provider === "google") {
+      const result = await providerJson("https://www.googleapis.com/calendar/v3/calendars/primary/events", token, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          summary: item.title,
+          description,
+          start: { dateTime: start.toISOString(), timeZone: "UTC" },
+          end: { dateTime: end.toISOString(), timeZone: "UTC" },
+          extendedProperties: { private: { clientguardPlannerItemId: String(item.id) } },
+        }),
+      });
+      externalId = String(result.id ?? "");
+    } else {
+      const result = await providerJson("https://graph.microsoft.com/v1.0/me/events", token, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: item.title,
+          body: { contentType: "text", content: description },
+          start: { dateTime: start.toISOString().replace("Z", ""), timeZone: "UTC" },
+          end: { dateTime: end.toISOString().replace("Z", ""), timeZone: "UTC" },
+          transactionId: randomUUID(),
+        }),
+      });
+      externalId = String(result.id ?? "");
+    }
+    if (!externalId) throw new Error("Calendar provider did not return an event ID.");
+    await finishSync(sync.id, externalId, connection.id, access.workspaceId, provider, "planner_item", id, access.userId, item.title);
+    res.json(api.SyncApprovedPlannerItemResponse.parse({
+      provider, externalId, message: `Calendar event created in ${providerLabel(provider)}.`,
+    }));
+  } catch (error) {
+    await removePendingSync(sync.id);
+    req.log.warn({ err: error, provider, plannerItemId: id }, "Calendar sync failed");
+    res.status(502).json({ error: "Calendar sync failed. Check the connected account and try again." });
+  }
+});
+
+async function providerJsonWithBody(
+  url: string,
+  token: string,
+  body: unknown,
+  method = "POST",
+) {
+  return providerJson(url, token, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function escapeQueryString(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"');
+}
+
+async function xeroAccountAndTax(
+  token: string,
+  tenantId: string,
+  taxRateBps: number,
+) {
+  const headers = { "xero-tenant-id": tenantId };
+  const accountData = await providerJson("https://api.xero.com/api.xro/2.0/Accounts?where=Type%3D%3D%22REVENUE%22%26%26Status%3D%3D%22ACTIVE%22", token, { headers });
+  const accounts = Array.isArray(accountData.Accounts) ? accountData.Accounts as Array<Record<string, unknown>> : [];
+  const account = accounts.find((row) => ["professional services", "services"].includes(String(row.Name ?? "").toLowerCase()))
+    ?? (accounts.length === 1 ? accounts[0] : undefined);
+  if (!account?.Code) throw new Error("Set up one clearly named Xero revenue account (Professional Services or Services) before syncing.");
+  const rateData = await providerJson("https://api.xero.com/api.xro/2.0/TaxRates", token, { headers });
+  const rates = Array.isArray(rateData.TaxRates) ? rateData.TaxRates as Array<Record<string, unknown>> : [];
+  const tax = rates.find((row) => {
+    const percent = Number(row.EffectiveRate ?? row.TaxRate ?? NaN);
+    return row.Status === "ACTIVE" && Number.isFinite(percent) && Math.abs(percent * 100 - taxRateBps) <= 1;
+  });
+  if (!tax?.TaxType) throw new Error(`Xero has no active tax rate matching ${taxRateBps / 100}% for this reviewed bill.`);
+  return { accountCode: String(account.Code), taxType: String(tax.TaxType) };
+}
+
+async function xeroContact(token: string, tenantId: string, name: string, email: string | null) {
+  const headers = { "xero-tenant-id": tenantId };
+  const field = email ? "EmailAddress" : "Name";
+  const value = email ?? name;
+  const where = encodeURIComponent(`${field}=="${escapeQueryString(value)}"`);
+  const found = await providerJson(`https://api.xero.com/api.xro/2.0/Contacts?where=${where}`, token, { headers });
+  const contacts = Array.isArray(found.Contacts) ? found.Contacts as Array<Record<string, unknown>> : [];
+  if (contacts[0]?.ContactID) return String(contacts[0].ContactID);
+  const created = await providerJson("https://api.xero.com/api.xro/2.0/Contacts", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify({ Contacts: [{ Name: name, ...(email ? { EmailAddress: email } : {}) }] }),
+  });
+  const rows = Array.isArray(created.Contacts) ? created.Contacts as Array<Record<string, unknown>> : [];
+  if (!rows[0]?.ContactID) throw new Error("Xero did not create a contact for this client.");
+  return String(rows[0].ContactID);
+}
+
+async function quickbooksEntity(
+  token: string,
+  realmId: string,
+  entity: string,
+  query: string,
+) {
+  const base = process.env.QUICKBOOKS_ENVIRONMENT === "sandbox"
+    ? "https://sandbox-quickbooks.api.intuit.com"
+    : "https://quickbooks.api.intuit.com";
+  return providerJson(`${base}/v3/company/${encodeURIComponent(realmId)}/query?query=${encodeURIComponent(query)}&minorversion=75`, token);
+}
+
+async function quickbooksContact(token: string, realmId: string, name: string, email: string | null) {
+  const safeName = escapeQueryString(name);
+  const found = await quickbooksEntity(token, realmId, "Customer", `select * from Customer where DisplayName = '${safeName}'`);
+  const response = found.QueryResponse as Record<string, unknown> | undefined;
+  const customers = Array.isArray(response?.Customer) ? response.Customer as Array<Record<string, unknown>> : [];
+  if (customers[0]?.Id) return String(customers[0].Id);
+  const base = process.env.QUICKBOOKS_ENVIRONMENT === "sandbox"
+    ? "https://sandbox-quickbooks.api.intuit.com"
+    : "https://quickbooks.api.intuit.com";
+  const created = await providerJsonWithBody(
+    `${base}/v3/company/${encodeURIComponent(realmId)}/customer?minorversion=75`,
+    token,
+    { DisplayName: name.slice(0, 100), ...(email ? { PrimaryEmailAddr: { Address: email } } : {}) },
+  );
+  const customer = created.Customer as Record<string, unknown> | undefined;
+  if (!customer?.Id) throw new Error("QuickBooks did not create a customer record.");
+  return String(customer.Id);
+}
+
+async function quickbooksServiceItem(token: string, realmId: string) {
+  const found = await quickbooksEntity(token, realmId, "Item", "select * from Item where Type = 'Service' and Active = true");
+  const response = found.QueryResponse as Record<string, unknown> | undefined;
+  const items = Array.isArray(response?.Item) ? response.Item as Array<Record<string, unknown>> : [];
+  const preferred = items.find((row) => ["professional services", "services"].includes(String(row.Name ?? "").toLowerCase()));
+  const item = preferred ?? (items.length === 1 ? items[0] : undefined);
+  if (!item?.Id) throw new Error("Set up one clearly named QuickBooks service item (Professional Services or Services) before syncing.");
+  return String(item.Id);
+}
+
+async function quickbooksTaxCode(token: string, realmId: string, taxRateBps: number) {
+  const codesResult = await quickbooksEntity(token, realmId, "TaxCode", "select * from TaxCode where Active = true");
+  const codesResponse = codesResult.QueryResponse as Record<string, unknown> | undefined;
+  const codes = Array.isArray(codesResponse?.TaxCode) ? codesResponse.TaxCode as Array<Record<string, unknown>> : [];
+  if (taxRateBps === 0) {
+    const nonTax = codes.find((code) => code.Taxable === false || /non.?tax|exempt/i.test(String(code.Name ?? "")));
+    if (nonTax?.Id) return String(nonTax.Id);
+  }
+  const ratesResult = await quickbooksEntity(token, realmId, "TaxRate", "select * from TaxRate");
+  const ratesResponse = ratesResult.QueryResponse as Record<string, unknown> | undefined;
+  const rates = Array.isArray(ratesResponse?.TaxRate) ? ratesResponse.TaxRate as Array<Record<string, unknown>> : [];
+  const rateById = new Map(rates.map((rate) => [String(rate.Id), Number(rate.RateValue)]));
+  const match = codes.find((code) => {
+    const list = code.SalesTaxRateList as { TaxRateDetail?: Array<{ TaxRateRef?: { value?: string } }> } | undefined;
+    const sum = (list?.TaxRateDetail ?? []).reduce((value, detail) => value + (rateById.get(String(detail.TaxRateRef?.value)) ?? 0), 0);
+    return Math.abs(sum * 100 - taxRateBps) <= 1;
+  });
+  if (!match?.Id) throw new Error(`QuickBooks has no active tax code matching ${taxRateBps / 100}% for this reviewed bill.`);
+  return String(match.Id);
+}
+
+router.post("/integrations/:provider/billing/:id/sync", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res, true);
+  if (!access) return;
+  const parsed = api.SyncReviewedBillParams.safeParse(req.params);
+  const provider = parsed.success ? providerValue(parsed.data.provider) : null;
+  const id = parsed.success ? parsed.data.id : null;
+  if (!provider || !["xero", "quickbooks"].includes(provider) || !id) {
+    res.status(400).json({ error: "Choose Xero or QuickBooks and a valid billing draft." });
+    return;
+  }
+  const [row] = await db.select({
+    draft: billingDraftsTable,
+    matter: mattersTable,
+    client: clientsTable,
+    profile: billingProfilesTable,
+  }).from(billingDraftsTable)
+    .innerJoin(mattersTable, and(eq(billingDraftsTable.matterId, mattersTable.id), eq(billingDraftsTable.workspaceId, mattersTable.workspaceId)))
+    .innerJoin(clientsTable, and(eq(mattersTable.clientId, clientsTable.id), eq(mattersTable.workspaceId, clientsTable.workspaceId)))
+    .leftJoin(billingProfilesTable, and(eq(billingProfilesTable.matterId, mattersTable.id), eq(billingProfilesTable.workspaceId, mattersTable.workspaceId)))
+    .where(and(eq(billingDraftsTable.id, id), eq(billingDraftsTable.workspaceId, access.workspaceId)))
+    .limit(1);
+  if (!row || row.draft.status !== "reviewed") {
+    res.status(409).json({ error: "Only a reviewed bill draft can be synced." });
+    return;
+  }
+  const connection = await connectionFor(access.workspaceId, provider);
+  if (!connection) {
+    res.status(409).json({ error: `Connect ${providerLabel(provider)} before syncing this bill.` });
+    return;
+  }
+  const sync = await reserveSync(access.workspaceId, provider, "billing_draft", id, access.userId);
+  if (!sync) {
+    res.status(409).json({ error: "This reviewed bill has already been synced or is currently syncing." });
+    return;
+  }
+  try {
+    const token = await accessTokenFor(connection);
+    const taxRateBps = row.profile?.taxRateBps ?? 0;
+    const expectedTax = Math.round(row.draft.subtotalCents * taxRateBps / 10_000);
+    if (Math.abs(expectedTax - row.draft.taxCents) > 1) {
+      throw new Error("The reviewed draft tax total no longer matches the billing profile. Review it before syncing.");
+    }
+    let externalId = "";
+    if (provider === "xero") {
+      const tenantId = connection.remoteAccountId;
+      if (!tenantId) throw new Error("Reconnect Xero; the organisation identifier is unavailable.");
+      const [contactId, mapping] = await Promise.all([
+        xeroContact(token, tenantId, row.client.name, row.client.email),
+        xeroAccountAndTax(token, tenantId, taxRateBps),
+      ]);
+      const response = await providerJson("https://api.xero.com/api.xro/2.0/Invoices", token, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "xero-tenant-id": tenantId },
+        body: JSON.stringify({
+          Invoices: [{
+            Type: "ACCREC",
+            Status: "DRAFT",
+            Contact: { ContactID: contactId },
+            Date: row.draft.periodEndAt.toISOString().slice(0, 10),
+            CurrencyCode: row.draft.currency,
+            Reference: `ClientGuard reviewed draft ${row.draft.id}`,
+            LineItems: row.draft.lineItems.map((line) => ({
+              Description: line.description,
+              Quantity: 1,
+              UnitAmount: line.amountCents / 100,
+              AccountCode: mapping.accountCode,
+              TaxType: mapping.taxType,
+            })),
+          }],
+        }),
+      });
+      const invoices = Array.isArray(response.Invoices) ? response.Invoices as Array<Record<string, unknown>> : [];
+      externalId = String(invoices[0]?.InvoiceID ?? "");
+    } else {
+      const realmId = connection.remoteAccountId;
+      if (!realmId) throw new Error("Reconnect QuickBooks; the company identifier is unavailable.");
+      const [customerId, itemId, taxCodeId] = await Promise.all([
+        quickbooksContact(token, realmId, row.client.name, row.client.email),
+        quickbooksServiceItem(token, realmId),
+        quickbooksTaxCode(token, realmId, taxRateBps),
+      ]);
+      const base = process.env.QUICKBOOKS_ENVIRONMENT === "sandbox"
+        ? "https://sandbox-quickbooks.api.intuit.com"
+        : "https://quickbooks.api.intuit.com";
+      const response = await providerJsonWithBody(
+        `${base}/v3/company/${encodeURIComponent(realmId)}/invoice?minorversion=75`,
+        token,
+        {
+          CustomerRef: { value: customerId },
+          TxnDate: row.draft.periodEndAt.toISOString().slice(0, 10),
+          CurrencyRef: { value: row.draft.currency },
+          PrivateNote: `ClientGuard reviewed draft ${row.draft.id}`,
+          EmailStatus: "NotSet",
+          GlobalTaxCalculation: "TaxExcluded",
+          TxnTaxDetail: { TxnTaxCodeRef: { value: taxCodeId }, TotalTax: row.draft.taxCents / 100 },
+          Line: row.draft.lineItems.map((line) => ({
+            Amount: line.amountCents / 100,
+            DetailType: "SalesItemLineDetail",
+            Description: line.description,
+            SalesItemLineDetail: {
+              ItemRef: { value: itemId },
+              Qty: 1,
+              UnitPrice: line.amountCents / 100,
+              TaxCodeRef: { value: taxCodeId },
+            },
+          })),
+        },
+      );
+      const invoice = response.Invoice as Record<string, unknown> | undefined;
+      externalId = String(invoice?.Id ?? "");
+    }
+    if (!externalId) throw new Error("Accounting provider did not return an invoice identifier.");
+    await finishSync(sync.id, externalId, connection.id, access.workspaceId, provider, "billing_draft", id, access.userId, `Billing draft ${id}`);
+    res.json(api.SyncReviewedBillResponse.parse({
+      provider, externalId, message: `Reviewed bill created in ${providerLabel(provider)} without sending it to the client.`,
+    }));
+  } catch (error) {
+    await removePendingSync(sync.id);
+    req.log.warn({ err: error, provider, billingDraftId: id }, "Reviewed bill sync failed");
+    const message = error instanceof Error ? error.message : "";
+    const status = message.includes("Set up") || message.includes("matching") || message.includes("reconnect") || message.includes("matches the billing profile")
+      ? 409
+      : 502;
+    res.status(status).json({
+      error: status === 409 ? message : "Accounting sync failed. Check the connected account and try again.",
+    });
+  }
+});
+
+router.post("/integrations/:provider/email", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res, true);
+  if (!access) return;
+  const provider = providerValue(req.params.provider);
+  const parsed = api.SendReviewedClientUpdateEmailBody.safeParse(req.body);
+  if (!provider || !["google", "microsoft"].includes(provider) || !parsed.success) {
+    res.status(400).json({ error: parsed.success ? "Choose Google or Microsoft." : parsed.error.message });
+    return;
+  }
+  const [draft] = await db.select({
+    draft: updateDraftsTable,
+    matter: mattersTable,
+    client: clientsTable,
+  }).from(updateDraftsTable)
+    .innerJoin(mattersTable, and(eq(updateDraftsTable.matterId, mattersTable.id), eq(updateDraftsTable.workspaceId, mattersTable.workspaceId)))
+    .innerJoin(clientsTable, and(eq(mattersTable.clientId, clientsTable.id), eq(mattersTable.workspaceId, clientsTable.workspaceId)))
+    .where(and(eq(updateDraftsTable.id, parsed.data.draftId), eq(updateDraftsTable.workspaceId, access.workspaceId)))
+    .limit(1);
+  if (!draft || draft.draft.status !== "reviewed") {
+    res.status(409).json({ error: "Only a reviewed client update can be sent." });
+    return;
+  }
+  if (!draft.client.email) {
+    res.status(409).json({ error: "Add a client email address before sending this update." });
+    return;
+  }
+  const connection = await connectionFor(access.workspaceId, provider);
+  if (!connection) {
+    res.status(409).json({ error: `Connect ${providerLabel(provider)} before sending this update.` });
+    return;
+  }
+  const sync = await reserveSync(access.workspaceId, provider, "client_update_email", draft.draft.id, access.userId);
+  if (!sync) {
+    res.status(409).json({ error: "This update has already been sent through this account." });
+    return;
+  }
+  try {
+    const token = await accessTokenFor(connection);
+    const subject = draft.draft.subject.replace(/[\r\n]+/g, " ").trim();
+    let externalId = "";
+    if (provider === "google") {
+      const mime = [
+        `To: ${draft.client.email}`,
+        `Subject: ${subject}`,
+        "MIME-Version: 1.0",
+        "Content-Type: text/plain; charset=UTF-8",
+        "",
+        draft.draft.body,
+      ].join("\r\n");
+      const result = await providerJson("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", token, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ raw: Buffer.from(mime, "utf8").toString("base64url") }),
+      });
+      externalId = String(result.id ?? randomUUID());
+    } else {
+      const result = await providerJson("https://graph.microsoft.com/v1.0/me/sendMail", token, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: {
+            subject,
+            body: { contentType: "Text", content: draft.draft.body },
+            toRecipients: [{ emailAddress: { address: draft.client.email } }],
+          },
+          saveToSentItems: true,
+        }),
+      });
+      externalId = String(result.id ?? randomUUID());
+    }
+    await finishSync(sync.id, externalId, connection.id, access.workspaceId, provider, "client_update_email", draft.draft.id, access.userId, draft.draft.subject);
+    res.json(api.SendReviewedClientUpdateEmailResponse.parse({
+      provider, externalId, message: "Reviewed client update sent.",
+    }));
+  } catch (error) {
+    await removePendingSync(sync.id);
+    req.log.warn({ err: error, provider, draftId: draft.draft.id }, "Reviewed client update email failed");
+    res.status(502).json({ error: "Email delivery failed. Check the connected account and try again." });
+  }
+});
+
+export default router;

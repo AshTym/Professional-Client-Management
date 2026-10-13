@@ -26,6 +26,8 @@ import type {
 
 import type {
   Activity,
+  AuditEvent,
+  AuthorizationUrl,
   BillingDraft,
   BillingDraftUpdate,
   BillingOverview,
@@ -34,6 +36,7 @@ import type {
   Client,
   ClientDocument,
   ClientInput,
+  ClientPortalContext,
   ClientUpdate,
   ClientUpdateDraft,
   ClientUpdateDraftInput,
@@ -41,21 +44,51 @@ import type {
   ClientUpdateOverview,
   ClientUpdateSchedule,
   ClientUpdateScheduleInput,
+  ClientVisibilityInput,
+  CreatePortalRequestInput,
+  CreatePortalRequestParams,
   DashboardSummary,
   DocumentOverview,
   DocumentSuggestion,
   DocumentSuggestionUpdate,
   DocumentUpload,
   DocumentUploadInput,
+  GetPortalRequestsParams,
+  GovernanceOverview,
   HealthStatus,
+  IntakeCase,
+  IntakeChecksInput,
+  IntakeInput,
+  IntakeOverview,
+  IntakeReviewInput,
+  LegalHold,
+  LegalHoldInput,
   ListActivityParams,
+  ListAuditEventsParams,
   ListClientsParams,
   ListMattersParams,
+  ListPortalMessagesParams,
   Matter,
+  MatterExportAuditInput,
   MatterInput,
   MatterUpdate,
   PlannerItem,
   PlannerItemUpdate,
+  PortalAccess,
+  PortalDocumentUploadInput,
+  PortalInviteInput,
+  PortalMessage,
+  PortalMessageInput,
+  PortalRequest,
+  PortalUpdate,
+  ProviderConnectionStatus,
+  ProviderSyncResult,
+  PublishClientUpdateInput,
+  RespondPortalRequestInput,
+  RetentionSettings,
+  RetentionSettingsInput,
+  SendPortalMessageParams,
+  SendReviewedUpdateEmailInput,
   TimeEntry,
   TimeEntryInput,
   WorkspaceContext,
@@ -3915,5 +3948,2985 @@ export const useUpdateClientUpdateDraft = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getUpdateClientUpdateDraftMutationOptions(options), queryClient);
+    }
+
+export const getGetIntakeOverviewUrl = () => {
+
+
+
+
+  return `/api/intake`
+}
+
+/**
+ * @summary Get firm intake checks and pending intake records
+ */
+export const getIntakeOverview = async ( options?: Parameters<typeof customFetch>[1]): Promise<IntakeOverview> => {
+
+  return customFetch<IntakeOverview>(getGetIntakeOverviewUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetIntakeOverviewQueryKey = () => {
+    return [
+    `/api/intake`
+    ] as const;
+    }
+
+
+export const getGetIntakeOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getIntakeOverview>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getIntakeOverview>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetIntakeOverviewQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getIntakeOverview>>> = ({ signal }) => getIntakeOverview({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getIntakeOverview>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetIntakeOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getIntakeOverview>>>
+export type GetIntakeOverviewQueryError = ErrorType<unknown>
+
+
+export function useGetIntakeOverview<TData = Awaited<ReturnType<typeof getIntakeOverview>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getIntakeOverview>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getIntakeOverview>>,
+          TError,
+          Awaited<ReturnType<typeof getIntakeOverview>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetIntakeOverview<TData = Awaited<ReturnType<typeof getIntakeOverview>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getIntakeOverview>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getIntakeOverview>>,
+          TError,
+          Awaited<ReturnType<typeof getIntakeOverview>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetIntakeOverview<TData = Awaited<ReturnType<typeof getIntakeOverview>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getIntakeOverview>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get firm intake checks and pending intake records
+ */
+
+export function useGetIntakeOverview<TData = Awaited<ReturnType<typeof getIntakeOverview>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getIntakeOverview>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetIntakeOverviewQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSaveIntakeChecksUrl = () => {
+
+
+
+
+  return `/api/intake`
+}
+
+/**
+ * @summary Configure the firm's client onboarding checks
+ */
+export const saveIntakeChecks = async (intakeChecksInput: IntakeChecksInput, options?: Parameters<typeof customFetch>[1]): Promise<IntakeChecksInput> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<IntakeChecksInput>(getSaveIntakeChecksUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(intakeChecksInput)
+  }
+);}
+
+
+
+
+
+export const getSaveIntakeChecksMutationKey = () => ['saveIntakeChecks'] as const;
+
+export const getSaveIntakeChecksMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveIntakeChecks>>, TError,SaveIntakeChecksMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveIntakeChecks>>, TError,SaveIntakeChecksMutationVariables, TContext> => {
+
+const mutationKey = getSaveIntakeChecksMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveIntakeChecks>>, SaveIntakeChecksMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveIntakeChecks(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveIntakeChecksMutationResult = NonNullable<Awaited<ReturnType<typeof saveIntakeChecks>>>
+    export type SaveIntakeChecksMutationBody = BodyType<IntakeChecksInput>
+    export type SaveIntakeChecksMutationError = ErrorType<unknown>
+    export type SaveIntakeChecksMutationVariables = {data: BodyType<IntakeChecksInput>}
+
+    /**
+ * @summary Configure the firm's client onboarding checks
+ */
+export const useSaveIntakeChecks = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveIntakeChecks>>, TError,SaveIntakeChecksMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof saveIntakeChecks>>,
+        TError,
+        SaveIntakeChecksMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSaveIntakeChecksMutationOptions(options), queryClient);
+    }
+
+export const getCreateIntakeUrl = () => {
+
+
+
+
+  return `/api/intakes`
+}
+
+/**
+ * @summary Start client and matter intake with conflict screening
+ */
+export const createIntake = async (intakeInput: IntakeInput, options?: Parameters<typeof customFetch>[1]): Promise<IntakeCase> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<IntakeCase>(getCreateIntakeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(intakeInput)
+  }
+);}
+
+
+
+
+
+export const getCreateIntakeMutationKey = () => ['createIntake'] as const;
+
+export const getCreateIntakeMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createIntake>>, TError,CreateIntakeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createIntake>>, TError,CreateIntakeMutationVariables, TContext> => {
+
+const mutationKey = getCreateIntakeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createIntake>>, CreateIntakeMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createIntake(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateIntakeMutationResult = NonNullable<Awaited<ReturnType<typeof createIntake>>>
+    export type CreateIntakeMutationBody = BodyType<IntakeInput>
+    export type CreateIntakeMutationError = ErrorType<void>
+    export type CreateIntakeMutationVariables = {data: BodyType<IntakeInput>}
+
+    /**
+ * @summary Start client and matter intake with conflict screening
+ */
+export const useCreateIntake = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createIntake>>, TError,CreateIntakeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createIntake>>,
+        TError,
+        CreateIntakeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateIntakeMutationOptions(options), queryClient);
+    }
+
+export const getReviewIntakeUrl = (id: number,) => {
+
+
+
+
+  return `/api/intakes/${id}/review`
+}
+
+/**
+ * @summary Clear or reject an intake after professional review
+ */
+export const reviewIntake = async (id: number,
+    intakeReviewInput: IntakeReviewInput, options?: Parameters<typeof customFetch>[1]): Promise<IntakeCase> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<IntakeCase>(getReviewIntakeUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(intakeReviewInput)
+  }
+);}
+
+
+
+
+
+export const getReviewIntakeMutationKey = () => ['reviewIntake'] as const;
+
+export const getReviewIntakeMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewIntake>>, TError,ReviewIntakeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewIntake>>, TError,ReviewIntakeMutationVariables, TContext> => {
+
+const mutationKey = getReviewIntakeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewIntake>>, ReviewIntakeMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reviewIntake(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewIntakeMutationResult = NonNullable<Awaited<ReturnType<typeof reviewIntake>>>
+    export type ReviewIntakeMutationBody = BodyType<IntakeReviewInput>
+    export type ReviewIntakeMutationError = ErrorType<void>
+    export type ReviewIntakeMutationVariables = {id: number;data: BodyType<IntakeReviewInput>}
+
+    /**
+ * @summary Clear or reject an intake after professional review
+ */
+export const useReviewIntake = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewIntake>>, TError,ReviewIntakeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof reviewIntake>>,
+        TError,
+        ReviewIntakeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReviewIntakeMutationOptions(options), queryClient);
+    }
+
+export const getOpenMatterFromIntakeUrl = (id: number,) => {
+
+
+
+
+  return `/api/intakes/${id}/open-matter`
+}
+
+/**
+ * @summary Open a matter from a professionally cleared intake
+ */
+export const openMatterFromIntake = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<Matter> => {
+
+  return customFetch<Matter>(getOpenMatterFromIntakeUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getOpenMatterFromIntakeMutationKey = () => ['openMatterFromIntake'] as const;
+
+export const getOpenMatterFromIntakeMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof openMatterFromIntake>>, TError,OpenMatterFromIntakeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof openMatterFromIntake>>, TError,OpenMatterFromIntakeMutationVariables, TContext> => {
+
+const mutationKey = getOpenMatterFromIntakeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof openMatterFromIntake>>, OpenMatterFromIntakeMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  openMatterFromIntake(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type OpenMatterFromIntakeMutationResult = NonNullable<Awaited<ReturnType<typeof openMatterFromIntake>>>
+
+    export type OpenMatterFromIntakeMutationError = ErrorType<void>
+    export type OpenMatterFromIntakeMutationVariables = {id: number}
+
+    /**
+ * @summary Open a matter from a professionally cleared intake
+ */
+export const useOpenMatterFromIntake = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof openMatterFromIntake>>, TError,OpenMatterFromIntakeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof openMatterFromIntake>>,
+        TError,
+        OpenMatterFromIntakeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getOpenMatterFromIntakeMutationOptions(options), queryClient);
+    }
+
+export const getListPortalAccessUrl = () => {
+
+
+
+
+  return `/api/portal/access`
+}
+
+/**
+ * @summary List client portal invitations and access
+ */
+export const listPortalAccess = async ( options?: Parameters<typeof customFetch>[1]): Promise<PortalAccess[]> => {
+
+  return customFetch<PortalAccess[]>(getListPortalAccessUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPortalAccessQueryKey = () => {
+    return [
+    `/api/portal/access`
+    ] as const;
+    }
+
+
+export const getListPortalAccessQueryOptions = <TData = Awaited<ReturnType<typeof listPortalAccess>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalAccess>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPortalAccessQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPortalAccess>>> = ({ signal }) => listPortalAccess({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPortalAccess>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListPortalAccessQueryResult = NonNullable<Awaited<ReturnType<typeof listPortalAccess>>>
+export type ListPortalAccessQueryError = ErrorType<unknown>
+
+
+export function useListPortalAccess<TData = Awaited<ReturnType<typeof listPortalAccess>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalAccess>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPortalAccess>>,
+          TError,
+          Awaited<ReturnType<typeof listPortalAccess>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListPortalAccess<TData = Awaited<ReturnType<typeof listPortalAccess>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalAccess>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPortalAccess>>,
+          TError,
+          Awaited<ReturnType<typeof listPortalAccess>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListPortalAccess<TData = Awaited<ReturnType<typeof listPortalAccess>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalAccess>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List client portal invitations and access
+ */
+
+export function useListPortalAccess<TData = Awaited<ReturnType<typeof listPortalAccess>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalAccess>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListPortalAccessQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getInvitePortalClientUrl = () => {
+
+
+
+
+  return `/api/portal/access`
+}
+
+/**
+ * @summary Invite a verified client account to a specific client record
+ */
+export const invitePortalClient = async (portalInviteInput: PortalInviteInput, options?: Parameters<typeof customFetch>[1]): Promise<PortalAccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PortalAccess>(getInvitePortalClientUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalInviteInput)
+  }
+);}
+
+
+
+
+
+export const getInvitePortalClientMutationKey = () => ['invitePortalClient'] as const;
+
+export const getInvitePortalClientMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof invitePortalClient>>, TError,InvitePortalClientMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof invitePortalClient>>, TError,InvitePortalClientMutationVariables, TContext> => {
+
+const mutationKey = getInvitePortalClientMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof invitePortalClient>>, InvitePortalClientMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  invitePortalClient(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InvitePortalClientMutationResult = NonNullable<Awaited<ReturnType<typeof invitePortalClient>>>
+    export type InvitePortalClientMutationBody = BodyType<PortalInviteInput>
+    export type InvitePortalClientMutationError = ErrorType<unknown>
+    export type InvitePortalClientMutationVariables = {data: BodyType<PortalInviteInput>}
+
+    /**
+ * @summary Invite a verified client account to a specific client record
+ */
+export const useInvitePortalClient = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof invitePortalClient>>, TError,InvitePortalClientMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof invitePortalClient>>,
+        TError,
+        InvitePortalClientMutationVariables,
+        TContext
+      > => {
+      return useMutation(getInvitePortalClientMutationOptions(options), queryClient);
+    }
+
+export const getRevokePortalAccessUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/access/${id}`
+}
+
+/**
+ * @summary Revoke client portal access
+ */
+export const revokePortalAccess = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getRevokePortalAccessUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getRevokePortalAccessMutationKey = () => ['revokePortalAccess'] as const;
+
+export const getRevokePortalAccessMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokePortalAccess>>, TError,RevokePortalAccessMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof revokePortalAccess>>, TError,RevokePortalAccessMutationVariables, TContext> => {
+
+const mutationKey = getRevokePortalAccessMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokePortalAccess>>, RevokePortalAccessMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  revokePortalAccess(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevokePortalAccessMutationResult = NonNullable<Awaited<ReturnType<typeof revokePortalAccess>>>
+
+    export type RevokePortalAccessMutationError = ErrorType<unknown>
+    export type RevokePortalAccessMutationVariables = {id: number}
+
+    /**
+ * @summary Revoke client portal access
+ */
+export const useRevokePortalAccess = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokePortalAccess>>, TError,RevokePortalAccessMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof revokePortalAccess>>,
+        TError,
+        RevokePortalAccessMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRevokePortalAccessMutationOptions(options), queryClient);
+    }
+
+export const getGetClientPortalContextUrl = () => {
+
+
+
+
+  return `/api/portal/context`
+}
+
+/**
+ * @summary Get only the signed-in client's explicitly shared matters
+ */
+export const getClientPortalContext = async ( options?: Parameters<typeof customFetch>[1]): Promise<ClientPortalContext> => {
+
+  return customFetch<ClientPortalContext>(getGetClientPortalContextUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetClientPortalContextQueryKey = () => {
+    return [
+    `/api/portal/context`
+    ] as const;
+    }
+
+
+export const getGetClientPortalContextQueryOptions = <TData = Awaited<ReturnType<typeof getClientPortalContext>>, TError = ErrorType<void>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClientPortalContext>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetClientPortalContextQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getClientPortalContext>>> = ({ signal }) => getClientPortalContext({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getClientPortalContext>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetClientPortalContextQueryResult = NonNullable<Awaited<ReturnType<typeof getClientPortalContext>>>
+export type GetClientPortalContextQueryError = ErrorType<void>
+
+
+export function useGetClientPortalContext<TData = Awaited<ReturnType<typeof getClientPortalContext>>, TError = ErrorType<void>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClientPortalContext>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getClientPortalContext>>,
+          TError,
+          Awaited<ReturnType<typeof getClientPortalContext>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetClientPortalContext<TData = Awaited<ReturnType<typeof getClientPortalContext>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClientPortalContext>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getClientPortalContext>>,
+          TError,
+          Awaited<ReturnType<typeof getClientPortalContext>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetClientPortalContext<TData = Awaited<ReturnType<typeof getClientPortalContext>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClientPortalContext>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get only the signed-in client's explicitly shared matters
+ */
+
+export function useGetClientPortalContext<TData = Awaited<ReturnType<typeof getClientPortalContext>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClientPortalContext>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetClientPortalContextQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListPortalMessagesUrl = (params?: ListPortalMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/portal/messages?${stringifiedParams}` : `/api/portal/messages`
+}
+
+/**
+ * @summary List client-visible messages for the portal session
+ */
+export const listPortalMessages = async (params?: ListPortalMessagesParams, options?: Parameters<typeof customFetch>[1]): Promise<PortalMessage[]> => {
+
+  return customFetch<PortalMessage[]>(getListPortalMessagesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPortalMessagesQueryKey = (params?: ListPortalMessagesParams,) => {
+    return [
+    `/api/portal/messages`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListPortalMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listPortalMessages>>, TError = ErrorType<unknown>>(params?: ListPortalMessagesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalMessages>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPortalMessagesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPortalMessages>>> = ({ signal }) => listPortalMessages(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPortalMessages>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListPortalMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listPortalMessages>>>
+export type ListPortalMessagesQueryError = ErrorType<unknown>
+
+
+export function useListPortalMessages<TData = Awaited<ReturnType<typeof listPortalMessages>>, TError = ErrorType<unknown>>(
+ params: undefined |  ListPortalMessagesParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalMessages>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPortalMessages>>,
+          TError,
+          Awaited<ReturnType<typeof listPortalMessages>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListPortalMessages<TData = Awaited<ReturnType<typeof listPortalMessages>>, TError = ErrorType<unknown>>(
+ params?: ListPortalMessagesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalMessages>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPortalMessages>>,
+          TError,
+          Awaited<ReturnType<typeof listPortalMessages>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListPortalMessages<TData = Awaited<ReturnType<typeof listPortalMessages>>, TError = ErrorType<unknown>>(
+ params?: ListPortalMessagesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalMessages>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List client-visible messages for the portal session
+ */
+
+export function useListPortalMessages<TData = Awaited<ReturnType<typeof listPortalMessages>>, TError = ErrorType<unknown>>(
+ params?: ListPortalMessagesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalMessages>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListPortalMessagesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendPortalMessageUrl = (params?: SendPortalMessageParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/portal/messages?${stringifiedParams}` : `/api/portal/messages`
+}
+
+/**
+ * @summary Send a message through the client portal
+ */
+export const sendPortalMessage = async (portalMessageInput: PortalMessageInput,
+    params?: SendPortalMessageParams, options?: Parameters<typeof customFetch>[1]): Promise<PortalMessage> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PortalMessage>(getSendPortalMessageUrl(params),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalMessageInput)
+  }
+);}
+
+
+
+
+
+export const getSendPortalMessageMutationKey = () => ['sendPortalMessage'] as const;
+
+export const getSendPortalMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendPortalMessage>>, TError,SendPortalMessageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendPortalMessage>>, TError,SendPortalMessageMutationVariables, TContext> => {
+
+const mutationKey = getSendPortalMessageMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendPortalMessage>>, SendPortalMessageMutationVariables> = (props) => {
+          const {data,params} = props ?? {};
+
+          return  sendPortalMessage(data,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendPortalMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendPortalMessage>>>
+    export type SendPortalMessageMutationBody = BodyType<PortalMessageInput>
+    export type SendPortalMessageMutationError = ErrorType<unknown>
+    export type SendPortalMessageMutationVariables = {data: BodyType<PortalMessageInput>;params?: SendPortalMessageParams}
+
+    /**
+ * @summary Send a message through the client portal
+ */
+export const useSendPortalMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendPortalMessage>>, TError,SendPortalMessageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof sendPortalMessage>>,
+        TError,
+        SendPortalMessageMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSendPortalMessageMutationOptions(options), queryClient);
+    }
+
+export const getGetPortalRequestsUrl = (params?: GetPortalRequestsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/portal/requests?${stringifiedParams}` : `/api/portal/requests`
+}
+
+/**
+ * @summary List client-visible requests for a firm or client portal session
+ */
+export const getPortalRequests = async (params?: GetPortalRequestsParams, options?: Parameters<typeof customFetch>[1]): Promise<PortalRequest[]> => {
+
+  return customFetch<PortalRequest[]>(getGetPortalRequestsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortalRequestsQueryKey = (params?: GetPortalRequestsParams,) => {
+    return [
+    `/api/portal/requests`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPortalRequestsQueryOptions = <TData = Awaited<ReturnType<typeof getPortalRequests>>, TError = ErrorType<unknown>>(params?: GetPortalRequestsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPortalRequests>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPortalRequestsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortalRequests>>> = ({ signal }) => getPortalRequests(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortalRequests>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetPortalRequestsQueryResult = NonNullable<Awaited<ReturnType<typeof getPortalRequests>>>
+export type GetPortalRequestsQueryError = ErrorType<unknown>
+
+
+export function useGetPortalRequests<TData = Awaited<ReturnType<typeof getPortalRequests>>, TError = ErrorType<unknown>>(
+ params: undefined |  GetPortalRequestsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPortalRequests>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getPortalRequests>>,
+          TError,
+          Awaited<ReturnType<typeof getPortalRequests>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetPortalRequests<TData = Awaited<ReturnType<typeof getPortalRequests>>, TError = ErrorType<unknown>>(
+ params?: GetPortalRequestsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPortalRequests>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getPortalRequests>>,
+          TError,
+          Awaited<ReturnType<typeof getPortalRequests>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetPortalRequests<TData = Awaited<ReturnType<typeof getPortalRequests>>, TError = ErrorType<unknown>>(
+ params?: GetPortalRequestsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPortalRequests>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List client-visible requests for a firm or client portal session
+ */
+
+export function useGetPortalRequests<TData = Awaited<ReturnType<typeof getPortalRequests>>, TError = ErrorType<unknown>>(
+ params?: GetPortalRequestsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPortalRequests>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetPortalRequestsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreatePortalRequestUrl = (params?: CreatePortalRequestParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/portal/requests?${stringifiedParams}` : `/api/portal/requests`
+}
+
+/**
+ * @summary Create a client-facing request for a matter
+ */
+export const createPortalRequest = async (createPortalRequestInput: CreatePortalRequestInput,
+    params?: CreatePortalRequestParams, options?: Parameters<typeof customFetch>[1]): Promise<PortalRequest> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PortalRequest>(getCreatePortalRequestUrl(params),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPortalRequestInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePortalRequestMutationKey = () => ['createPortalRequest'] as const;
+
+export const getCreatePortalRequestMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPortalRequest>>, TError,CreatePortalRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPortalRequest>>, TError,CreatePortalRequestMutationVariables, TContext> => {
+
+const mutationKey = getCreatePortalRequestMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPortalRequest>>, CreatePortalRequestMutationVariables> = (props) => {
+          const {data,params} = props ?? {};
+
+          return  createPortalRequest(data,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePortalRequestMutationResult = NonNullable<Awaited<ReturnType<typeof createPortalRequest>>>
+    export type CreatePortalRequestMutationBody = BodyType<CreatePortalRequestInput>
+    export type CreatePortalRequestMutationError = ErrorType<unknown>
+    export type CreatePortalRequestMutationVariables = {data: BodyType<CreatePortalRequestInput>;params?: CreatePortalRequestParams}
+
+    /**
+ * @summary Create a client-facing request for a matter
+ */
+export const useCreatePortalRequest = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPortalRequest>>, TError,CreatePortalRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createPortalRequest>>,
+        TError,
+        CreatePortalRequestMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreatePortalRequestMutationOptions(options), queryClient);
+    }
+
+export const getRespondToPortalRequestUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/requests/${id}/respond`
+}
+
+/**
+ * @summary Respond to an open client portal request
+ */
+export const respondToPortalRequest = async (id: number,
+    respondPortalRequestInput: RespondPortalRequestInput, options?: Parameters<typeof customFetch>[1]): Promise<PortalRequest> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PortalRequest>(getRespondToPortalRequestUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(respondPortalRequestInput)
+  }
+);}
+
+
+
+
+
+export const getRespondToPortalRequestMutationKey = () => ['respondToPortalRequest'] as const;
+
+export const getRespondToPortalRequestMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof respondToPortalRequest>>, TError,RespondToPortalRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof respondToPortalRequest>>, TError,RespondToPortalRequestMutationVariables, TContext> => {
+
+const mutationKey = getRespondToPortalRequestMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof respondToPortalRequest>>, RespondToPortalRequestMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  respondToPortalRequest(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RespondToPortalRequestMutationResult = NonNullable<Awaited<ReturnType<typeof respondToPortalRequest>>>
+    export type RespondToPortalRequestMutationBody = BodyType<RespondPortalRequestInput>
+    export type RespondToPortalRequestMutationError = ErrorType<unknown>
+    export type RespondToPortalRequestMutationVariables = {id: number;data: BodyType<RespondPortalRequestInput>}
+
+    /**
+ * @summary Respond to an open client portal request
+ */
+export const useRespondToPortalRequest = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof respondToPortalRequest>>, TError,RespondToPortalRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof respondToPortalRequest>>,
+        TError,
+        RespondToPortalRequestMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRespondToPortalRequestMutationOptions(options), queryClient);
+    }
+
+export const getClosePortalRequestUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/requests/${id}`
+}
+
+/**
+ * @summary Close a responded client request
+ */
+export const closePortalRequest = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<PortalRequest> => {
+
+  return customFetch<PortalRequest>(getClosePortalRequestUrl(id),
+  {
+    ...options,
+    method: 'PATCH'
+
+
+  }
+);}
+
+
+
+
+
+export const getClosePortalRequestMutationKey = () => ['closePortalRequest'] as const;
+
+export const getClosePortalRequestMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof closePortalRequest>>, TError,ClosePortalRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof closePortalRequest>>, TError,ClosePortalRequestMutationVariables, TContext> => {
+
+const mutationKey = getClosePortalRequestMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof closePortalRequest>>, ClosePortalRequestMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  closePortalRequest(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClosePortalRequestMutationResult = NonNullable<Awaited<ReturnType<typeof closePortalRequest>>>
+
+    export type ClosePortalRequestMutationError = ErrorType<unknown>
+    export type ClosePortalRequestMutationVariables = {id: number}
+
+    /**
+ * @summary Close a responded client request
+ */
+export const useClosePortalRequest = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof closePortalRequest>>, TError,ClosePortalRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof closePortalRequest>>,
+        TError,
+        ClosePortalRequestMutationVariables,
+        TContext
+      > => {
+      return useMutation(getClosePortalRequestMutationOptions(options), queryClient);
+    }
+
+export const getRequestPortalDocumentUploadUrl = () => {
+
+
+
+
+  return `/api/portal/documents/upload-url`
+}
+
+/**
+ * @summary Create a private upload URL for a portal client
+ */
+export const requestPortalDocumentUpload = async (portalDocumentUploadInput: PortalDocumentUploadInput, options?: Parameters<typeof customFetch>[1]): Promise<DocumentUpload> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<DocumentUpload>(getRequestPortalDocumentUploadUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(portalDocumentUploadInput)
+  }
+);}
+
+
+
+
+
+export const getRequestPortalDocumentUploadMutationKey = () => ['requestPortalDocumentUpload'] as const;
+
+export const getRequestPortalDocumentUploadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestPortalDocumentUpload>>, TError,RequestPortalDocumentUploadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestPortalDocumentUpload>>, TError,RequestPortalDocumentUploadMutationVariables, TContext> => {
+
+const mutationKey = getRequestPortalDocumentUploadMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestPortalDocumentUpload>>, RequestPortalDocumentUploadMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestPortalDocumentUpload(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestPortalDocumentUploadMutationResult = NonNullable<Awaited<ReturnType<typeof requestPortalDocumentUpload>>>
+    export type RequestPortalDocumentUploadMutationBody = BodyType<PortalDocumentUploadInput>
+    export type RequestPortalDocumentUploadMutationError = ErrorType<unknown>
+    export type RequestPortalDocumentUploadMutationVariables = {data: BodyType<PortalDocumentUploadInput>}
+
+    /**
+ * @summary Create a private upload URL for a portal client
+ */
+export const useRequestPortalDocumentUpload = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestPortalDocumentUpload>>, TError,RequestPortalDocumentUploadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof requestPortalDocumentUpload>>,
+        TError,
+        RequestPortalDocumentUploadMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRequestPortalDocumentUploadMutationOptions(options), queryClient);
+    }
+
+export const getCompletePortalDocumentUploadUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/documents/${id}/complete`
+}
+
+/**
+ * @summary Finalize a client portal document upload
+ */
+export const completePortalDocumentUpload = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ClientDocument> => {
+
+  return customFetch<ClientDocument>(getCompletePortalDocumentUploadUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCompletePortalDocumentUploadMutationKey = () => ['completePortalDocumentUpload'] as const;
+
+export const getCompletePortalDocumentUploadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completePortalDocumentUpload>>, TError,CompletePortalDocumentUploadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completePortalDocumentUpload>>, TError,CompletePortalDocumentUploadMutationVariables, TContext> => {
+
+const mutationKey = getCompletePortalDocumentUploadMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completePortalDocumentUpload>>, CompletePortalDocumentUploadMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  completePortalDocumentUpload(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompletePortalDocumentUploadMutationResult = NonNullable<Awaited<ReturnType<typeof completePortalDocumentUpload>>>
+
+    export type CompletePortalDocumentUploadMutationError = ErrorType<unknown>
+    export type CompletePortalDocumentUploadMutationVariables = {id: number}
+
+    /**
+ * @summary Finalize a client portal document upload
+ */
+export const useCompletePortalDocumentUpload = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completePortalDocumentUpload>>, TError,CompletePortalDocumentUploadMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof completePortalDocumentUpload>>,
+        TError,
+        CompletePortalDocumentUploadMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCompletePortalDocumentUploadMutationOptions(options), queryClient);
+    }
+
+export const getDownloadPortalDocumentUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/documents/${id}/file`
+}
+
+/**
+ * @summary Download a document explicitly shared with this client
+ */
+export const downloadPortalDocument = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getDownloadPortalDocumentUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getDownloadPortalDocumentQueryKey = (id: number,) => {
+    return [
+    `/api/portal/documents/${id}/file`
+    ] as const;
+    }
+
+
+export const getDownloadPortalDocumentQueryOptions = <TData = Awaited<ReturnType<typeof downloadPortalDocument>>, TError = ErrorType<unknown>>(id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadPortalDocument>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDownloadPortalDocumentQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof downloadPortalDocument>>> = ({ signal }) => downloadPortalDocument(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof downloadPortalDocument>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type DownloadPortalDocumentQueryResult = NonNullable<Awaited<ReturnType<typeof downloadPortalDocument>>>
+export type DownloadPortalDocumentQueryError = ErrorType<unknown>
+
+
+export function useDownloadPortalDocument<TData = Awaited<ReturnType<typeof downloadPortalDocument>>, TError = ErrorType<unknown>>(
+ id: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadPortalDocument>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof downloadPortalDocument>>,
+          TError,
+          Awaited<ReturnType<typeof downloadPortalDocument>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useDownloadPortalDocument<TData = Awaited<ReturnType<typeof downloadPortalDocument>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadPortalDocument>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof downloadPortalDocument>>,
+          TError,
+          Awaited<ReturnType<typeof downloadPortalDocument>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useDownloadPortalDocument<TData = Awaited<ReturnType<typeof downloadPortalDocument>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadPortalDocument>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Download a document explicitly shared with this client
+ */
+
+export function useDownloadPortalDocument<TData = Awaited<ReturnType<typeof downloadPortalDocument>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof downloadPortalDocument>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getDownloadPortalDocumentQueryOptions(id,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSetDocumentClientVisibilityUrl = (id: number,) => {
+
+
+
+
+  return `/api/documents/${id}/client-visibility`
+}
+
+/**
+ * @summary Share or unshare a matter document with the client
+ */
+export const setDocumentClientVisibility = async (id: number,
+    clientVisibilityInput: ClientVisibilityInput, options?: Parameters<typeof customFetch>[1]): Promise<ClientDocument> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ClientDocument>(getSetDocumentClientVisibilityUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(clientVisibilityInput)
+  }
+);}
+
+
+
+
+
+export const getSetDocumentClientVisibilityMutationKey = () => ['setDocumentClientVisibility'] as const;
+
+export const getSetDocumentClientVisibilityMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setDocumentClientVisibility>>, TError,SetDocumentClientVisibilityMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setDocumentClientVisibility>>, TError,SetDocumentClientVisibilityMutationVariables, TContext> => {
+
+const mutationKey = getSetDocumentClientVisibilityMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setDocumentClientVisibility>>, SetDocumentClientVisibilityMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  setDocumentClientVisibility(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetDocumentClientVisibilityMutationResult = NonNullable<Awaited<ReturnType<typeof setDocumentClientVisibility>>>
+    export type SetDocumentClientVisibilityMutationBody = BodyType<ClientVisibilityInput>
+    export type SetDocumentClientVisibilityMutationError = ErrorType<unknown>
+    export type SetDocumentClientVisibilityMutationVariables = {id: number;data: BodyType<ClientVisibilityInput>}
+
+    /**
+ * @summary Share or unshare a matter document with the client
+ */
+export const useSetDocumentClientVisibility = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setDocumentClientVisibility>>, TError,SetDocumentClientVisibilityMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof setDocumentClientVisibility>>,
+        TError,
+        SetDocumentClientVisibilityMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSetDocumentClientVisibilityMutationOptions(options), queryClient);
+    }
+
+export const getListPortalUpdatesUrl = () => {
+
+
+
+
+  return `/api/portal/updates`
+}
+
+/**
+ * @summary List published client updates
+ */
+export const listPortalUpdates = async ( options?: Parameters<typeof customFetch>[1]): Promise<PortalUpdate[]> => {
+
+  return customFetch<PortalUpdate[]>(getListPortalUpdatesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPortalUpdatesQueryKey = () => {
+    return [
+    `/api/portal/updates`
+    ] as const;
+    }
+
+
+export const getListPortalUpdatesQueryOptions = <TData = Awaited<ReturnType<typeof listPortalUpdates>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalUpdates>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPortalUpdatesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPortalUpdates>>> = ({ signal }) => listPortalUpdates({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPortalUpdates>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListPortalUpdatesQueryResult = NonNullable<Awaited<ReturnType<typeof listPortalUpdates>>>
+export type ListPortalUpdatesQueryError = ErrorType<unknown>
+
+
+export function useListPortalUpdates<TData = Awaited<ReturnType<typeof listPortalUpdates>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalUpdates>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPortalUpdates>>,
+          TError,
+          Awaited<ReturnType<typeof listPortalUpdates>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListPortalUpdates<TData = Awaited<ReturnType<typeof listPortalUpdates>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalUpdates>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPortalUpdates>>,
+          TError,
+          Awaited<ReturnType<typeof listPortalUpdates>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListPortalUpdates<TData = Awaited<ReturnType<typeof listPortalUpdates>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalUpdates>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List published client updates
+ */
+
+export function useListPortalUpdates<TData = Awaited<ReturnType<typeof listPortalUpdates>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPortalUpdates>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListPortalUpdatesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPublishClientUpdateUrl = () => {
+
+
+
+
+  return `/api/portal/updates`
+}
+
+/**
+ * @summary Publish a reviewed update draft to the client portal
+ */
+export const publishClientUpdate = async (publishClientUpdateInput: PublishClientUpdateInput, options?: Parameters<typeof customFetch>[1]): Promise<PortalUpdate> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PortalUpdate>(getPublishClientUpdateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(publishClientUpdateInput)
+  }
+);}
+
+
+
+
+
+export const getPublishClientUpdateMutationKey = () => ['publishClientUpdate'] as const;
+
+export const getPublishClientUpdateMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishClientUpdate>>, TError,PublishClientUpdateMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof publishClientUpdate>>, TError,PublishClientUpdateMutationVariables, TContext> => {
+
+const mutationKey = getPublishClientUpdateMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof publishClientUpdate>>, PublishClientUpdateMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  publishClientUpdate(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PublishClientUpdateMutationResult = NonNullable<Awaited<ReturnType<typeof publishClientUpdate>>>
+    export type PublishClientUpdateMutationBody = BodyType<PublishClientUpdateInput>
+    export type PublishClientUpdateMutationError = ErrorType<void>
+    export type PublishClientUpdateMutationVariables = {data: BodyType<PublishClientUpdateInput>}
+
+    /**
+ * @summary Publish a reviewed update draft to the client portal
+ */
+export const usePublishClientUpdate = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishClientUpdate>>, TError,PublishClientUpdateMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof publishClientUpdate>>,
+        TError,
+        PublishClientUpdateMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPublishClientUpdateMutationOptions(options), queryClient);
+    }
+
+export const getListAuditEventsUrl = (params?: ListAuditEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/audit?${stringifiedParams}` : `/api/audit`
+}
+
+/**
+ * @summary Search sensitive access and approval audit events
+ */
+export const listAuditEvents = async (params?: ListAuditEventsParams, options?: Parameters<typeof customFetch>[1]): Promise<AuditEvent[]> => {
+
+  return customFetch<AuditEvent[]>(getListAuditEventsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAuditEventsQueryKey = (params?: ListAuditEventsParams,) => {
+    return [
+    `/api/audit`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAuditEventsQueryOptions = <TData = Awaited<ReturnType<typeof listAuditEvents>>, TError = ErrorType<unknown>>(params?: ListAuditEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAuditEvents>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAuditEventsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAuditEvents>>> = ({ signal }) => listAuditEvents(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAuditEvents>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListAuditEventsQueryResult = NonNullable<Awaited<ReturnType<typeof listAuditEvents>>>
+export type ListAuditEventsQueryError = ErrorType<unknown>
+
+
+export function useListAuditEvents<TData = Awaited<ReturnType<typeof listAuditEvents>>, TError = ErrorType<unknown>>(
+ params: undefined |  ListAuditEventsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAuditEvents>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAuditEvents>>,
+          TError,
+          Awaited<ReturnType<typeof listAuditEvents>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListAuditEvents<TData = Awaited<ReturnType<typeof listAuditEvents>>, TError = ErrorType<unknown>>(
+ params?: ListAuditEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAuditEvents>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAuditEvents>>,
+          TError,
+          Awaited<ReturnType<typeof listAuditEvents>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListAuditEvents<TData = Awaited<ReturnType<typeof listAuditEvents>>, TError = ErrorType<unknown>>(
+ params?: ListAuditEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAuditEvents>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Search sensitive access and approval audit events
+ */
+
+export function useListAuditEvents<TData = Awaited<ReturnType<typeof listAuditEvents>>, TError = ErrorType<unknown>>(
+ params?: ListAuditEventsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAuditEvents>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListAuditEventsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getLogMatterExportRequestUrl = () => {
+
+
+
+
+  return `/api/audit/exports`
+}
+
+/**
+ * @summary Audit a matter PDF export request
+ */
+export const logMatterExportRequest = async (matterExportAuditInput: MatterExportAuditInput, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<void>(getLogMatterExportRequestUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(matterExportAuditInput)
+  }
+);}
+
+
+
+
+
+export const getLogMatterExportRequestMutationKey = () => ['logMatterExportRequest'] as const;
+
+export const getLogMatterExportRequestMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logMatterExportRequest>>, TError,LogMatterExportRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof logMatterExportRequest>>, TError,LogMatterExportRequestMutationVariables, TContext> => {
+
+const mutationKey = getLogMatterExportRequestMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof logMatterExportRequest>>, LogMatterExportRequestMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  logMatterExportRequest(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LogMatterExportRequestMutationResult = NonNullable<Awaited<ReturnType<typeof logMatterExportRequest>>>
+    export type LogMatterExportRequestMutationBody = BodyType<MatterExportAuditInput>
+    export type LogMatterExportRequestMutationError = ErrorType<unknown>
+    export type LogMatterExportRequestMutationVariables = {data: BodyType<MatterExportAuditInput>}
+
+    /**
+ * @summary Audit a matter PDF export request
+ */
+export const useLogMatterExportRequest = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logMatterExportRequest>>, TError,LogMatterExportRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof logMatterExportRequest>>,
+        TError,
+        LogMatterExportRequestMutationVariables,
+        TContext
+      > => {
+      return useMutation(getLogMatterExportRequestMutationOptions(options), queryClient);
+    }
+
+export const getGetGovernanceOverviewUrl = () => {
+
+
+
+
+  return `/api/governance`
+}
+
+/**
+ * @summary Get retention settings and legal holds
+ */
+export const getGovernanceOverview = async ( options?: Parameters<typeof customFetch>[1]): Promise<GovernanceOverview> => {
+
+  return customFetch<GovernanceOverview>(getGetGovernanceOverviewUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGovernanceOverviewQueryKey = () => {
+    return [
+    `/api/governance`
+    ] as const;
+    }
+
+
+export const getGetGovernanceOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getGovernanceOverview>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGovernanceOverview>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGovernanceOverviewQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGovernanceOverview>>> = ({ signal }) => getGovernanceOverview({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGovernanceOverview>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetGovernanceOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getGovernanceOverview>>>
+export type GetGovernanceOverviewQueryError = ErrorType<unknown>
+
+
+export function useGetGovernanceOverview<TData = Awaited<ReturnType<typeof getGovernanceOverview>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGovernanceOverview>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getGovernanceOverview>>,
+          TError,
+          Awaited<ReturnType<typeof getGovernanceOverview>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetGovernanceOverview<TData = Awaited<ReturnType<typeof getGovernanceOverview>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGovernanceOverview>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getGovernanceOverview>>,
+          TError,
+          Awaited<ReturnType<typeof getGovernanceOverview>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetGovernanceOverview<TData = Awaited<ReturnType<typeof getGovernanceOverview>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGovernanceOverview>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get retention settings and legal holds
+ */
+
+export function useGetGovernanceOverview<TData = Awaited<ReturnType<typeof getGovernanceOverview>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGovernanceOverview>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetGovernanceOverviewQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateRetentionSettingsUrl = () => {
+
+
+
+
+  return `/api/governance`
+}
+
+/**
+ * @summary Configure retention periods for closed matters and audit records
+ */
+export const updateRetentionSettings = async (retentionSettingsInput: RetentionSettingsInput, options?: Parameters<typeof customFetch>[1]): Promise<RetentionSettings> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<RetentionSettings>(getUpdateRetentionSettingsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(retentionSettingsInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateRetentionSettingsMutationKey = () => ['updateRetentionSettings'] as const;
+
+export const getUpdateRetentionSettingsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRetentionSettings>>, TError,UpdateRetentionSettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateRetentionSettings>>, TError,UpdateRetentionSettingsMutationVariables, TContext> => {
+
+const mutationKey = getUpdateRetentionSettingsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateRetentionSettings>>, UpdateRetentionSettingsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateRetentionSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateRetentionSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateRetentionSettings>>>
+    export type UpdateRetentionSettingsMutationBody = BodyType<RetentionSettingsInput>
+    export type UpdateRetentionSettingsMutationError = ErrorType<unknown>
+    export type UpdateRetentionSettingsMutationVariables = {data: BodyType<RetentionSettingsInput>}
+
+    /**
+ * @summary Configure retention periods for closed matters and audit records
+ */
+export const useUpdateRetentionSettings = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRetentionSettings>>, TError,UpdateRetentionSettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateRetentionSettings>>,
+        TError,
+        UpdateRetentionSettingsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateRetentionSettingsMutationOptions(options), queryClient);
+    }
+
+export const getPlaceLegalHoldUrl = () => {
+
+
+
+
+  return `/api/governance/legal-holds`
+}
+
+/**
+ * @summary Place a legal hold on a client or matter
+ */
+export const placeLegalHold = async (legalHoldInput: LegalHoldInput, options?: Parameters<typeof customFetch>[1]): Promise<LegalHold> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<LegalHold>(getPlaceLegalHoldUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(legalHoldInput)
+  }
+);}
+
+
+
+
+
+export const getPlaceLegalHoldMutationKey = () => ['placeLegalHold'] as const;
+
+export const getPlaceLegalHoldMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof placeLegalHold>>, TError,PlaceLegalHoldMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof placeLegalHold>>, TError,PlaceLegalHoldMutationVariables, TContext> => {
+
+const mutationKey = getPlaceLegalHoldMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof placeLegalHold>>, PlaceLegalHoldMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  placeLegalHold(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PlaceLegalHoldMutationResult = NonNullable<Awaited<ReturnType<typeof placeLegalHold>>>
+    export type PlaceLegalHoldMutationBody = BodyType<LegalHoldInput>
+    export type PlaceLegalHoldMutationError = ErrorType<unknown>
+    export type PlaceLegalHoldMutationVariables = {data: BodyType<LegalHoldInput>}
+
+    /**
+ * @summary Place a legal hold on a client or matter
+ */
+export const usePlaceLegalHold = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof placeLegalHold>>, TError,PlaceLegalHoldMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof placeLegalHold>>,
+        TError,
+        PlaceLegalHoldMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPlaceLegalHoldMutationOptions(options), queryClient);
+    }
+
+export const getReleaseLegalHoldUrl = (id: number,) => {
+
+
+
+
+  return `/api/governance/legal-holds/${id}`
+}
+
+/**
+ * @summary Release a legal hold
+ */
+export const releaseLegalHold = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<LegalHold> => {
+
+  return customFetch<LegalHold>(getReleaseLegalHoldUrl(id),
+  {
+    ...options,
+    method: 'PATCH'
+
+
+  }
+);}
+
+
+
+
+
+export const getReleaseLegalHoldMutationKey = () => ['releaseLegalHold'] as const;
+
+export const getReleaseLegalHoldMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof releaseLegalHold>>, TError,ReleaseLegalHoldMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof releaseLegalHold>>, TError,ReleaseLegalHoldMutationVariables, TContext> => {
+
+const mutationKey = getReleaseLegalHoldMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof releaseLegalHold>>, ReleaseLegalHoldMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  releaseLegalHold(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReleaseLegalHoldMutationResult = NonNullable<Awaited<ReturnType<typeof releaseLegalHold>>>
+
+    export type ReleaseLegalHoldMutationError = ErrorType<unknown>
+    export type ReleaseLegalHoldMutationVariables = {id: number}
+
+    /**
+ * @summary Release a legal hold
+ */
+export const useReleaseLegalHold = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof releaseLegalHold>>, TError,ReleaseLegalHoldMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof releaseLegalHold>>,
+        TError,
+        ReleaseLegalHoldMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReleaseLegalHoldMutationOptions(options), queryClient);
+    }
+
+export const getListWorkspaceIntegrationsUrl = () => {
+
+
+
+
+  return `/api/integrations`
+}
+
+/**
+ * @summary List per-firm Google, Microsoft, Xero, and QuickBooks connections
+ */
+export const listWorkspaceIntegrations = async ( options?: Parameters<typeof customFetch>[1]): Promise<ProviderConnectionStatus[]> => {
+
+  return customFetch<ProviderConnectionStatus[]>(getListWorkspaceIntegrationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListWorkspaceIntegrationsQueryKey = () => {
+    return [
+    `/api/integrations`
+    ] as const;
+    }
+
+
+export const getListWorkspaceIntegrationsQueryOptions = <TData = Awaited<ReturnType<typeof listWorkspaceIntegrations>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceIntegrations>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListWorkspaceIntegrationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listWorkspaceIntegrations>>> = ({ signal }) => listWorkspaceIntegrations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceIntegrations>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListWorkspaceIntegrationsQueryResult = NonNullable<Awaited<ReturnType<typeof listWorkspaceIntegrations>>>
+export type ListWorkspaceIntegrationsQueryError = ErrorType<unknown>
+
+
+export function useListWorkspaceIntegrations<TData = Awaited<ReturnType<typeof listWorkspaceIntegrations>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceIntegrations>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listWorkspaceIntegrations>>,
+          TError,
+          Awaited<ReturnType<typeof listWorkspaceIntegrations>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListWorkspaceIntegrations<TData = Awaited<ReturnType<typeof listWorkspaceIntegrations>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceIntegrations>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listWorkspaceIntegrations>>,
+          TError,
+          Awaited<ReturnType<typeof listWorkspaceIntegrations>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListWorkspaceIntegrations<TData = Awaited<ReturnType<typeof listWorkspaceIntegrations>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceIntegrations>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List per-firm Google, Microsoft, Xero, and QuickBooks connections
+ */
+
+export function useListWorkspaceIntegrations<TData = Awaited<ReturnType<typeof listWorkspaceIntegrations>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceIntegrations>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListWorkspaceIntegrationsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAuthorizeWorkspaceIntegrationUrl = (provider: 'google' | 'microsoft' | 'xero' | 'quickbooks',) => {
+
+
+
+
+  return `/api/integrations/${provider}/authorize`
+}
+
+/**
+ * @summary Start firm-owned OAuth authorization for a provider
+ */
+export const authorizeWorkspaceIntegration = async (provider: 'google' | 'microsoft' | 'xero' | 'quickbooks', options?: Parameters<typeof customFetch>[1]): Promise<AuthorizationUrl> => {
+
+  return customFetch<AuthorizationUrl>(getAuthorizeWorkspaceIntegrationUrl(provider),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getAuthorizeWorkspaceIntegrationMutationKey = () => ['authorizeWorkspaceIntegration'] as const;
+
+export const getAuthorizeWorkspaceIntegrationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof authorizeWorkspaceIntegration>>, TError,AuthorizeWorkspaceIntegrationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof authorizeWorkspaceIntegration>>, TError,AuthorizeWorkspaceIntegrationMutationVariables, TContext> => {
+
+const mutationKey = getAuthorizeWorkspaceIntegrationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof authorizeWorkspaceIntegration>>, AuthorizeWorkspaceIntegrationMutationVariables> = (props) => {
+          const {provider} = props ?? {};
+
+          return  authorizeWorkspaceIntegration(provider,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AuthorizeWorkspaceIntegrationMutationResult = NonNullable<Awaited<ReturnType<typeof authorizeWorkspaceIntegration>>>
+
+    export type AuthorizeWorkspaceIntegrationMutationError = ErrorType<void>
+    export type AuthorizeWorkspaceIntegrationMutationVariables = {provider: 'google' | 'microsoft' | 'xero' | 'quickbooks'}
+
+    /**
+ * @summary Start firm-owned OAuth authorization for a provider
+ */
+export const useAuthorizeWorkspaceIntegration = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof authorizeWorkspaceIntegration>>, TError,AuthorizeWorkspaceIntegrationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof authorizeWorkspaceIntegration>>,
+        TError,
+        AuthorizeWorkspaceIntegrationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAuthorizeWorkspaceIntegrationMutationOptions(options), queryClient);
+    }
+
+export const getCompleteWorkspaceIntegrationAuthorizationUrl = (provider: 'google' | 'microsoft' | 'xero' | 'quickbooks',) => {
+
+
+
+
+  return `/api/integrations/${provider}/callback`
+}
+
+/**
+ * @summary Complete provider OAuth authorization using code and state query parameters
+ */
+export const completeWorkspaceIntegrationAuthorization = async (provider: 'google' | 'microsoft' | 'xero' | 'quickbooks', options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+
+  return customFetch<unknown>(getCompleteWorkspaceIntegrationAuthorizationUrl(provider),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getCompleteWorkspaceIntegrationAuthorizationQueryKey = (provider: 'google' | 'microsoft' | 'xero' | 'quickbooks',) => {
+    return [
+    `/api/integrations/${provider}/callback`
+    ] as const;
+    }
+
+
+export const getCompleteWorkspaceIntegrationAuthorizationQueryOptions = <TData = Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>, TError = ErrorType<void>>(provider: 'google' | 'microsoft' | 'xero' | 'quickbooks', options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getCompleteWorkspaceIntegrationAuthorizationQueryKey(provider);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>> = ({ signal }) => completeWorkspaceIntegrationAuthorization(provider, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: provider !== null && provider !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type CompleteWorkspaceIntegrationAuthorizationQueryResult = NonNullable<Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>>
+export type CompleteWorkspaceIntegrationAuthorizationQueryError = ErrorType<void>
+
+
+export function useCompleteWorkspaceIntegrationAuthorization<TData = Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>, TError = ErrorType<void>>(
+ provider: 'google' | 'microsoft' | 'xero' | 'quickbooks', options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>,
+          TError,
+          Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useCompleteWorkspaceIntegrationAuthorization<TData = Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>, TError = ErrorType<void>>(
+ provider: 'google' | 'microsoft' | 'xero' | 'quickbooks', options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>,
+          TError,
+          Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useCompleteWorkspaceIntegrationAuthorization<TData = Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>, TError = ErrorType<void>>(
+ provider: 'google' | 'microsoft' | 'xero' | 'quickbooks', options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Complete provider OAuth authorization using code and state query parameters
+ */
+
+export function useCompleteWorkspaceIntegrationAuthorization<TData = Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>, TError = ErrorType<void>>(
+ provider: 'google' | 'microsoft' | 'xero' | 'quickbooks', options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof completeWorkspaceIntegrationAuthorization>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getCompleteWorkspaceIntegrationAuthorizationQueryOptions(provider,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSyncApprovedPlannerItemUrl = (provider: 'google' | 'microsoft',
+    id: number,) => {
+
+
+
+
+  return `/api/integrations/${provider}/calendar/${id}/sync`
+}
+
+/**
+ * @summary Sync a confirmed planner item to the connected firm calendar
+ */
+export const syncApprovedPlannerItem = async (provider: 'google' | 'microsoft',
+    id: number, options?: Parameters<typeof customFetch>[1]): Promise<ProviderSyncResult> => {
+
+  return customFetch<ProviderSyncResult>(getSyncApprovedPlannerItemUrl(provider,id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSyncApprovedPlannerItemMutationKey = () => ['syncApprovedPlannerItem'] as const;
+
+export const getSyncApprovedPlannerItemMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncApprovedPlannerItem>>, TError,SyncApprovedPlannerItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncApprovedPlannerItem>>, TError,SyncApprovedPlannerItemMutationVariables, TContext> => {
+
+const mutationKey = getSyncApprovedPlannerItemMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncApprovedPlannerItem>>, SyncApprovedPlannerItemMutationVariables> = (props) => {
+          const {provider,id} = props ?? {};
+
+          return  syncApprovedPlannerItem(provider,id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncApprovedPlannerItemMutationResult = NonNullable<Awaited<ReturnType<typeof syncApprovedPlannerItem>>>
+
+    export type SyncApprovedPlannerItemMutationError = ErrorType<void>
+    export type SyncApprovedPlannerItemMutationVariables = {provider: 'google' | 'microsoft';id: number}
+
+    /**
+ * @summary Sync a confirmed planner item to the connected firm calendar
+ */
+export const useSyncApprovedPlannerItem = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncApprovedPlannerItem>>, TError,SyncApprovedPlannerItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof syncApprovedPlannerItem>>,
+        TError,
+        SyncApprovedPlannerItemMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSyncApprovedPlannerItemMutationOptions(options), queryClient);
+    }
+
+export const getSyncReviewedBillUrl = (provider: 'xero' | 'quickbooks',
+    id: number,) => {
+
+
+
+
+  return `/api/integrations/${provider}/billing/${id}/sync`
+}
+
+/**
+ * @summary Sync a reviewed billing draft to firm accounting software
+ */
+export const syncReviewedBill = async (provider: 'xero' | 'quickbooks',
+    id: number, options?: Parameters<typeof customFetch>[1]): Promise<ProviderSyncResult> => {
+
+  return customFetch<ProviderSyncResult>(getSyncReviewedBillUrl(provider,id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSyncReviewedBillMutationKey = () => ['syncReviewedBill'] as const;
+
+export const getSyncReviewedBillMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncReviewedBill>>, TError,SyncReviewedBillMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncReviewedBill>>, TError,SyncReviewedBillMutationVariables, TContext> => {
+
+const mutationKey = getSyncReviewedBillMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncReviewedBill>>, SyncReviewedBillMutationVariables> = (props) => {
+          const {provider,id} = props ?? {};
+
+          return  syncReviewedBill(provider,id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncReviewedBillMutationResult = NonNullable<Awaited<ReturnType<typeof syncReviewedBill>>>
+
+    export type SyncReviewedBillMutationError = ErrorType<void>
+    export type SyncReviewedBillMutationVariables = {provider: 'xero' | 'quickbooks';id: number}
+
+    /**
+ * @summary Sync a reviewed billing draft to firm accounting software
+ */
+export const useSyncReviewedBill = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncReviewedBill>>, TError,SyncReviewedBillMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof syncReviewedBill>>,
+        TError,
+        SyncReviewedBillMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSyncReviewedBillMutationOptions(options), queryClient);
+    }
+
+export const getSendReviewedClientUpdateEmailUrl = (provider: 'google' | 'microsoft',) => {
+
+
+
+
+  return `/api/integrations/${provider}/email`
+}
+
+/**
+ * @summary Send a reviewed client update only after a professional's explicit action
+ */
+export const sendReviewedClientUpdateEmail = async (provider: 'google' | 'microsoft',
+    sendReviewedUpdateEmailInput: SendReviewedUpdateEmailInput, options?: Parameters<typeof customFetch>[1]): Promise<ProviderSyncResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ProviderSyncResult>(getSendReviewedClientUpdateEmailUrl(provider),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(sendReviewedUpdateEmailInput)
+  }
+);}
+
+
+
+
+
+export const getSendReviewedClientUpdateEmailMutationKey = () => ['sendReviewedClientUpdateEmail'] as const;
+
+export const getSendReviewedClientUpdateEmailMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendReviewedClientUpdateEmail>>, TError,SendReviewedClientUpdateEmailMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendReviewedClientUpdateEmail>>, TError,SendReviewedClientUpdateEmailMutationVariables, TContext> => {
+
+const mutationKey = getSendReviewedClientUpdateEmailMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendReviewedClientUpdateEmail>>, SendReviewedClientUpdateEmailMutationVariables> = (props) => {
+          const {provider,data} = props ?? {};
+
+          return  sendReviewedClientUpdateEmail(provider,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendReviewedClientUpdateEmailMutationResult = NonNullable<Awaited<ReturnType<typeof sendReviewedClientUpdateEmail>>>
+    export type SendReviewedClientUpdateEmailMutationBody = BodyType<SendReviewedUpdateEmailInput>
+    export type SendReviewedClientUpdateEmailMutationError = ErrorType<void>
+    export type SendReviewedClientUpdateEmailMutationVariables = {provider: 'google' | 'microsoft';data: BodyType<SendReviewedUpdateEmailInput>}
+
+    /**
+ * @summary Send a reviewed client update only after a professional's explicit action
+ */
+export const useSendReviewedClientUpdateEmail = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendReviewedClientUpdateEmail>>, TError,SendReviewedClientUpdateEmailMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof sendReviewedClientUpdateEmail>>,
+        TError,
+        SendReviewedClientUpdateEmailMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSendReviewedClientUpdateEmailMutationOptions(options), queryClient);
     }
 

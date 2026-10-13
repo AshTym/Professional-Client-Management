@@ -77,6 +77,7 @@ import {
   firmAccess,
   identify,
   logActivity,
+  logAuditEvent,
   membershipFor,
   workspaceContext,
 } from "../lib/clientguard-auth";
@@ -1218,6 +1219,7 @@ router.get("/clients/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Client not found." });
     return;
   }
+  await logAuditEvent(access, "client_record_viewed", "client", client.id, client.name);
   const [matterCount] = await db
     .select({ value: count() })
     .from(mattersTable)
@@ -1369,34 +1371,21 @@ router.post("/matters", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const [client] = await db
-    .select({ id: clientsTable.id, name: clientsTable.name })
+  const [client] = await db.select({ id: clientsTable.id })
     .from(clientsTable)
-    .where(
-      and(
-        eq(clientsTable.id, parsed.data.clientId),
-        eq(clientsTable.workspaceId, access.workspaceId),
-      ),
-    )
+    .where(and(
+      eq(clientsTable.id, parsed.data.clientId),
+      eq(clientsTable.workspaceId, access.workspaceId),
+    ))
     .limit(1);
   if (!client) {
     res.status(404).json({ error: "Client not found in this firm." });
     return;
   }
-  const reference = `MAT-${new Date().getFullYear()}-${randomUUID()
-    .slice(0, 8)
-    .toUpperCase()}`;
-  const [matter] = await db
-    .insert(mattersTable)
-    .values({
-      ...parsed.data,
-      workspaceId: access.workspaceId,
-      reference,
-      dueAt: parsed.data.dueAt ?? null,
-    })
-    .returning();
-  await logActivity(access, "matter", matter.id, matter.title, "created matter");
-  res.status(201).json(CreateMatterResponse.parse({ ...matter, clientName: client.name }));
+  res.status(409).json({
+    error: "New matters must be opened from a cleared client intake.",
+    code: "intake_required",
+  });
 });
 
 router.get("/matters/:id", async (req, res): Promise<void> => {
@@ -1428,6 +1417,7 @@ router.get("/matters/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Matter not found." });
     return;
   }
+  await logAuditEvent(access, "matter_record_viewed", "matter", row.matter.id, row.matter.title);
   res.json(GetMatterResponse.parse({ ...row.matter, clientName: row.clientName }));
 });
 

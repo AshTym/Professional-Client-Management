@@ -593,6 +593,7 @@ export interface ClientDocument {
   contentType: string;
   sizeBytes: number;
   status: ClientDocumentStatus;
+  clientVisible: boolean;
   /** @nullable */
   lastAnalysisError: string | null;
   createdAt: string;
@@ -827,6 +828,474 @@ export interface ClientUpdateDraftUpdate {
   status?: ClientUpdateDraftUpdateStatus;
 }
 
+export interface IntakeRule {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  key: string;
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  label: string;
+  /** @maxLength 500 */
+  description: string;
+  required: boolean;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  category: string;
+}
+
+export interface IntakeChecksInput {
+  /** @maxItems 40 */
+  checks: IntakeRule[];
+}
+
+export type IntakeCaseAnswers = {[key: string]: string};
+
+export type IntakeCaseConflictFindingsItemRecordType = typeof IntakeCaseConflictFindingsItemRecordType[keyof typeof IntakeCaseConflictFindingsItemRecordType];
+
+
+export const IntakeCaseConflictFindingsItemRecordType = {
+  client: 'client',
+  matter: 'matter',
+} as const;
+
+export type IntakeCaseConflictFindingsItem = {
+  name: string;
+  recordType: IntakeCaseConflictFindingsItemRecordType;
+  recordId: number;
+  recordLabel: string;
+};
+
+export type IntakeCaseStatus = typeof IntakeCaseStatus[keyof typeof IntakeCaseStatus];
+
+
+export const IntakeCaseStatus = {
+  review_required: 'review_required',
+  cleared: 'cleared',
+  rejected: 'rejected',
+  converted: 'converted',
+} as const;
+
+export interface IntakeCase {
+  id: number;
+  /** @nullable */
+  clientId: number | null;
+  clientName: string;
+  clientType: string;
+  /** @nullable */
+  email: string | null;
+  /** @nullable */
+  phone: string | null;
+  /** @nullable */
+  industry: string | null;
+  matterTitle: string;
+  matterType: string;
+  responsible: string;
+  /** @nullable */
+  dueAt: string | null;
+  partyNames: string[];
+  answers: IntakeCaseAnswers;
+  conflictFindings: IntakeCaseConflictFindingsItem[];
+  status: IntakeCaseStatus;
+  /** @nullable */
+  reviewNote: string | null;
+  /** @nullable */
+  reviewerClerkUserId: string | null;
+  /** @nullable */
+  openedMatterId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IntakeOverview {
+  checks: IntakeRule[];
+  intakes: IntakeCase[];
+}
+
+export type IntakeInputClientType = typeof IntakeInputClientType[keyof typeof IntakeInputClientType];
+
+
+export const IntakeInputClientType = {
+  individual: 'individual',
+  organization: 'organization',
+} as const;
+
+export type IntakeInputAnswers = {[key: string]: string};
+
+export interface IntakeInput {
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  clientId?: number | null;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  clientName: string;
+  clientType: IntakeInputClientType;
+  /** @nullable */
+  email?: string | null;
+  /**
+     * @maxLength 80
+     * @nullable
+     */
+  phone?: string | null;
+  /**
+     * @maxLength 160
+     * @nullable
+     */
+  industry?: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 240
+     */
+  matterTitle: string;
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  matterType: string;
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  responsible: string;
+  /** @nullable */
+  dueAt?: string | null;
+  /**
+     * @maxItems 100
+     * @items.minLength 1
+     * @items.maxLength 200
+     */
+  partyNames: string[];
+  answers: IntakeInputAnswers;
+}
+
+export type IntakeReviewInputDecision = typeof IntakeReviewInputDecision[keyof typeof IntakeReviewInputDecision];
+
+
+export const IntakeReviewInputDecision = {
+  cleared: 'cleared',
+  rejected: 'rejected',
+} as const;
+
+export interface IntakeReviewInput {
+  decision: IntakeReviewInputDecision;
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  note: string;
+  conflictsResolved: boolean;
+}
+
+export type PortalAccessStatus = typeof PortalAccessStatus[keyof typeof PortalAccessStatus];
+
+
+export const PortalAccessStatus = {
+  invited: 'invited',
+  active: 'active',
+  revoked: 'revoked',
+} as const;
+
+export interface PortalAccess {
+  id: number;
+  clientId: number;
+  clientName: string;
+  email: string;
+  status: PortalAccessStatus;
+  createdAt: string;
+  /** @nullable */
+  activatedAt: string | null;
+  /** @nullable */
+  revokedAt: string | null;
+}
+
+export interface PortalInviteInput {
+  /** @minimum 1 */
+  clientId: number;
+  email: string;
+}
+
+export interface PortalMatter {
+  id: number;
+  title: string;
+  reference: string;
+  status: string;
+  /** @nullable */
+  dueAt: string | null;
+}
+
+export interface PortalDocument {
+  id: number;
+  matterId: number;
+  matterTitle: string;
+  name: string;
+  contentType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+export interface PortalUpdate {
+  id: number;
+  matterId: number;
+  matterTitle: string;
+  subject: string;
+  body: string;
+  publishedAt: string;
+}
+
+export type ClientPortalContextClient = {
+  id: number;
+  name: string;
+};
+
+export interface ClientPortalContext {
+  client: ClientPortalContextClient;
+  matters: PortalMatter[];
+  documents: PortalDocument[];
+  updates: PortalUpdate[];
+}
+
+export type PortalMessageSenderType = typeof PortalMessageSenderType[keyof typeof PortalMessageSenderType];
+
+
+export const PortalMessageSenderType = {
+  client: 'client',
+  firm: 'firm',
+} as const;
+
+export interface PortalMessage {
+  id: number;
+  matterId: number;
+  matterTitle: string;
+  senderType: PortalMessageSenderType;
+  senderName: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface PortalMessageInput {
+  /** @minimum 1 */
+  matterId: number;
+  /**
+     * @minLength 1
+     * @maxLength 10000
+     */
+  body: string;
+}
+
+export interface CreatePortalRequestInput {
+  /** @minimum 1 */
+  matterId: number;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  title: string;
+  /**
+     * @minLength 1
+     * @maxLength 5000
+     */
+  details: string;
+}
+
+export interface RespondPortalRequestInput {
+  /**
+     * @minLength 1
+     * @maxLength 10000
+     */
+  body: string;
+}
+
+export type PortalRequestStatus = typeof PortalRequestStatus[keyof typeof PortalRequestStatus];
+
+
+export const PortalRequestStatus = {
+  open: 'open',
+  responded: 'responded',
+  closed: 'closed',
+} as const;
+
+export interface PortalRequest {
+  id: number;
+  matterId: number;
+  matterTitle: string;
+  title: string;
+  details: string;
+  status: PortalRequestStatus;
+  createdAt: string;
+  /** @nullable */
+  respondedAt: string | null;
+  /** @nullable */
+  responseMessage: string | null;
+}
+
+export type PortalDocumentUploadInputContentType = typeof PortalDocumentUploadInputContentType[keyof typeof PortalDocumentUploadInputContentType];
+
+
+export const PortalDocumentUploadInputContentType = {
+  'application/pdf': 'application/pdf',
+  'application/vndopenxmlformats-officedocumentwordprocessingmldocument': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain': 'text/plain',
+} as const;
+
+export interface PortalDocumentUploadInput {
+  /** @minimum 1 */
+  matterId: number;
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  name: string;
+  /**
+     * @minimum 1
+     * @maximum 15728640
+     */
+  size: number;
+  contentType: PortalDocumentUploadInputContentType;
+}
+
+export interface ClientVisibilityInput {
+  visible: boolean;
+}
+
+export interface PublishClientUpdateInput {
+  /** @minimum 1 */
+  draftId: number;
+}
+
+export type AuditEventDetails = { [key: string]: unknown };
+
+export interface AuditEvent {
+  id: number;
+  actor: string;
+  action: string;
+  entityType: string;
+  /** @nullable */
+  entityId: number | null;
+  entityLabel: string;
+  details: AuditEventDetails;
+  occurredAt: string;
+}
+
+export type MatterExportAuditInputScope = typeof MatterExportAuditInputScope[keyof typeof MatterExportAuditInputScope];
+
+
+export const MatterExportAuditInputScope = {
+  selected: 'selected',
+  all: 'all',
+} as const;
+
+export interface MatterExportAuditInput {
+  scope: MatterExportAuditInputScope;
+  /**
+     * @minItems 1
+     * @maxItems 2000
+     * @items.minimum 1
+     */
+  matterIds: number[];
+}
+
+export interface RetentionSettings {
+  /**
+     * @minimum 365
+     * @maximum 36500
+     */
+  matterRetentionDays: number;
+  /**
+     * @minimum 365
+     * @maximum 36500
+     */
+  auditRetentionDays: number;
+}
+
+export type RetentionSettingsInput = RetentionSettings;
+
+export type LegalHoldEntityType = typeof LegalHoldEntityType[keyof typeof LegalHoldEntityType];
+
+
+export const LegalHoldEntityType = {
+  client: 'client',
+  matter: 'matter',
+} as const;
+
+export interface LegalHold {
+  id: number;
+  entityType: LegalHoldEntityType;
+  entityId: number;
+  entityLabel: string;
+  reason: string;
+  placedBy: string;
+  placedAt: string;
+  /** @nullable */
+  releasedAt: string | null;
+}
+
+export type LegalHoldInputEntityType = typeof LegalHoldInputEntityType[keyof typeof LegalHoldInputEntityType];
+
+
+export const LegalHoldInputEntityType = {
+  client: 'client',
+  matter: 'matter',
+} as const;
+
+export interface LegalHoldInput {
+  entityType: LegalHoldInputEntityType;
+  /** @minimum 1 */
+  entityId: number;
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  reason: string;
+}
+
+export interface GovernanceOverview {
+  retention: RetentionSettings;
+  legalHolds: LegalHold[];
+}
+
+export type ProviderConnectionStatusProvider = typeof ProviderConnectionStatusProvider[keyof typeof ProviderConnectionStatusProvider];
+
+
+export const ProviderConnectionStatusProvider = {
+  google: 'google',
+  microsoft: 'microsoft',
+  xero: 'xero',
+  quickbooks: 'quickbooks',
+} as const;
+
+export interface ProviderConnectionStatus {
+  provider: ProviderConnectionStatusProvider;
+  connected: boolean;
+  ready: boolean;
+  accountLabel: string;
+  /** @nullable */
+  lastSyncAt: string | null;
+}
+
+export interface AuthorizationUrl {
+  authorizationUrl: string;
+}
+
+export interface ProviderSyncResult {
+  provider: string;
+  externalId: string;
+  message: string;
+}
+
+export interface SendReviewedUpdateEmailInput {
+  /** @minimum 1 */
+  draftId: number;
+}
+
 export type ListActivityParams = {
 /**
  * @minimum 1
@@ -866,4 +1335,72 @@ export const ListMattersStatus = {
   on_hold: 'on_hold',
   closed: 'closed',
 } as const;
+
+export type ListPortalMessagesParams = {
+/**
+ * Use client to scope a signed-in portal user to their granted client; firm is the default staff view.
+ */
+view?: ListPortalMessagesView;
+};
+
+export type ListPortalMessagesView = typeof ListPortalMessagesView[keyof typeof ListPortalMessagesView];
+
+
+export const ListPortalMessagesView = {
+  firm: 'firm',
+  client: 'client',
+} as const;
+
+export type SendPortalMessageParams = {
+/**
+ * Use client to scope a signed-in portal user to their granted client; firm is the default staff view.
+ */
+view?: SendPortalMessageView;
+};
+
+export type SendPortalMessageView = typeof SendPortalMessageView[keyof typeof SendPortalMessageView];
+
+
+export const SendPortalMessageView = {
+  firm: 'firm',
+  client: 'client',
+} as const;
+
+export type GetPortalRequestsParams = {
+/**
+ * Use client to scope a signed-in portal user to their granted client; firm is the default staff view.
+ */
+view?: GetPortalRequestsView;
+};
+
+export type GetPortalRequestsView = typeof GetPortalRequestsView[keyof typeof GetPortalRequestsView];
+
+
+export const GetPortalRequestsView = {
+  firm: 'firm',
+  client: 'client',
+} as const;
+
+export type CreatePortalRequestParams = {
+/**
+ * Use client to scope a signed-in portal user to their granted client; firm is the default staff view.
+ */
+view?: CreatePortalRequestView;
+};
+
+export type CreatePortalRequestView = typeof CreatePortalRequestView[keyof typeof CreatePortalRequestView];
+
+
+export const CreatePortalRequestView = {
+  firm: 'firm',
+  client: 'client',
+} as const;
+
+export type ListAuditEventsParams = {
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+};
 

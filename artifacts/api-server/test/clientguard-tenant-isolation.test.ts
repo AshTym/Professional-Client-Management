@@ -39,6 +39,9 @@ let invitationsTable: typeof import("@workspace/db").invitationsTable;
 let clientsTable: typeof import("@workspace/db").clientsTable;
 let mattersTable: typeof import("@workspace/db").mattersTable;
 let activitiesTable: typeof import("@workspace/db").activitiesTable;
+let portalAccessTable: typeof import("@workspace/db").portalAccessTable;
+let portalMessagesTable: typeof import("@workspace/db").portalMessagesTable;
+let portalRequestsTable: typeof import("@workspace/db").portalRequestsTable;
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -184,6 +187,8 @@ before(async () => {
       content_type text NOT NULL,
       size_bytes integer NOT NULL,
       status text NOT NULL DEFAULT 'uploading',
+      client_visible boolean NOT NULL DEFAULT false,
+      uploaded_from_portal boolean NOT NULL DEFAULT false,
       last_analysis_error text,
       created_at timestamptz NOT NULL DEFAULT now()
     );
@@ -240,6 +245,89 @@ before(async () => {
       generated_at timestamptz NOT NULL DEFAULT now(),
       reviewed_at timestamptz
     );
+    CREATE TABLE "${schemaName}".clientguard_intake_settings (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL UNIQUE REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,
+      checks jsonb NOT NULL DEFAULT '[]',
+      updated_by_clerk_user_id text NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE "${schemaName}".clientguard_intakes (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,
+      client_id integer REFERENCES "${schemaName}".clientguard_clients(id) ON DELETE SET NULL,
+      client_name text NOT NULL,
+      client_type text NOT NULL DEFAULT 'individual',
+      email text,
+      phone text,
+      industry text,
+      matter_title text NOT NULL,
+      matter_type text NOT NULL,
+      responsible text NOT NULL,
+      due_at timestamptz,
+      party_names jsonb NOT NULL DEFAULT '[]',
+      answers jsonb NOT NULL DEFAULT '{}',
+      conflict_findings jsonb NOT NULL DEFAULT '[]',
+      status text NOT NULL DEFAULT 'review_required',
+      review_note text,
+      reviewer_clerk_user_id text,
+      opened_matter_id integer REFERENCES "${schemaName}".clientguard_matters(id) ON DELETE SET NULL,
+      created_by_clerk_user_id text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE "${schemaName}".clientguard_audit_events (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,
+      clerk_user_id text NOT NULL,
+      actor text NOT NULL,
+      action text NOT NULL,
+      entity_type text NOT NULL,
+      entity_id integer,
+      entity_label text NOT NULL,
+      details jsonb NOT NULL DEFAULT '{}',
+      occurred_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE "${schemaName}".clientguard_portal_access (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,
+      client_id integer NOT NULL REFERENCES "${schemaName}".clientguard_clients(id) ON DELETE CASCADE,
+      email text NOT NULL,
+      clerk_user_id text,
+      clerk_invitation_id text,
+      status text NOT NULL DEFAULT 'invited',
+      invited_by_clerk_user_id text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      activated_at timestamptz,
+      revoked_at timestamptz
+    );
+    CREATE TABLE "${schemaName}".clientguard_portal_messages (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,
+      client_id integer NOT NULL REFERENCES "${schemaName}".clientguard_clients(id) ON DELETE CASCADE,
+      matter_id integer NOT NULL REFERENCES "${schemaName}".clientguard_matters(id) ON DELETE CASCADE,
+      sender_clerk_user_id text NOT NULL,
+      sender_type text NOT NULL,
+      sender_name text NOT NULL,
+      body text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE "${schemaName}".clientguard_portal_requests (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,
+      client_id integer NOT NULL REFERENCES "${schemaName}".clientguard_clients(id) ON DELETE CASCADE,
+      matter_id integer NOT NULL REFERENCES "${schemaName}".clientguard_matters(id) ON DELETE CASCADE,
+      title text NOT NULL,
+      details text NOT NULL,
+      status text NOT NULL DEFAULT 'open',
+      created_by_clerk_user_id text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      responded_at timestamptz,
+      responded_by_clerk_user_id text,
+      response_message_id integer REFERENCES "${schemaName}".clientguard_portal_messages(id) ON DELETE SET NULL,
+      closed_at timestamptz,
+      closed_by_clerk_user_id text
+    );
   `);
 
   const isolatedUrl = new URL(originalDatabaseUrl);
@@ -255,6 +343,9 @@ before(async () => {
     clientsTable,
     mattersTable,
     activitiesTable,
+    portalAccessTable,
+    portalMessagesTable,
+    portalRequestsTable,
   } = database);
 
   const [primaryWorkspace] = await db
@@ -409,8 +500,12 @@ before(async () => {
   const { default: workflowRouter } = await import(
     "../src/routes/clientguard-workflows.ts"
   );
+  const { default: operationsRouter } = await import(
+    "../src/routes/clientguard-operations.ts"
+  );
   app.use("/api", router);
   app.use("/api", workflowRouter);
+  app.use("/api", operationsRouter);
 
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve, reject) => {
@@ -2024,21 +2119,46 @@ test("owner can create, update, archive, and close records", async () => {
   });
   assert.equal(updatedClient.response.status, 200);
   assert.equal((updatedClient.body as { name: string }).name, "Updated Client");
-  const archivedClient = await request(`/clients/${newClientId}`, {
-    userId: firms.primary.ownerId,
-    method: "DELETE",
-  });
-  assert.equal(archivedClient.response.status, 204);
-
-  const createdMatter = await request("/matters", {
+  const [existingClient] = await db
+    .select({ name: clientsTable.name, clientType: clientsTable.clientType })
+    .from(clientsTable)
+    .where(eq(clientsTable.id, newClientId))
+    .limit(1);
+  assert(existingClient);
+  const intake = await request("/intakes", {
     userId: firms.primary.ownerId,
     method: "POST",
     body: {
-      clientId: firms.primary.clientId,
-      title: "Writable Matter",
+      clientId: newClientId,
+      clientName: existingClient.name,
+      clientType: existingClient.clientType,
+      matterTitle: "Writable Matter",
       matterType: "advisory",
       responsible: "Primary Owner",
+      partyNames: [],
+      answers: {
+        identity: "Identity confirmed for test",
+        parties: "Parties reviewed for test",
+        matter_scope: "Test advisory scope",
+        conflicts: "Conflict search reviewed",
+      },
     },
+  });
+  assert.equal(intake.response.status, 201);
+  const intakeId = (intake.body as { id: number }).id;
+  const reviewedIntake = await request(`/intakes/${intakeId}/review`, {
+    userId: firms.primary.ownerId,
+    method: "PATCH",
+    body: {
+      decision: "cleared",
+      note: "Test intake passed professional review.",
+      conflictsResolved: false,
+    },
+  });
+  assert.equal(reviewedIntake.response.status, 200);
+  const createdMatter = await request(`/intakes/${intakeId}/open-matter`, {
+    userId: firms.primary.ownerId,
+    method: "POST",
   });
   assert.equal(createdMatter.response.status, 201);
   const newMatterId = (createdMatter.body as { id: number }).id;
@@ -2057,6 +2177,11 @@ test("owner can create, update, archive, and close records", async () => {
     method: "DELETE",
   });
   assert.equal(closedMatter.response.status, 204);
+  const archivedClient = await request(`/clients/${newClientId}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+  });
+  assert.equal(archivedClient.response.status, 204);
 
   const [clientRow] = await db
     .select({
@@ -2600,4 +2725,97 @@ test("member access is not removed when assigned work has no replacement", async
     .where(eq(clientsTable.id, client.id));
   assert.ok(stillActive);
   assert.equal(stillAssigned.owner, departing.displayName);
+});
+
+test("client portal views stay scoped when a client is also a firm member", async () => {
+  const suffix = randomUUID();
+  const [clientPortalMatter] = await db
+    .select()
+    .from(mattersTable)
+    .where(eq(mattersTable.id, firms.primary.matterId));
+  assert.ok(clientPortalMatter);
+  const [otherClient] = await db
+    .insert(clientsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      name: `Other Portal Client ${suffix}`,
+      owner: "Primary Owner",
+    })
+    .returning();
+  const [otherClientMatter] = await db
+    .insert(mattersTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clientId: otherClient.id,
+      title: `Other Portal Matter ${suffix}`,
+      reference: `PORTAL-${suffix.slice(0, 8)}`,
+      matterType: "advisory",
+      responsible: "Primary Owner",
+    })
+    .returning();
+  await db.insert(portalAccessTable).values({
+    workspaceId: firms.primary.workspaceId,
+    clientId: firms.primary.clientId,
+    email: "owner-primary@example.test",
+    clerkUserId: firms.primary.ownerId,
+    status: "active",
+    invitedByClerkUserId: firms.primary.ownerId,
+  });
+  const [clientRequest] = await db.insert(portalRequestsTable).values({
+    workspaceId: firms.primary.workspaceId,
+    clientId: firms.primary.clientId,
+    matterId: clientPortalMatter.id,
+    title: `Client-only request ${suffix}`,
+    details: "Only the granted client should see this.",
+    createdByClerkUserId: firms.primary.ownerId,
+  }).returning();
+  await db.insert(portalRequestsTable).values({
+    workspaceId: firms.primary.workspaceId,
+    clientId: otherClient.id,
+    matterId: otherClientMatter.id,
+    title: `Different client request ${suffix}`,
+    details: "This belongs to another client in the same firm.",
+    createdByClerkUserId: firms.primary.ownerId,
+  });
+
+  const clientRequests = await request("/portal/requests?view=client", {
+    userId: firms.primary.ownerId,
+  });
+  assert.equal(clientRequests.response.status, 200);
+  assert.deepEqual(
+    (clientRequests.body as Array<{ id: number }>).map((item) => item.id),
+    [clientRequest.id],
+  );
+  const firmRequests = await request("/portal/requests?view=firm", {
+    userId: firms.primary.ownerId,
+  });
+  assert.equal(firmRequests.response.status, 200);
+  assert.equal((firmRequests.body as Array<{ id: number }>).length, 2);
+
+  const clientMessage = await request("/portal/messages?view=client", {
+    userId: firms.primary.ownerId,
+    method: "POST",
+    body: {
+      matterId: clientPortalMatter.id,
+      body: "Message from the client portal.",
+    },
+  });
+  assert.equal(clientMessage.response.status, 201);
+  assert.equal((clientMessage.body as { senderType: string }).senderType, "client");
+  const crossClientMessage = await request("/portal/messages?view=client", {
+    userId: firms.primary.ownerId,
+    method: "POST",
+    body: {
+      matterId: otherClientMatter.id,
+      body: "This must be rejected.",
+    },
+  });
+  assert.equal(crossClientMessage.response.status, 404);
+
+  const clientMessages = await request("/portal/messages?view=client", {
+    userId: firms.primary.ownerId,
+  });
+  assert.equal(clientMessages.response.status, 200);
+  assert.equal((clientMessages.body as Array<{ senderType: string }>).length, 1);
+  assert.equal((clientMessages.body as Array<{ senderType: string }>)[0].senderType, "client");
 });

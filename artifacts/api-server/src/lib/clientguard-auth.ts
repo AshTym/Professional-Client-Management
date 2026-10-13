@@ -1,7 +1,7 @@
 import { getAuth } from "@clerk/express";
 import type { Request, Response } from "express";
 import { and, desc, eq } from "drizzle-orm";
-import { db, membershipsTable, workspacesTable } from "@workspace/db";
+import { auditEventsTable, db, membershipsTable, workspacesTable } from "@workspace/db";
 
 export type ClientGuardIdentity = {
   userId: string;
@@ -140,5 +140,25 @@ export async function logActivity(
     entityType,
     entityId,
     entityLabel,
+  });
+}
+
+export async function logAuditEvent(
+  access: FirmAccess,
+  action: string,
+  entityType: string,
+  entityId: number | null,
+  entityLabel: string,
+  details: Record<string, string | number | boolean | null> = {},
+): Promise<void> {
+  await db.insert(auditEventsTable).values({
+    workspaceId: access.workspaceId,
+    clerkUserId: access.userId,
+    actor: access.name || access.email || "Firm user",
+    action,
+    entityType,
+    entityId,
+    entityLabel,
+    details,
   });
 }

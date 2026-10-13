@@ -11,19 +11,24 @@ import {
   useUpdateWorkspaceMember, useRemoveWorkspaceMember, useTransferWorkspaceOwnership,
   useGetWorkspaceMemberAssignments,
   useListClients, useCreateClient, useGetClient, useUpdateClient, useDeleteClient,
-  useListMatters, useCreateMatter, useGetMatter, useUpdateMatter, useCloseMatter,
+  useListMatters, useGetMatter, useUpdateMatter, useCloseMatter, useLogMatterExportRequest,
   getHealthCheckQueryKey, getGetWorkspaceQueryKey, getGetDashboardQueryKey, getListActivityQueryKey,
   getListWorkspaceInvitationsQueryKey, getListWorkspaceMembersQueryKey,
   getListClientsQueryKey, getGetClientQueryKey, getListMattersQueryKey, getGetMatterQueryKey,
 } from '@workspace/api-client-react';
-import type { Client, ClientInput, Matter, MatterInput, WorkspaceInput, WorkspaceInvitationInput, WorkspaceMemberUpdate } from '@workspace/api-client-react';
+import type { Client, ClientInput, Matter, WorkspaceInput, WorkspaceInvitationInput, WorkspaceMemberUpdate } from '@workspace/api-client-react';
 import {
-  Activity as ActivityIcon, ArrowDownRight, ArrowLeft, ArrowRight, BriefcaseBusiness, Check,
+  Activity as ActivityIcon, ArrowDownRight, ArrowLeft, ArrowRight, BriefcaseBusiness, Check, ClipboardList as ClipboardListIcon,
   ChevronDown, CircleHelp, Clock3, FileText, Fingerprint, LockKeyhole, LogOut, Menu,
   Plus, Search, ShieldCheck, Users, X, Building2, Settings2, AlertTriangle, RefreshCw, Download,
   Mail, UserPlus,
 } from 'lucide-react';
 import Workflows from './Workflows';
+import Intake from './Intake';
+import Governance from './Governance';
+import Integrations from './Integrations';
+import Portal from './Portal';
+import PortalInvitation from './PortalInvitation';
 import './index.css';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 20_000, retry: 1 } } });
@@ -71,12 +76,16 @@ function ClerkRoutes() {
       <Route path="/sign-in/*?" component={() => <AuthFrame><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} /></AuthFrame>} />
       <Route path="/sign-up/*?" component={() => <AuthFrame><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} /></AuthFrame>} />
       <Route path="/invite" component={InviteAcceptance} />
+      <Route path="/portal" component={ClientPortalRoute} />
       <Route path="/dashboard" component={() => <Protected><Dashboard /></Protected>} />
       <Route path="/clients" component={() => <Protected><ClientsPage /></Protected>} />
       <Route path="/clients/:id" component={() => <Protected><ClientDetail /></Protected>} />
       <Route path="/matters" component={() => <Protected><MattersPage /></Protected>} />
       <Route path="/matters/:id" component={() => <Protected><MatterDetail /></Protected>} />
       <Route path="/workflows" component={() => <Protected><Workflows /></Protected>} />
+      <Route path="/intake" component={() => <Protected><Intake /></Protected>} />
+      <Route path="/governance" component={() => <Protected><Governance /></Protected>} />
+      <Route path="/settings/integrations" component={() => <Protected><Integrations /></Protected>} />
       <Route path="/activity" component={() => <Protected><ActivityPage /></Protected>} />
       <Route path="/team" component={() => <Protected><TeamPage /></Protected>} />
       <Route path="/workspace/setup" component={() => <Protected><SetupPage /></Protected>} />
@@ -84,6 +93,9 @@ function ClerkRoutes() {
       <Route component={NotFound} />
     </Switch>
   </ClerkProvider>;
+}
+function ClientPortalRoute() {
+  return <><Show when="signed-in"><Portal /></Show><Show when="signed-out"><Redirect to="/sign-in" /></Show></>;
 }
 function App() {
   if (!clerkPubKey) throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY.');
@@ -157,7 +169,7 @@ function Shell({ children, context }: { children: ReactNode; context?: any }) {
   const { signOut } = useClerk();
   const service = useHealthCheck({ query: { queryKey: getHealthCheckQueryKey(), staleTime: 60_000 } });
   const [menuOpen, setMenuOpen] = useState(false);
-  const nav = [{ href: '/dashboard', label: 'Overview', icon: BriefcaseBusiness }, { href: '/clients', label: 'Clients', icon: Users }, { href: '/matters', label: 'Matters', icon: FileText }, { href: '/workflows', label: 'Workflows', icon: RefreshCw }, { href: '/activity', label: 'Activity', icon: ActivityIcon }, ...(['owner','admin'].includes(context?.role) ? [{ href: '/team', label: 'Team', icon: Users }] : [])];
+  const nav = [{ href: '/dashboard', label: 'Overview', icon: BriefcaseBusiness }, { href: '/clients', label: 'Clients', icon: Users }, { href: '/matters', label: 'Matters', icon: FileText }, { href: '/intake', label: 'Intake', icon: ClipboardListIcon }, { href: '/portal', label: 'Client portal', icon: LockKeyhole }, { href: '/workflows', label: 'Workflows', icon: RefreshCw }, { href: '/governance', label: 'Governance', icon: ShieldCheck }, { href: '/activity', label: 'Activity', icon: ActivityIcon }, { href: '/settings/integrations', label: 'Integrations', icon: Settings2 }, ...(['owner','admin'].includes(context?.role) ? [{ href: '/team', label: 'Team', icon: Users }] : [])];
   const heading = path.split('/')[1] || 'dashboard';
   return <div className="min-h-[100dvh] bg-[#f6f3eb] text-[#23353b] md:flex">
     <aside className="hidden w-[250px] shrink-0 flex-col bg-[#253f49] text-[#eff0e9] md:flex">
@@ -191,9 +203,9 @@ export function Dashboard() {
  const data=summary.data!;
  const isEmpty=data.clientCount===0&&data.matterCount===0;
   const needsFirstMatter=data.clientCount>0&&data.matterCount===0;
- return <><PageHeader eyebrow="Your firm at a glance" title="Good morning." subtitle="Here is what needs your attention across the workspace." action={<div className="flex flex-wrap items-center gap-2"><Button onClick={()=>setLocation('/clients?create=1')} testId="button-dashboard-create-client"><Plus className="h-4 w-4" />Create client</Button><Button variant="outline" onClick={()=>setLocation('/matters?create=1')} testId="button-dashboard-create-matter"><Plus className="h-4 w-4" />Create matter</Button><Link href="/activity" className="px-2 py-2 text-sm font-semibold text-[#405c60]" data-testid="link-full-activity">View audit trail <ArrowRight className="ml-1 inline h-4 w-4" /></Link></div>} />
+  return <><PageHeader eyebrow="Your firm at a glance" title="Good morning." subtitle="Here is what needs your attention across the workspace." action={<div className="flex flex-wrap items-center gap-2"><Button onClick={()=>setLocation('/clients?create=1')} testId="button-dashboard-create-client"><Plus className="h-4 w-4" />Create client</Button><Button variant="outline" onClick={()=>setLocation('/intake?create=1')} testId="button-dashboard-create-matter"><Plus className="h-4 w-4" />Start intake</Button><Link href="/activity" className="px-2 py-2 text-sm font-semibold text-[#405c60]" data-testid="link-full-activity">View audit trail <ArrowRight className="ml-1 inline h-4 w-4" /></Link></div>} />
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[['Clients',data.clientCount,'Total relationships',Users,'/clients'],['Active clients',data.activeClientCount,'Currently engaged',Fingerprint,'/clients?status=active'],['Open matters',data.openMatterCount,'In progress',BriefcaseBusiness,'/matters?status=open'],['Overdue matters',data.overdueMatterCount,'Review required',Clock3,'/matters?due=overdue']].map(([name,value,caption,Icon,href]:any,i)=><Link href={href} key={name} aria-label={`${name}: ${value}. View records.`} className={`group rounded-md border border-[#e0dace] bg-[#fbfaf5] p-5 transition hover:border-[#b99a65] hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#294651] ${i===3?'border-t-2 border-t-[#c46d5f]':''}`} data-testid={`metric-${String(name).toLowerCase().replace(' ','-')}`}><div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[.12em] text-[#75817e]"><span>{name}</span><Icon className="h-4 w-4 text-[#9a825a]" /></div><div className="serif mt-4 text-4xl font-semibold">{value}</div><div className="mt-2 text-xs text-[#85908c]">{caption}</div><div className="mt-3 flex items-center gap-1 text-[10px] font-semibold text-[#405c60] opacity-80 group-hover:opacity-100">View records <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" /></div></Link>)}</div>
-      {needsFirstMatter&&<section className="mt-7 rounded-md border border-[#e0dace] bg-[#fbfaf5] p-6 md:p-8" data-testid="dashboard-first-matter-onboarding"><div className="grid gap-6 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mono text-[10px] uppercase tracking-[.16em] text-[#987747]">Next step</div><h2 className="serif mt-2 text-2xl font-bold">Open your first matter.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-[#71807e]">Your client relationships are in place. Choose a client and add the matter details to start tracking your work.</p></div><Link href="/matters?create=1" className="inline-flex items-center justify-center gap-2 rounded-md bg-[#294651] px-4 py-3 text-[13px] font-semibold text-[#f9f6ed] transition hover:bg-[#1c3943]" data-testid="link-create-first-matter">Create your first matter <ArrowRight className="h-4 w-4" /></Link></div></section>}
+      {needsFirstMatter&&<section className="mt-7 rounded-md border border-[#e0dace] bg-[#fbfaf5] p-6 md:p-8" data-testid="dashboard-first-matter-onboarding"><div className="grid gap-6 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mono text-[10px] uppercase tracking-[.16em] text-[#987747]">Next step</div><h2 className="serif mt-2 text-2xl font-bold">Begin the next matter with review.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-[#71807e]">Start a documented intake, review potential conflicts, and open the matter only after professional clearance.</p></div><Link href="/intake?create=1" className="inline-flex items-center justify-center gap-2 rounded-md bg-[#294651] px-4 py-3 text-[13px] font-semibold text-[#f9f6ed] transition hover:bg-[#1c3943]" data-testid="link-create-first-matter">Start client intake <ArrowRight className="h-4 w-4" /></Link></div></section>}
      {isEmpty?<section className="mt-7 rounded-md border border-[#e0dace] bg-[#fbfaf5] p-6 md:p-8" data-testid="dashboard-empty-onboarding"><div className="grid gap-6 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mono text-[10px] uppercase tracking-[.16em] text-[#987747]">Getting started</div><h2 className="serif mt-2 text-2xl font-bold">Start with your first client.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-[#71807e]">Add a client relationship to your firm. Once it’s in place, you can create and track matters for that client.</p></div><Link href="/clients?create=1" className="inline-flex items-center justify-center gap-2 rounded-md bg-[#294651] px-4 py-3 text-[13px] font-semibold text-[#f9f6ed] transition hover:bg-[#1c3943]" data-testid="link-create-first-client">Add your first client <ArrowRight className="h-4 w-4" /></Link></div></section>:<div className="mt-7 grid gap-5 xl:grid-cols-[1.45fr_.8fr]"><section className="rounded-md border border-[#e0dace] bg-[#fbfaf5]"><div className="flex items-center justify-between border-b border-[#e9e4d9] px-5 py-4"><div><h2 className="serif text-lg font-bold">Recent activity</h2><p className="mt-1 text-xs text-[#87918d]">A living record of firm changes</p></div><Link href="/activity" className="inline-flex items-center gap-1 text-xs font-semibold text-[#405c60] hover:text-[#987747]" data-testid="link-dashboard-activity">View all <ArrowRight className="h-3.5 w-3.5" /></Link></div>{activity.isError?<div className="p-5 text-sm text-[#9a554d]">Activity could not be loaded. <button onClick={()=>activity.refetch()} data-testid="button-retry-activity" className="underline">Retry</button></div>:<ActivityList items={(activity.data||[]).slice(0,6)} />}</section>
     <section className="rounded-md bg-[#294651] p-6 text-[#f3f1e9]"><div className="mono text-[9px] uppercase tracking-[.18em] text-[#c5b389]">Quick access</div><h2 className="serif mt-3 text-2xl font-semibold">Keep work moving.</h2><p className="mt-2 text-sm leading-6 text-[#c6d0cc]">Jump into the records that shape your day.</p><div className="mt-6 space-y-2"><QuickLink href="/clients" label="Browse client relationships" /><QuickLink href="/matters" label="Review active matters" /><QuickLink href="/settings/security" label="Account security" /></div></section>
     </div>}
@@ -235,9 +247,10 @@ function ClientDetail() {
  const update=useUpdateClient();const remove=useDeleteClient();const qc=useQueryClient();const [,setLocation]=useLocation();const [editing,setEditing]=useState(false);
  if(result.isLoading)return <Skeleton title="Loading client record" />;if(result.isError||!result.data)return <ErrorState title="Client record unavailable" retry={()=>result.refetch()} />;
  const c=result.data;
+ const portalInvitation=<PortalInvitation clientId={c.id} clientName={c.name} email={c.email} />;
  function save(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);update.mutate({id,data:{name:String(f.get('name')),clientType:String(f.get('clientType')) as any,email:String(f.get('email'))||null,phone:String(f.get('phone'))||null,industry:String(f.get('industry'))||null,status:String(f.get('status')) as any}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getGetClientQueryKey(id)});qc.invalidateQueries({queryKey:getListClientsQueryKey()});qc.invalidateQueries({queryKey:getListActivityQueryKey()});setEditing(false)}});}
  function archive(){if(window.confirm(`Archive ${c.name}?`))remove.mutate({id},{onSuccess:()=>{qc.invalidateQueries({queryKey:getListClientsQueryKey()});qc.invalidateQueries({queryKey:getGetDashboardQueryKey()});qc.invalidateQueries({queryKey:getListActivityQueryKey()});setLocation('/clients')}});}
- return <><Link href="/clients" className="mb-6 inline-flex items-center gap-2 text-xs font-semibold text-[#6f7e7b]" data-testid="link-back-clients"><ArrowLeft className="h-4 w-4" />All clients</Link><PageHeader eyebrow={`Client record · ${c.clientType}`} title={c.name} subtitle={`Added ${formatTime(c.createdAt)} · Relationship owner ${c.owner}`} action={<div className="flex gap-2"><Button variant="outline" onClick={()=>setEditing(!editing)} testId="button-edit-client">Edit record</Button><Button variant="danger" onClick={archive} disabled={remove.isPending} testId="button-archive-client">Archive client</Button></div>} />
+ return <><Link href="/clients" className="mb-6 inline-flex items-center gap-2 text-xs font-semibold text-[#6f7e7b]" data-testid="link-back-clients"><ArrowLeft className="h-4 w-4" />All clients</Link><PageHeader eyebrow={`Client record · ${c.clientType}`} title={c.name} subtitle={`Added ${formatTime(c.createdAt)} · Relationship owner ${c.owner}`} action={<div className="flex gap-2"><Button variant="outline" onClick={()=>setEditing(!editing)} testId="button-edit-client">Edit record</Button><Button variant="danger" onClick={archive} disabled={remove.isPending} testId="button-archive-client">Archive client</Button></div>} /><div className="mb-5">{portalInvitation}</div>
  <div className="grid gap-5 lg:grid-cols-[1fr_320px]"><div className="rounded-md border border-[#e0dace] bg-[#fbfaf5] p-6"><div className="flex items-start justify-between border-b border-[#eae5da] pb-5"><div><div className="mono text-[10px] uppercase tracking-[.15em] text-[#8e9690]">Relationship status</div><div className="mt-3"><StatusPill value={c.status} /></div></div><div className="grid h-12 w-12 place-items-center rounded-full bg-[#e7ece6] text-sm font-bold text-[#446b59]">{c.name.split(' ').map(s=>s[0]).slice(0,2).join('')}</div></div>
  {editing?<form onSubmit={save} className="mt-5 space-y-4"><Field label="Name"><input name="name" defaultValue={c.name} required className="field" data-testid="input-edit-client-name" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Type"><select name="clientType" defaultValue={c.clientType} className="field"><option value="individual">Individual</option><option value="business">Business</option></select></Field><Field label="Status"><select name="status" defaultValue={c.status} className="field"><option value="prospect">Prospect</option><option value="active">Active</option><option value="archived">Archived</option></select></Field></div><Field label="Email"><input name="email" defaultValue={c.email||''} className="field" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Phone"><input name="phone" defaultValue={c.phone||''} className="field" /></Field><Field label="Industry"><input name="industry" defaultValue={c.industry||''} className="field" /></Field></div><div className="flex gap-2"><Button type="submit" disabled={update.isPending} testId="button-save-client-edit">{update.isPending?'Saving…':'Save changes'}</Button><Button variant="outline" onClick={()=>setEditing(false)} testId="button-cancel-client-edit">Cancel</Button></div>{update.isError&&<p className="text-xs text-red-700">Update failed. Please retry.</p>}</form>:<div className="grid gap-x-8 gap-y-6 pt-6 sm:grid-cols-2">{[['Email',c.email||'Not provided'],['Phone',c.phone||'Not provided'],['Industry',c.industry||'Not specified'],['Client type',c.clientType]].map(([label,value])=><div key={label}><div className="text-[10px] font-bold uppercase tracking-[.12em] text-[#89918c]">{label}</div><div className="mt-2 text-sm font-medium capitalize" data-testid={`client-detail-${label.toLowerCase().replace(' ','-')}`}>{value}</div></div>)}</div>}</div>
   <aside className="space-y-4"><div className="rounded-md border border-[#e0dace] bg-[#fbfaf5] p-5"><div className="mono text-[10px] uppercase tracking-[.14em] text-[#8a928d]">Relationship at a glance</div><Link href={`/matters?clientId=${c.id}`} className="mt-5 flex items-center justify-between border-b border-[#ede8dd] pb-4 text-[#405c60] hover:text-[#987747]" data-testid="link-client-matters"><span className="text-xs text-[#7a8783]">Matters</span><span className="inline-flex items-center gap-1 mono text-sm font-medium">{c.matterCount}<ArrowRight className="h-3 w-3" /></span></Link><div className="mt-4 flex justify-between"><span className="text-xs text-[#7a8783]">Last activity</span><span className="text-xs font-semibold">{c.lastActivityAt?formatTime(c.lastActivityAt):'—'}</span></div></div><div className="rounded-md bg-[#e8eee8] p-5"><ShieldCheck className="h-5 w-5 text-[#4b7662]" /><h3 className="serif mt-3 font-bold">Firm-scoped record</h3><p className="mt-1 text-xs leading-5 text-[#657772]">This client information is accessible only within your authorized workspace.</p></div></aside></div></>;
@@ -248,15 +261,14 @@ function MattersPage() {
  const [status,setStatus]=useState(()=>{const initial=new URLSearchParams(window.location.search).get('status')||'';return ['open','on_hold','closed'].includes(initial)?initial:'';});
  const [dueFilter,setDueFilter]=useState<'overdue'|''>(()=>new URLSearchParams(window.location.search).get('due')==='overdue'?'overdue':'');
  const [clientId,setClientId]=useState<number|null>(()=>{const raw=new URLSearchParams(window.location.search).get('clientId');const parsed=Number(raw);return raw&&Number.isSafeInteger(parsed)&&parsed>0?parsed:null;});
- const [modal,setModal]=useState(()=>new URLSearchParams(window.location.search).get('create')==='1');
  const [selectedIds,setSelectedIds]=useState<Set<number>>(()=>new Set());
  const [pdfError,setPdfError]=useState('');
  const [isExportingPdf,setIsExportingPdf]=useState(false);
  const list=useListMatters();
+ const logExport=useLogMatterExportRequest();
  const clients=useListClients();
- const create=useCreateMatter();
- const qc=useQueryClient();
  const [,setLocation]=useLocation();
+ useEffect(()=>{if(new URLSearchParams(window.location.search).get('create')==='1')setLocation('/intake?create=1',{replace:true});},[setLocation]);
   function updateQueryFilter(key:string,value:string){const params=new URLSearchParams(window.location.search);if(value)params.set(key,value);else params.delete(key);const query=params.toString();setLocation(`/matters${query?`?${query}`:''}`,{replace:true});}
  const filteredMatters=useMemo(()=>{
   const query=search.trim().toLowerCase();
@@ -269,7 +281,6 @@ function MattersPage() {
   },[list.data,search,status,dueFilter,clientId]);
  const selectedMatters=filteredMatters.filter(m=>selectedIds.has(m.id));
  const allVisibleSelected=filteredMatters.length>0&&filteredMatters.every(m=>selectedIds.has(m.id));
- function closeModal(){setModal(false);if(new URLSearchParams(window.location.search).has('create'))setLocation('/matters',{replace:true});}
  function toggleVisibleSelection(){
   setSelectedIds(current=>{
    const next=new Set(current);
@@ -283,6 +294,12 @@ function MattersPage() {
   setPdfError('');
   setIsExportingPdf(true);
   try{
+    try{
+     await logExport.mutateAsync({data:{scope,matterIds:records.map(record=>record.id)}});
+    }catch{
+     setPdfError('The PDF was not created because the export could not be recorded in the audit trail. Retry when audit logging is available.');
+     return;
+    }
    const {downloadMattersPdf}=await import('./lib/matters-pdf');
    downloadMattersPdf(records,scope);
   }catch{
@@ -291,19 +308,8 @@ function MattersPage() {
    setIsExportingPdf(false);
   }
  }
- function submit(e:FormEvent<HTMLFormElement>){
-  e.preventDefault();
-  const f=new FormData(e.currentTarget);
-  const input:MatterInput={clientId:Number(f.get('clientId')),title:String(f.get('title')),matterType:String(f.get('matterType')),responsible:String(f.get('responsible')),riskLevel:String(f.get('riskLevel')) as any,status:String(f.get('status')) as any,dueAt:String(f.get('dueAt'))||null};
-  create.mutate({data:input},{onSuccess:()=>{
-   qc.invalidateQueries({queryKey:getListMattersQueryKey()});
-   qc.invalidateQueries({queryKey:getGetDashboardQueryKey()});
-   qc.invalidateQueries({queryKey:getListActivityQueryKey()});
-   closeModal();
-  }});
- }
  return <>
-  <PageHeader eyebrow="Active work" title="Matters" subtitle="Keep each engagement, owner, and next date in view." action={<Button onClick={()=>setModal(true)} testId="button-new-matter"><Plus className="h-4 w-4" />New matter</Button>} />
+  <PageHeader eyebrow="Active work" title="Matters" subtitle="Keep each engagement, owner, and next date in view." action={<Button onClick={()=>setLocation('/intake?create=1')} testId="button-new-matter"><Plus className="h-4 w-4" />Start matter intake</Button>} />
   <div className="mb-5 flex flex-col gap-3 sm:flex-row">
    <label className="relative flex-1"><Search className="absolute left-3 top-3 h-4 w-4 text-[#89918d]" /><input value={search} onChange={e=>{setSearch(e.target.value);setSelectedIds(new Set());}} placeholder="Search matter, reference, client…" className="h-10 w-full rounded-md border border-[#d9d4c8] bg-[#fbfaf5] pl-10 pr-3 text-sm outline-none focus:border-[#a88b5e]" data-testid="input-search-matters" /></label>
     <select value={status} onChange={e=>{setStatus(e.target.value);updateQueryFilter('status',e.target.value);setSelectedIds(new Set());}} aria-label="Filter matters by status" className="h-10 rounded-md border border-[#d9d4c8] bg-[#fbfaf5] px-3 text-sm capitalize" data-testid="select-matter-status"><option value="">All statuses</option><option value="open">Open</option><option value="on_hold">On hold</option><option value="closed">Closed</option></select>
@@ -325,7 +331,7 @@ function MattersPage() {
     </div>
     {pdfError&&<p role="alert" className="mt-3 text-xs text-[#9b4941]" data-testid="status-matter-pdf-error">{pdfError}</p>}
    </div>}
-    {!filteredMatters.length?<EmptyState title={search||status||dueFilter||clientId!==null?'No matching matters':'No matters on file'} detail={search||status||dueFilter||clientId!==null?'Try adjusting the search or filters.':'Create a matter and keep its client, responsible professional, and due date together.'} action={<Button onClick={()=>setModal(true)} testId="button-empty-add-matter"><Plus className="h-4 w-4" />Create a matter</Button>} />:
+    {!filteredMatters.length?<EmptyState title={search||status||dueFilter||clientId!==null?'No matching matters':'No matters on file'} detail={search||status||dueFilter||clientId!==null?'Try adjusting the search or filters.':'Start a client intake, complete the conflict review, then open the matter.'} action={<Button onClick={()=>setLocation('/intake?create=1')} testId="button-empty-add-matter"><Plus className="h-4 w-4" />Start intake</Button>} />:
     <div className="overflow-hidden rounded-md border border-[#e0dace] bg-[#fbfaf5]">
      <div className="hidden grid-cols-[28px_minmax(220px,1.5fr)_1fr_110px_105px_115px] gap-4 border-b border-[#e8e3d8] bg-[#f1eee6] px-5 py-3 text-[10px] font-bold uppercase tracking-[.12em] text-[#798480] md:grid"><span></span><span>Matter</span><span>Responsible</span><span>Status</span><span>Risk</span><span>Due date</span></div>
      {filteredMatters.map(m=><div key={m.id} className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-4 gap-y-2 border-b border-[#eee9df] px-5 py-4 transition hover:bg-[#f5f2e9] last:border-0 md:grid-cols-[28px_minmax(220px,1.5fr)_1fr_110px_105px_115px] md:items-center md:gap-4" data-testid={`row-matter-${m.id}`}>
@@ -334,7 +340,6 @@ function MattersPage() {
      </div>)}
     </div>}
   </>}
-  {modal&&<Modal title="Create a matter" close={closeModal}><form onSubmit={submit} className="space-y-4"><Field label="Client"><select name="clientId" className="field" required defaultValue="">{(clients.data||[]).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Matter title"><input name="title" required className="field" maxLength={200} data-testid="input-matter-title" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Matter type"><input name="matterType" required className="field" placeholder="e.g. Estate planning" data-testid="input-matter-type" /></Field><Field label="Responsible"><input name="responsible" required className="field" data-testid="input-matter-responsible" /></Field></div><div className="grid gap-4 sm:grid-cols-3"><Field label="Status"><select name="status" className="field"><option value="open">Open</option><option value="on_hold">On hold</option></select></Field><Field label="Risk level"><select name="riskLevel" className="field"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></Field><Field label="Due date"><input name="dueAt" type="date" className="field" /></Field></div>{!clients.isLoading&&!clients.isError&&!clients.data?.length&&<div className="text-xs text-[#99534a]">Create a client record before opening a matter. <Link href="/clients?create=1" className="font-semibold underline" data-testid="link-create-client-from-matter">Create client</Link></div>}{clients.isError&&<p className="text-xs text-[#9b4941]">Client list could not be loaded. Close this form and retry.</p>}{create.isError&&<p className="text-sm text-[#9b4941]" data-testid="status-create-matter-error">Matter could not be created. Please try again.</p>}<div className="flex justify-end gap-2 pt-2"><Button variant="outline" onClick={closeModal} testId="button-cancel-matter">Cancel</Button><Button type="submit" disabled={create.isPending||clients.isLoading||clients.isError||!clients.data?.length} testId="button-save-matter">{create.isPending?'Saving…':'Create matter'}</Button></div></form></Modal>}
  </>;
 }
 function MatterDetail() {
