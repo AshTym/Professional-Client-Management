@@ -417,6 +417,12 @@ router.post("/intakes/:id/open-matter", async (req, res): Promise<void> => {
     return;
   }
   const result = await db.transaction(async (tx) => {
+    const members = await tx
+      .select()
+      .from(membershipsTable)
+      .where(eq(membershipsTable.workspaceId, firm.workspaceId))
+      .orderBy(membershipsTable.id)
+      .for("update");
     const [intake] = await tx
       .select()
       .from(intakesTable)
@@ -427,22 +433,13 @@ router.post("/intakes/:id/open-matter", async (req, res): Promise<void> => {
     if (intake.status !== "cleared" || intake.openedMatterId) return { kind: "not-cleared" as const };
 
     let clientId = intake.clientId;
-    const [responsibleMember] = intake.responsibleMemberId === null ? [] : await tx
-      .select()
-      .from(membershipsTable)
-      .where(and(
-        eq(membershipsTable.id, intake.responsibleMemberId),
-        eq(membershipsTable.workspaceId, firm.workspaceId),
-      ))
-      .limit(1);
+    const responsibleMember = members.find(
+      (member) => member.id === intake.responsibleMemberId,
+    );
     let resolvedMember = responsibleMember;
     if (!resolvedMember) {
-      const candidates = await tx
-        .select()
-        .from(membershipsTable)
-        .where(eq(membershipsTable.workspaceId, firm.workspaceId));
       const label = intake.responsible.trim().toLocaleLowerCase();
-      const matches = candidates.filter((candidate) =>
+      const matches = members.filter((candidate) =>
         [candidate.displayName, candidate.email]
           .some((value) => value.trim().toLocaleLowerCase() === label),
       );

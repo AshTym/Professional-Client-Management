@@ -558,6 +558,22 @@ async function request(
   };
 }
 
+async function waitForBlockedMembershipQueries(expectedCount: number) {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const result = await bootstrapPool!.query<{ count: string }>(`
+      SELECT count(*)::text AS count
+      FROM pg_stat_activity
+      WHERE pid <> pg_backend_pid()
+        AND wait_event_type = 'Lock'
+        AND query ILIKE '%clientguard_memberships%'
+    `);
+    if (Number(result.rows[0]?.count ?? 0) >= expectedCount) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(`Expected ${expectedCount} request(s) to wait for a teammate membership lock.`);
+}
+
 test("database rejects a second firm membership for the same signed-in identity", async () => {
   const [existingMembership] = await db
     .select()
@@ -2635,6 +2651,12 @@ test("owner can create, update, archive, and close records", async () => {
     .where(eq(clientsTable.id, newClientId))
     .limit(1);
   assert(existingClient);
+  const [primaryOwner] = await db
+    .select({ id: membershipsTable.id })
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, firms.primary.ownerId))
+    .limit(1);
+  assert(primaryOwner);
   const intake = await request("/intakes", {
     userId: firms.primary.ownerId,
     method: "POST",
@@ -2645,6 +2667,7 @@ test("owner can create, update, archive, and close records", async () => {
       matterTitle: "Writable Matter",
       matterType: "advisory",
       responsible: "Primary Owner",
+      responsibleMemberId: primaryOwner.id,
       partyNames: [],
       answers: {
         identity: "Identity confirmed for test",
@@ -2788,6 +2811,12 @@ test("read-only roles cannot create, update, archive, or close records", async (
 });
 
 test("another firm cannot change or archive clients and matters or create a matter for their client", async () => {
+  const [primaryOwner] = await db
+    .select({ id: membershipsTable.id })
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, firms.primary.ownerId))
+    .limit(1);
+  assert(primaryOwner);
   const attempts = [
     request(`/clients/${firms.primary.clientId}`, {
       userId: firms.other.ownerId,
@@ -2815,6 +2844,7 @@ test("another firm cannot change or archive clients and matters or create a matt
         title: "Cross-firm matter",
         matterType: "advisory",
         responsible: "Other Firm Owner",
+        responsibleMemberId: primaryOwner.id,
       },
     }),
   ];
@@ -3204,6 +3234,85 @@ test("member assignments are listed and reassigned with removal in one audited c
   assert.ok(reassignmentEvents.some((event) => event.entityType === "client"));
   assert.ok(reassignmentEvents.some((event) => event.entityType === "matter"));
   assert.ok(activity.some((event) => event.action === `removed ${departingName} from the firm workspace`));
+});
+
+test("matter edits cannot restore assignment after concurrent teammate removal", async () => {
+  const suffix = randomUUID();
+  const departingName = `Race Departing ${suffix}`;
+  const [departing] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: `race-departing-${suffix}`,
+      email: `race-departing-${suffix}@example.test`,
+      displayName: departingName,
+      role: "professional",
+    })
+    .returning();
+  const [matter] = await db
+    .insert(mattersTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clientId: firms.primary.clientId,
+      title: `Concurrent Assignment Matter ${suffix}`,
+      reference: `RACE-${suffix}`,
+      matterType: "advisory",
+      responsible: "Primary Owner",
+      responsibleMemberId: (
+        await db
+          .select({ id: membershipsTable.id })
+          .from(membershipsTable)
+          .where(eq(membershipsTable.clerkUserId, firms.primary.ownerId))
+          .limit(1)
+      )[0].id,
+    })
+    .returning();
+
+  const lockHolder = await bootstrapPool!.connect();
+  await lockHolder.query("BEGIN");
+  await lockHolder.query(
+    `SELECT id FROM "${schemaName}".clientguard_memberships WHERE id = $1 FOR UPDATE`,
+    [departing.id],
+  );
+
+  let lockReleased = false;
+  try {
+    const removal = request(`/workspace/members/${departing.id}`, {
+      userId: firms.primary.ownerId,
+      method: "DELETE",
+    });
+    await waitForBlockedMembershipQueries(1);
+
+    const edit = request(`/matters/${matter.id}`, {
+      userId: firms.primary.ownerId,
+      method: "PATCH",
+      body: { responsibleMemberId: departing.id },
+    });
+    await waitForBlockedMembershipQueries(2);
+
+    await lockHolder.query("COMMIT");
+    lockReleased = true;
+    const [removed, edited] = await Promise.all([removal, edit]);
+
+    assert.equal(removed.response.status, 204);
+    assert.equal(edited.response.status, 409);
+    assert.equal(edited.body.code, "matter_assignee_inactive");
+    assert.match(edited.body.error, /Choose another teammate and try again/);
+
+    const [savedMatter] = await db
+      .select()
+      .from(mattersTable)
+      .where(eq(mattersTable.id, matter.id));
+    const remainingMembership = await db
+      .select()
+      .from(membershipsTable)
+      .where(eq(membershipsTable.id, departing.id));
+    assert.notEqual(savedMatter.responsibleMemberId, departing.id);
+    assert.equal(remainingMembership.length, 0);
+  } finally {
+    if (!lockReleased) await lockHolder.query("ROLLBACK");
+    lockHolder.release();
+  }
 });
 
 test("duplicate teammate names leave legacy assignment labels visible and block unsafe removal", async () => {

@@ -2087,52 +2087,64 @@ router.patch("/matters/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  let responsibleLabel: string | undefined;
-  if (parsed.data.responsibleMemberId !== undefined) {
-    const [member] = await db.select().from(membershipsTable).where(and(
-      eq(membershipsTable.id, parsed.data.responsibleMemberId),
-      eq(membershipsTable.workspaceId, access.workspaceId),
-    )).limit(1);
-    if (!member) {
-      res.status(400).json({ error: "Choose an active teammate in this firm." });
-      return;
+  const result = await db.transaction(async (tx) => {
+    let responsibleLabel: string | undefined;
+    if (parsed.data.responsibleMemberId !== undefined) {
+      const [member] = await tx
+        .select()
+        .from(membershipsTable)
+        .where(and(
+          eq(membershipsTable.id, parsed.data.responsibleMemberId),
+          eq(membershipsTable.workspaceId, access.workspaceId),
+        ))
+        .for("update")
+        .limit(1);
+      if (!member) return { kind: "inactive-member" as const };
+      responsibleLabel = member.displayName || member.email || "Firm teammate";
     }
-    responsibleLabel = member.displayName || member.email || "Firm teammate";
-  }
-  if (parsed.data.clientId) {
-    const [client] = await db
-      .select({ id: clientsTable.id })
-      .from(clientsTable)
-      .where(
-        and(
+    if (parsed.data.clientId) {
+      const [client] = await tx
+        .select({ id: clientsTable.id })
+        .from(clientsTable)
+        .where(and(
           eq(clientsTable.id, parsed.data.clientId),
           eq(clientsTable.workspaceId, access.workspaceId),
-        ),
-      )
-      .limit(1);
-    if (!client) {
-      res.status(404).json({ error: "Client not found in this firm." });
-      return;
+        ))
+        .limit(1);
+      if (!client) return { kind: "client-missing" as const };
     }
-  }
-  const [matter] = await db
-    .update(mattersTable)
-    .set({
-      ...parsed.data,
-      responsible: responsibleLabel,
-      dueAt: parsed.data.dueAt === undefined ? undefined : parsed.data.dueAt,
-    })
-    .where(
-      and(
+    const [matter] = await tx
+      .update(mattersTable)
+      .set({
+        ...parsed.data,
+        responsible: responsibleLabel,
+        dueAt: parsed.data.dueAt === undefined ? undefined : parsed.data.dueAt,
+      })
+      .where(and(
         eq(mattersTable.id, params.data.id),
         eq(mattersTable.workspaceId, access.workspaceId),
-      ),
-    )
-    .returning();
-  if (!matter) {
+      ))
+      .returning();
+    return matter
+      ? { kind: "updated" as const, matter, responsibleLabel }
+      : { kind: "matter-missing" as const };
+  });
+  if (result.kind === "inactive-member") {
+    res.status(409).json({
+      error: "That teammate is no longer active in this firm. Choose another teammate and try again.",
+      code: "matter_assignee_inactive",
+    });
+    return;
+  }
+  if (result.kind === "client-missing") {
+    res.status(404).json({ error: "Client not found in this firm." });
+    return;
+  }
+  if (result.kind === "matter-missing") {
     res.status(404).json({ error: "Matter not found." });
     return;
   }
+  const { matter, responsibleLabel } = result;
   const [client] = await db
     .select({ name: clientsTable.name })
     .from(clientsTable)
