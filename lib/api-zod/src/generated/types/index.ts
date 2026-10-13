@@ -8,6 +8,7 @@
 
 export * from './activity';
 export * from './activityEntityType';
+export * from './activityPage';
 export * from './auditEvent';
 export * from './auditEventDetails';
 export * from './authorizationUrl';

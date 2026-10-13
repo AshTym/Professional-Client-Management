@@ -11,6 +11,7 @@ import {
   inArray,
   ilike,
   isNull,
+  lte,
   lt,
   max,
   or,
@@ -2353,6 +2354,14 @@ router.get("/activity", async (req, res): Promise<void> => {
     return;
   }
   const filters = [eq(activitiesTable.workspaceId, access.workspaceId)];
+  let snapshotId = parsed.data.snapshotId;
+  if (snapshotId === undefined) {
+    const [snapshot] = await db
+      .select({ snapshotId: max(activitiesTable.id) })
+      .from(activitiesTable)
+      .where(eq(activitiesTable.workspaceId, access.workspaceId));
+    snapshotId = snapshot?.snapshotId ?? 0;
+  }
   if (parsed.data.actorMemberId !== undefined) {
     const [actorMember] = await db
       .select({ clerkUserId: membershipsTable.clerkUserId })
@@ -2365,7 +2374,7 @@ router.get("/activity", async (req, res): Promise<void> => {
       )
       .limit(1);
     if (!actorMember) {
-      res.json([]);
+      res.json(ListActivityResponse.parse({ items: [], snapshotId }));
       return;
     }
     filters.push(eq(activitiesTable.clerkUserId, actorMember.clerkUserId));
@@ -2376,6 +2385,7 @@ router.get("/activity", async (req, res): Promise<void> => {
   if (parsed.data.entityId !== undefined) {
     filters.push(eq(activitiesTable.entityId, parsed.data.entityId));
   }
+  filters.push(lte(activitiesTable.id, snapshotId));
   const activity = await db
     .select()
     .from(activitiesTable)
@@ -2383,7 +2393,7 @@ router.get("/activity", async (req, res): Promise<void> => {
     .orderBy(desc(activitiesTable.occurredAt), desc(activitiesTable.id))
     .limit(parsed.data.limit)
     .offset(parsed.data.offset);
-  res.json(ListActivityResponse.parse(activity));
+  res.json(ListActivityResponse.parse({ items: activity, snapshotId }));
 });
 
 router.get("/activity/export.csv", async (req, res): Promise<void> => {

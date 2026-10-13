@@ -567,6 +567,12 @@ export interface Activity {
   occurredAt: string;
 }
 
+export interface ActivityPage {
+  items: Activity[];
+  /** @minimum 0 */
+  snapshotId: number;
+}
+
 export interface DashboardSummary {
   clientCount: number;
   activeClientCount: number;
@@ -2088,6 +2094,11 @@ limit?: number;
  * @minimum 0
  */
 offset?: number;
+/**
+ * Include only events at or below this firm-wide activity snapshot ID.
+ * @minimum 0
+ */
+snapshotId?: number;
 /**
  * Restrict results to activity by a current member of this firm.
  * @minimum 1

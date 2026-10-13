@@ -5,6 +5,7 @@ import { Router } from 'wouter';
 
 const apiMocks = vi.hoisted(() => ({
   useListActivity: vi.fn(),
+  getListActivityQueryKey: vi.fn((params) => ['/api/activity', params]),
   useListWorkspaceAssignmentMembers: vi.fn(),
   useListClients: vi.fn(),
   useListMatters: vi.fn(),
@@ -51,16 +52,22 @@ describe('activity pagination', () => {
   beforeEach(() => {
     apiMocks.exportActivity.mockReset().mockResolvedValue('');
     apiMocks.eventTotal = 41;
-    apiMocks.useListActivity.mockImplementation(({ limit, offset }) => ({
-      data: Array.from(
-        { length: Math.min(limit, Math.max(0, apiMocks.eventTotal - offset)) },
-        (_, index) =>
-          event(offset + index + 1),
-      ),
+    apiMocks.useListActivity.mockImplementation(({ limit, offset, snapshotId }) => {
+      const currentSnapshot = snapshotId ?? apiMocks.eventTotal;
+      const newestEventId = Math.min(apiMocks.eventTotal, currentSnapshot);
+      return {
+      data: {
+        items: Array.from(
+          { length: Math.min(limit, Math.max(0, newestEventId - offset)) },
+          (_, index) => event(newestEventId - offset - index),
+        ),
+        snapshotId: currentSnapshot,
+      },
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
-    }));
+    };
+    });
     apiMocks.useListWorkspaceAssignmentMembers.mockReturnValue({
       data: [{ id: 5, name: 'A. Morgan' }],
       isLoading: false,
@@ -130,7 +137,8 @@ describe('activity pagination', () => {
     renderActivityPage();
 
     expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
-      expect.objectContaining({ limit: 41, offset: 0 }),
+      expect.objectContaining({ limit: 41, offset: 0, snapshotId: 41 }),
+      expect.any(Object),
     );
     expect(screen.getByTestId('text-activity-count').textContent).toBe('Events 1–40');
     expect(screen.getByTestId('button-activity-previous').hasAttribute('disabled')).toBe(true);
@@ -139,7 +147,8 @@ describe('activity pagination', () => {
     fireEvent.click(screen.getByTestId('button-activity-next'));
 
     expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
-      expect.objectContaining({ limit: 41, offset: 40 }),
+      expect.objectContaining({ limit: 41, offset: 40, snapshotId: 41 }),
+      expect.any(Object),
     );
     expect(screen.getByTestId('text-activity-count').textContent).toBe('Events 41–41');
     expect(screen.getByTestId('text-activity-page-status').textContent).toBe(
@@ -151,7 +160,8 @@ describe('activity pagination', () => {
     fireEvent.click(screen.getByTestId('button-activity-previous'));
 
     expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
-      expect.objectContaining({ limit: 41, offset: 0 }),
+      expect.objectContaining({ limit: 41, offset: 0, snapshotId: 41 }),
+      expect.any(Object),
     );
   });
 
@@ -168,7 +178,8 @@ describe('activity pagination', () => {
       }
 
       expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
-        expect.objectContaining({ limit: pageSize + 1, offset: 0 }),
+        expect.objectContaining({ limit: pageSize + 1, offset: 0, snapshotId: pageSize }),
+        expect.any(Object),
       );
       expect(screen.getByTestId('text-activity-count').textContent).toBe(
         `Events 1–${pageSize}`,
@@ -181,7 +192,8 @@ describe('activity pagination', () => {
       fireEvent.click(screen.getByTestId('button-activity-next'));
 
       expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
-        expect.objectContaining({ limit: pageSize + 1, offset: 0 }),
+        expect.objectContaining({ limit: pageSize + 1, offset: 0, snapshotId: pageSize }),
+        expect.any(Object),
       );
       expect(screen.getByTestId('text-activity-count').textContent).toBe(
         `Events 1–${pageSize}`,
@@ -198,7 +210,8 @@ describe('activity pagination', () => {
     });
 
     expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
-      expect.objectContaining({ limit: 21, offset: 0 }),
+      expect.objectContaining({ limit: 21, offset: 0, snapshotId: 41 }),
+      expect.any(Object),
     );
     expect(screen.getByTestId('text-activity-count').textContent).toBe('Events 1–20');
   });
@@ -211,7 +224,8 @@ describe('activity pagination', () => {
     });
 
     expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
-      expect.objectContaining({ limit: 41, offset: 0, actorMemberId: 5 }),
+      expect.objectContaining({ limit: 41, offset: 0, snapshotId: 41, actorMemberId: 5 }),
+      expect.any(Object),
     );
 
     fireEvent.change(screen.getByTestId('select-activity-record'), {
@@ -222,16 +236,38 @@ describe('activity pagination', () => {
       expect.objectContaining({
         limit: 41,
         offset: 0,
+        snapshotId: 41,
         actorMemberId: 5,
         entityType: 'client',
         entityId: 10,
       }),
+      expect.any(Object),
     );
+  });
+
+  it('keeps later pages on the starting snapshot and refreshes to include newer events', () => {
+    renderActivityPage();
+    expect(screen.getByTestId('activity-item-41')).toBeTruthy();
+    expect(screen.queryByTestId('activity-item-42')).toBeNull();
+
+    apiMocks.eventTotal = 43;
+    fireEvent.click(screen.getByTestId('button-activity-next'));
+
+    expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({ limit: 41, offset: 40, snapshotId: 41 }),
+      expect.any(Object),
+    );
+    expect(screen.getByTestId('activity-item-1')).toBeTruthy();
+    expect(screen.queryByTestId('activity-item-42')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('button-refresh-activity'));
+    expect(screen.getByTestId('activity-item-43')).toBeTruthy();
+    expect(screen.getByTestId('text-activity-count').textContent).toBe('Events 1–40');
   });
 
   it('distinguishes an empty filtered result from an empty audit trail', () => {
     apiMocks.useListActivity.mockReturnValue({
-      data: [],
+      data: { items: [], snapshotId: 41 },
       isLoading: false,
       isError: false,
       refetch: vi.fn(),

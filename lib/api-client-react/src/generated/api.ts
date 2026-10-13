@@ -26,6 +26,7 @@ import type {
 
 import type {
   Activity,
+  ActivityPage,
   AuditEvent,
   AuthorizationUrl,
   BillingDraft,
@@ -2115,9 +2116,9 @@ export const getListActivityUrl = (params?: ListActivityParams,) => {
 /**
  * @summary List recent firm audit events
  */
-export const listActivity = async (params?: ListActivityParams, options?: Parameters<typeof customFetch>[1]): Promise<Activity[]> => {
+export const listActivity = async (params?: ListActivityParams, options?: Parameters<typeof customFetch>[1]): Promise<ActivityPage> => {
 
-  return customFetch<Activity[]>(getListActivityUrl(params),
+  return customFetch<ActivityPage>(getListActivityUrl(params),
   {
     ...options,
     method: 'GET'

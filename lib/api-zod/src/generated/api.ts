@@ -453,6 +453,8 @@ export const listActivityQueryLimitMax = 100;
 export const listActivityQueryOffsetDefault = 0;
 export const listActivityQueryOffsetMin = 0;
 
+export const listActivityQuerySnapshotIdMin = 0;
+
 
 
 
@@ -460,12 +462,18 @@ export const listActivityQueryOffsetMin = 0;
 export const ListActivityQueryParams = zod.object({
   "limit": zod.coerce.number().int().min(1).max(listActivityQueryLimitMax).default(listActivityQueryLimitDefault),
   "offset": zod.coerce.number().int().min(listActivityQueryOffsetMin).default(listActivityQueryOffsetDefault),
+  "snapshotId": zod.coerce.number().int().min(listActivityQuerySnapshotIdMin).optional().describe('Include only events at or below this firm-wide activity snapshot ID.'),
   "actorMemberId": zod.coerce.number().int().min(1).optional().describe('Restrict results to activity by a current member of this firm.'),
   "entityType": zod.enum(['client', 'matter', 'workspace']).optional().describe('Restrict results to a related client, matter, or workspace record.'),
   "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.')
 })
 
-export const ListActivityResponseItem = zod.object({
+export const listActivityResponseSnapshotIdMin = 0;
+
+
+
+export const ListActivityResponse = zod.object({
+  "items": zod.array(zod.object({
   "id": zod.number().int(),
   "actor": zod.string(),
   "action": zod.string(),
@@ -473,8 +481,9 @@ export const ListActivityResponseItem = zod.object({
   "entityId": zod.number().int(),
   "entityLabel": zod.string(),
   "occurredAt": zod.coerce.date()
+})),
+  "snapshotId": zod.number().int().min(listActivityResponseSnapshotIdMin)
 })
-export const ListActivityResponse = zod.array(ListActivityResponseItem)
 
 
 /**

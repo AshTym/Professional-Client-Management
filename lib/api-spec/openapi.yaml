@@ -493,6 +493,13 @@ paths:
             type: integer
             minimum: 0
             default: 0
+        - name: snapshotId
+          in: query
+          required: false
+          description: Include only events at or below this firm-wide activity snapshot ID.
+          schema:
+            type: integer
+            minimum: 0
         - name: actorMemberId
           in: query
           required: false
@@ -516,13 +523,11 @@ paths:
             minimum: 1
       responses:
         "200":
-          description: Recent audit events
+          description: Audit events from a stable firm-wide snapshot
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Activity"
+                $ref: "#/components/schemas/ActivityPage"
   /activity/export.csv:
     get:
       operationId: exportActivity
@@ -2480,6 +2485,14 @@ components:
         entityId: { type: integer }
         entityLabel: { type: string }
         occurredAt: { type: string, format: date-time }
+    ActivityPage:
+      type: object
+      required: [items, snapshotId]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Activity" }
+        snapshotId: { type: integer, minimum: 0 }
     DashboardSummary:
       type: object
       required: [clientCount, activeClientCount, matterCount, openMatterCount, overdueMatterCount, recentActivity]

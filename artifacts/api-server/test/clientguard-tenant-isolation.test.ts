@@ -1401,7 +1401,7 @@ test("clients, matters, and activity lists and details stay inside the signed-in
   });
   assert.equal(activity.response.status, 200);
   assert.deepEqual(
-    (activity.body as Array<{ action: string }>).map(({ action }) => action),
+    (activity.body.items as Array<{ action: string }>).map(({ action }) => action),
     ["primary-only activity"],
   );
   const ownActivityDetail = await request(
@@ -1557,7 +1557,7 @@ test("successful matter exports are recorded in the activity feed for only the e
       userId: firms.primary.ownerId,
     });
     assert.equal(activity.response.status, 200);
-    const events = activity.body as Array<{
+    const events = activity.body.items as Array<{
       id: number;
       actor: string;
       action: string;
@@ -1608,7 +1608,7 @@ test("successful matter exports are recorded in the activity feed for only the e
     });
     assert.equal(otherFirmActivity.response.status, 200);
     assert.equal(
-      (otherFirmActivity.body as Array<{ action: string }>).some((event) =>
+      (otherFirmActivity.body.items as Array<{ action: string }>).some((event) =>
         event.action.includes("exported"),
       ),
       false,
@@ -1628,7 +1628,7 @@ test("successful matter exports are recorded in the activity feed for only the e
       userId: firms.primary.ownerId,
     });
     const exportEvents = (
-      activityAfterRejectedExport.body as Array<{ action: string }>
+      activityAfterRejectedExport.body.items as Array<{ action: string }>
     ).filter((event) => event.action.includes("exported"));
     assert.equal(exportEvents.length, 2);
     assert.ok(
@@ -1709,36 +1709,56 @@ test("activity pagination keeps page boundaries and firm isolation", async () =>
     });
     assert.equal(firstPage.response.status, 200);
     assert.deepEqual(
-      (firstPage.body as Array<{ action: string }>).map(({ action }) => action),
+      (firstPage.body.items as Array<{ action: string }>).map(({ action }) => action),
       [primaryActions[2], primaryActions[1]],
     );
 
-    const secondPage = await request("/activity?limit=2&offset=2", {
+    const snapshotId = firstPage.body.snapshotId as number;
+    const lateActivity = await db
+      .insert(activitiesTable)
+      .values({
+        workspaceId: firms.primary.workspaceId,
+        clerkUserId: firms.primary.ownerId,
+        actor: "Primary Owner",
+        action: `primary page event added after snapshot ${randomUUID()}`,
+        entityType: "client",
+        entityId: firms.primary.clientId,
+        entityLabel: "Primary test client",
+        occurredAt: new Date(occurredAt.getTime() + 180_000),
+      })
+      .returning({ id: activitiesTable.id });
+    insertedActivityIds.push(...lateActivity.map(({ id }) => id));
+
+    const secondPage = await request(
+      `/activity?limit=2&offset=2&snapshotId=${snapshotId}`,
+      {
       userId: firms.primary.ownerId,
-    });
+      },
+    );
     assert.equal(secondPage.response.status, 200);
     assert.deepEqual(
-      (secondPage.body as Array<{ action: string }>).map(({ action }) => action),
+      (secondPage.body.items as Array<{ action: string }>).map(({ action }) => action),
       [primaryActions[0], "primary-only activity"],
     );
     assert(
-      (secondPage.body as Array<{ action: string }>).every(
+      (secondPage.body.items as Array<{ action: string }>).every(
         ({ action }) => !action.startsWith("other"),
       ),
     );
 
-    const pastLastPage = await request("/activity?limit=2&offset=4", {
-      userId: firms.primary.ownerId,
-    });
+    const pastLastPage = await request(
+      `/activity?limit=2&offset=4&snapshotId=${snapshotId}`,
+      { userId: firms.primary.ownerId },
+    );
     assert.equal(pastLastPage.response.status, 200);
-    assert.deepEqual(pastLastPage.body, []);
+    assert.deepEqual(pastLastPage.body.items, []);
 
     const otherFirmPage = await request("/activity?limit=2&offset=0", {
       userId: firms.other.ownerId,
     });
     assert.equal(otherFirmPage.response.status, 200);
     assert.deepEqual(
-      (otherFirmPage.body as Array<{ action: string }>).map(({ action }) => action),
+      (otherFirmPage.body.items as Array<{ action: string }>).map(({ action }) => action),
       [otherActions[1], otherActions[0]],
     );
 
@@ -1854,17 +1874,18 @@ test("activity filters stay firm-scoped and apply before pagination", async () =
     );
     assert.equal(firstPage.response.status, 200);
     assert.deepEqual(
-      (firstPage.body as Array<{ action: string }>).map(({ action }) => action),
+      (firstPage.body.items as Array<{ action: string }>).map(({ action }) => action),
       [ownerActions[2], ownerActions[1]],
     );
 
+    const filteredSnapshotId = firstPage.body.snapshotId as number;
     const secondPage = await request(
-      `/activity?actorMemberId=${primaryOwner.id}&entityType=client&entityId=${firms.primary.clientId}&limit=2&offset=2`,
+      `/activity?actorMemberId=${primaryOwner.id}&entityType=client&entityId=${firms.primary.clientId}&limit=2&offset=2&snapshotId=${filteredSnapshotId}`,
       { userId: firms.primary.ownerId },
     );
     assert.equal(secondPage.response.status, 200);
     assert.deepEqual(
-      (secondPage.body as Array<{ action: string }>).map(({ action }) => action),
+      (secondPage.body.items as Array<{ action: string }>).map(({ action }) => action),
       [ownerActions[0], "primary-only activity"],
     );
 
@@ -1873,7 +1894,7 @@ test("activity filters stay firm-scoped and apply before pagination", async () =
       { userId: firms.primary.ownerId },
     );
     assert.equal(otherFirmMemberFilter.response.status, 200);
-    assert.deepEqual(otherFirmMemberFilter.body, []);
+    assert.deepEqual(otherFirmMemberFilter.body.items, []);
 
     const recordFilter = await request(
       `/activity?entityType=matter&entityId=${firms.primary.matterId}`,
@@ -1881,7 +1902,7 @@ test("activity filters stay firm-scoped and apply before pagination", async () =
     );
     assert.equal(recordFilter.response.status, 200);
     assert.deepEqual(
-      (recordFilter.body as Array<{ action: string }>).map(({ action }) => action),
+      (recordFilter.body.items as Array<{ action: string }>).map(({ action }) => action),
       [unrelatedActions[0]],
     );
   } finally {
@@ -1956,7 +1977,7 @@ test("activity orders events with tied timestamps by descending ID for each firm
 
       assert.equal(response.response.status, 200);
       assert.deepEqual(
-        (response.body as Array<{ action: string }>).map(({ action }) => action),
+        (response.body.items as Array<{ action: string }>).map(({ action }) => action),
         expectedActions,
       );
     }
