@@ -164,9 +164,10 @@ export const activitiesTable = pgTable(
       .defaultNow(),
   },
   (table) => [
-    index("clientguard_activity_workspace_time_idx").on(
+    index("clientguard_activity_workspace_time_id_idx").on(
       table.workspaceId,
-      table.occurredAt,
+      table.occurredAt.desc(),
+      table.id.desc(),
     ),
   ],
 );

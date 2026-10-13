@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -26,3 +26,6 @@ defaultBucketID = "replit-objstore-c5110ced-95af-4209-a05f-1e3e3dccb110"
 
 [userenv.shared]
 CLIENTGUARD_NOTIFICATION_FROM_EMAIL = "ashtym@gmail.com"
+
+[nix]
+channel = "stable-25_05"
