@@ -4649,7 +4649,7 @@ test("matter edits cannot restore assignment after concurrent teammate removal",
   }
 });
 
-test("duplicate teammate names leave legacy assignment labels visible and block unsafe removal", async () => {
+test("duplicate teammate names require an explicit active member choice to resolve legacy assignments", async () => {
   const suffix = randomUUID();
   const duplicateName = `Shared Name ${suffix}`;
   const [first, second] = await db.insert(membershipsTable).values([
@@ -4675,6 +4675,13 @@ test("duplicate teammate names leave legacy assignment labels visible and block 
     displayName: `Replacement ${suffix}`,
     role: "professional",
   }).returning();
+  const [viewer] = await db.insert(membershipsTable).values({
+    workspaceId: firms.primary.workspaceId,
+    clerkUserId: `duplicate-viewer-${suffix}`,
+    email: `duplicate-viewer-${suffix}@example.test`,
+    displayName: `Viewer ${suffix}`,
+    role: "viewer",
+  }).returning();
   const [client] = await db.insert(clientsTable).values({
     workspaceId: firms.primary.workspaceId,
     name: `Ambiguous Client ${suffix}`,
@@ -4697,6 +4704,25 @@ test("duplicate teammate names leave legacy assignment labels visible and block 
     issue.id === client.id && issue.label === duplicateName));
   assert.ok(issues.body.matters.some((issue: { id: number; label: string }) =>
     issue.id === matter.id && issue.label === duplicateName));
+  const missingSelection = await request(
+    `/workspace/assignment-issues/client/${client.id}/resolve`,
+    { userId: firms.primary.ownerId, method: "PATCH", body: {} },
+  );
+  assert.equal(missingSelection.response.status, 400);
+  const deniedResolution = await request(
+    `/workspace/assignment-issues/client/${client.id}/resolve`,
+    { userId: viewer.clerkUserId, method: "PATCH", body: { memberId: second.id } },
+  );
+  assert.equal(deniedResolution.response.status, 403);
+
+  const foreignMember = (await db.select().from(membershipsTable).where(
+    eq(membershipsTable.clerkUserId, firms.other.ownerId),
+  ))[0];
+  const foreignMemberResolution = await request(
+    `/workspace/assignment-issues/client/${client.id}/resolve`,
+    { userId: firms.primary.ownerId, method: "PATCH", body: { memberId: foreignMember.id } },
+  );
+  assert.equal(foreignMemberResolution.response.status, 400);
 
   const preview = await request(`/workspace/members/${first.id}/assignments`, {
     userId: firms.primary.ownerId,
@@ -4725,6 +4751,70 @@ test("duplicate teammate names leave legacy assignment labels visible and block 
   const remaining = await db.select().from(membershipsTable).where(eq(membershipsTable.id, first.id));
   assert.equal(remaining.length, 1);
   assert.equal(second.displayName, duplicateName);
+
+  const selectedName = `Confirmed Teammate ${suffix}`;
+  await db.update(membershipsTable)
+    .set({ displayName: selectedName })
+    .where(eq(membershipsTable.id, second.id));
+
+  const resolvedClient = await request(
+    `/workspace/assignment-issues/client/${client.id}/resolve`,
+    { userId: firms.primary.ownerId, method: "PATCH", body: { memberId: second.id } },
+  );
+  assert.equal(resolvedClient.response.status, 200);
+  assert.deepEqual(resolvedClient.body, {
+    entityType: "client",
+    id: client.id,
+    memberId: second.id,
+    label: selectedName,
+  });
+  const resolvedMatter = await request(
+    `/workspace/assignment-issues/matter/${matter.id}/resolve`,
+    { userId: firms.primary.ownerId, method: "PATCH", body: { memberId: second.id } },
+  );
+  assert.equal(resolvedMatter.response.status, 200);
+  assert.deepEqual(resolvedMatter.body, {
+    entityType: "matter",
+    id: matter.id,
+    memberId: second.id,
+    label: selectedName,
+  });
+
+  const [savedClient] = await db.select().from(clientsTable).where(eq(clientsTable.id, client.id));
+  const [savedMatter] = await db.select().from(mattersTable).where(eq(mattersTable.id, matter.id));
+  assert.equal(savedClient.ownerMemberId, second.id);
+  assert.equal(savedClient.owner, selectedName);
+  assert.equal(savedMatter.responsibleMemberId, second.id);
+  assert.equal(savedMatter.responsible, selectedName);
+  const resolutionActivity = await db.select().from(activitiesTable).where(
+    eq(activitiesTable.workspaceId, firms.primary.workspaceId),
+  );
+  assert.ok(resolutionActivity.some((event) =>
+    event.entityType === "client" &&
+    event.entityId === client.id &&
+    event.action === `resolved legacy client owner label to ${selectedName}`));
+  assert.ok(resolutionActivity.some((event) =>
+    event.entityType === "matter" &&
+    event.entityId === matter.id &&
+    event.action === `resolved legacy matter responsibility label to ${selectedName}`));
+
+  const duplicateResolution = await request(
+    `/workspace/assignment-issues/client/${client.id}/resolve`,
+    { userId: firms.primary.ownerId, method: "PATCH", body: { memberId: first.id } },
+  );
+  assert.equal(duplicateResolution.response.status, 409);
+  const hiddenForeignAssignment = await request(
+    `/workspace/assignment-issues/client/${firms.other.clientId}/resolve`,
+    { userId: firms.primary.ownerId, method: "PATCH", body: { memberId: second.id } },
+  );
+  assert.equal(hiddenForeignAssignment.response.status, 404);
+
+  const refreshedIssues = await request("/workspace/assignment-issues", {
+    userId: firms.primary.ownerId,
+  });
+  assert.equal(refreshedIssues.response.status, 200);
+  assert.equal(refreshedIssues.body.clients.some((issue: { id: number }) => issue.id === client.id), false);
+  assert.equal(refreshedIssues.body.matters.some((issue: { id: number }) => issue.id === matter.id), false);
 });
 
 test("renamed members keep their client and matter assignments and can transfer them safely", async () => {

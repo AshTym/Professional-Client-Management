@@ -12,6 +12,7 @@ import {
   useListOwnershipNoticeFailures, useRetryOwnershipNotice,
   useGetWorkspaceMemberAssignments,
   useListWorkspaceAssignmentMembers, useListWorkspaceAssignmentIssues,
+  useResolveWorkspaceAssignmentIssue,
   useGetMatterCloseout, getGetMatterCloseoutQueryKey,
   useListClients, useCreateClient, useGetClient, useUpdateClient, useDeleteClient,
   useListMatters, useGetMatter, useUpdateMatter, useCloseMatter, useLogMatterExportRequest,
@@ -567,12 +568,14 @@ function TeamPage() {
   });
   const retryOwnershipNotice = useRetryOwnershipNotice();
   const assignmentIssues = useListWorkspaceAssignmentIssues({ query: { staleTime: 0 } });
+  const resolveAssignmentIssue = useResolveWorkspaceAssignmentIssue();
   const workspace = useGetWorkspace();
   const qc = useQueryClient();
   const [invitationActionMessage, setInvitationActionMessage] = useState('');
   const [invitationActionWarning, setInvitationActionWarning] = useState(false);
   const [memberActionMessage, setMemberActionMessage] = useState('');
   const [ownershipNoticeMessage, setOwnershipNoticeMessage] = useState('');
+  const [assignmentResolutionMessage, setAssignmentResolutionMessage] = useState('');
   const [removingMemberId, setRemovingMemberId] = useState<number | null>(null);
   const [replacementMemberId, setReplacementMemberId] = useState<number | null>(null);
   const assignments = useGetWorkspaceMemberAssignments(removingMemberId ?? 0, {
@@ -682,6 +685,40 @@ function TeamPage() {
     });
   }
 
+  function resolveLegacyAssignment(
+    e: FormEvent<HTMLFormElement>,
+    entityType: 'client' | 'matter',
+    id: number,
+  ) {
+    e.preventDefault();
+    const memberId = Number(new FormData(e.currentTarget).get('memberId'));
+    if (!Number.isInteger(memberId) || memberId < 1) return;
+    setAssignmentResolutionMessage('');
+    resolveAssignmentIssue.mutate({ entityType, id, data: { memberId } }, {
+      onSuccess: async result => {
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: getListWorkspaceAssignmentIssuesQueryKey() }),
+          qc.invalidateQueries({ queryKey: getListClientsQueryKey() }),
+          qc.invalidateQueries({ queryKey: getListMattersQueryKey() }),
+          qc.invalidateQueries({ queryKey: getListActivityQueryKey() }),
+          qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
+          qc.invalidateQueries({
+            predicate: query => {
+              const key = query.queryKey[0];
+              return typeof key === 'string' &&
+                key.startsWith(`/api/${entityType === 'client' ? 'clients' : 'matters'}/${id}`);
+            },
+          }),
+        ]);
+        setAssignmentResolutionMessage(`Assignment resolved to ${result.label}.`);
+      },
+      onError: async () => {
+        await assignmentIssues.refetch();
+        setAssignmentResolutionMessage('This assignment could not be resolved. The queue was refreshed; review it and try again.');
+      },
+    });
+  }
+
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formElement = e.currentTarget;
@@ -703,12 +740,39 @@ function TeamPage() {
     <PageHeader eyebrow="Firm access" title="Your team" subtitle="Invite colleagues to this firm's shared workspace and set their starting role." />
     {assignmentIssues.isError ? <div className="mb-6 rounded border border-[#ead3ce] bg-[#fbefed] p-4 text-sm text-[#9b4941]" role="alert">Legacy assignments could not be checked. <button className="underline" onClick={() => assignmentIssues.refetch()}>Try again</button></div> : assignmentIssues.data && (assignmentIssues.data.clients.length > 0 || assignmentIssues.data.matters.length > 0) && <section className="mb-6 rounded-md border border-[#e5d4b1] bg-[#fbf5e8] p-5" data-testid="panel-unresolved-assignments">
       <h2 className="serif text-lg font-bold text-[#725a31]">Legacy assignments need review</h2>
-      <p className="mt-1 text-xs leading-5 text-[#766b55]">These saved labels did not uniquely identify a current teammate. Open each record and select the right teammate before removing anyone whose work may be affected.</p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        {assignmentIssues.data.clients.map(item => <Link key={`client-${item.id}`} href={`/clients/${item.id}`} className="rounded border border-[#e6d8ba] bg-[#fffaf0] p-3 text-xs hover:bg-white" data-testid={`unresolved-client-${item.id}`}><span className="font-semibold">{item.name}</span><span className="mt-1 block text-[#806b44]">Saved owner label: {item.label}</span></Link>)}
-        {assignmentIssues.data.matters.map(item => <Link key={`matter-${item.id}`} href={`/matters/${item.id}`} className="rounded border border-[#e6d8ba] bg-[#fffaf0] p-3 text-xs hover:bg-white" data-testid={`unresolved-matter-${item.id}`}><span className="font-semibold">{item.reference} · {item.title}</span><span className="mt-1 block text-[#806b44]">Client: {item.clientName} · Saved teammate label: {item.label}</span></Link>)}
+      <p className="mt-1 text-xs leading-5 text-[#766b55]">Choose the correct active teammate for each saved label. Similar or duplicate names are never matched automatically; nothing changes until you confirm a selection.</p>
+      {members.isLoading && <p className="mt-3 text-xs text-[#766b55]" role="status">Loading active teammates…</p>}
+      {members.isError && <p className="mt-3 text-xs text-[#9b4941]" role="alert">Active teammates could not be loaded. <button className="font-semibold underline" onClick={() => members.refetch()}>Try again</button></p>}
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+        {assignmentIssues.data.clients.map(item => <article key={`client-${item.id}`} className="rounded border border-[#e6d8ba] bg-[#fffaf0] p-3" data-testid={`unresolved-client-${item.id}`}>
+          <Link href={`/clients/${item.id}`} className="text-xs font-semibold underline">{item.name}</Link>
+          <p className="mt-1 text-xs text-[#806b44]">Saved owner label: “{item.label}”</p>
+          <form className="mt-3 flex flex-col gap-2 sm:flex-row" onSubmit={e => resolveLegacyAssignment(e, 'client', item.id)}>
+            <select name="memberId" required defaultValue="" className="field min-w-0 flex-1" aria-label={`Choose owner for ${item.name}`} data-testid={`select-resolve-client-${item.id}`}>
+              <option value="">Select the correct active teammate</option>
+              {(members.data ?? []).map(member => <option key={member.id} value={member.id}>{member.name || member.email} · {member.role}</option>)}
+            </select>
+            <Button type="submit" disabled={resolveAssignmentIssue.isPending || members.isLoading || members.isError || !members.data?.length} testId={`button-resolve-client-${item.id}`}>
+              {resolveAssignmentIssue.isPending ? 'Saving…' : 'Confirm owner'}
+            </Button>
+          </form>
+        </article>)}
+        {assignmentIssues.data.matters.map(item => <article key={`matter-${item.id}`} className="rounded border border-[#e6d8ba] bg-[#fffaf0] p-3" data-testid={`unresolved-matter-${item.id}`}>
+          <Link href={`/matters/${item.id}`} className="text-xs font-semibold underline">{item.reference} · {item.title}</Link>
+          <p className="mt-1 text-xs text-[#806b44]">Client: {item.clientName} · Saved teammate label: “{item.label}”</p>
+          <form className="mt-3 flex flex-col gap-2 sm:flex-row" onSubmit={e => resolveLegacyAssignment(e, 'matter', item.id)}>
+            <select name="memberId" required defaultValue="" className="field min-w-0 flex-1" aria-label={`Choose responsible teammate for ${item.reference}`} data-testid={`select-resolve-matter-${item.id}`}>
+              <option value="">Select the correct active teammate</option>
+              {(members.data ?? []).map(member => <option key={member.id} value={member.id}>{member.name || member.email} · {member.role}</option>)}
+            </select>
+            <Button type="submit" disabled={resolveAssignmentIssue.isPending || members.isLoading || members.isError || !members.data?.length} testId={`button-resolve-matter-${item.id}`}>
+              {resolveAssignmentIssue.isPending ? 'Saving…' : 'Confirm teammate'}
+            </Button>
+          </form>
+        </article>)}
       </div>
     </section>}
+    {assignmentResolutionMessage && <div className={`mb-6 rounded border p-4 text-sm ${resolveAssignmentIssue.isError ? 'border-[#ead3ce] bg-[#fbefed] text-[#9b4941]' : 'border-[#cee0d2] bg-[#eff6ef] text-[#52735e]'}`} role={resolveAssignmentIssue.isError ? 'alert' : 'status'} data-testid="status-assignment-resolution">{assignmentResolutionMessage}</div>}
     <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
       <section className="rounded-md border border-[#e0dace] bg-[#fbfaf5] p-5 sm:p-6">
         <div className="flex items-center gap-3 border-b border-[#e9e4d9] pb-4">

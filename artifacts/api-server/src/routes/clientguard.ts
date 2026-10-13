@@ -56,6 +56,9 @@ import {
   ResolveWorkspaceMembershipConflictBody,
   ResolveWorkspaceMembershipConflictParams,
   ResolveWorkspaceMembershipConflictResponse,
+  ResolveWorkspaceAssignmentIssueBody,
+  ResolveWorkspaceAssignmentIssueParams,
+  ResolveWorkspaceAssignmentIssueResponse,
   GetWorkspaceMemberAssignmentsParams,
   GetWorkspaceMemberAssignmentsResponse,
   ResendWorkspaceInvitationParams,
@@ -373,6 +376,129 @@ router.get("/workspace/assignment-issues", async (req, res): Promise<void> => {
   ]);
   res.json({ clients, matters });
 });
+
+router.patch(
+  "/workspace/assignment-issues/:entityType/:id/resolve",
+  async (req, res): Promise<void> => {
+    const access = await firmAccess(req, res);
+    if (!access) return;
+    if (!canManageInvitations(access.role)) {
+      res.status(403).json({ error: "Only firm owners and admins can resolve legacy assignments." });
+      return;
+    }
+
+    const params = ResolveWorkspaceAssignmentIssueParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+    const body = ResolveWorkspaceAssignmentIssueBody.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: body.error.message });
+      return;
+    }
+
+    const { entityType, id } = params.data;
+    const { memberId } = body.data;
+    const result = await db.transaction(async (tx) => {
+      const [member] = await tx
+        .select()
+        .from(membershipsTable)
+        .where(and(
+          eq(membershipsTable.id, memberId),
+          eq(membershipsTable.workspaceId, access.workspaceId),
+        ))
+        .for("update")
+        .limit(1);
+      if (!member) return { kind: "member_missing" as const };
+
+      const label = member.displayName || member.email || "Firm teammate";
+      const actor = access.name || access.email || "Firm user";
+      if (entityType === "client") {
+        const [client] = await tx
+          .select()
+          .from(clientsTable)
+          .where(and(
+            eq(clientsTable.id, id),
+            eq(clientsTable.workspaceId, access.workspaceId),
+          ))
+          .for("update")
+          .limit(1);
+        if (!client) return { kind: "issue_missing" as const };
+        if (client.ownerMemberId !== null) return { kind: "already_resolved" as const };
+
+        const [updated] = await tx
+          .update(clientsTable)
+          .set({ owner: label, ownerMemberId: member.id, updatedAt: new Date() })
+          .where(and(
+            eq(clientsTable.id, client.id),
+            eq(clientsTable.workspaceId, access.workspaceId),
+            isNull(clientsTable.ownerMemberId),
+          ))
+          .returning({ id: clientsTable.id });
+        if (!updated) return { kind: "already_resolved" as const };
+        await tx.insert(activitiesTable).values({
+          workspaceId: access.workspaceId,
+          clerkUserId: access.userId,
+          actor,
+          action: `resolved legacy client owner label to ${label}`,
+          entityType: "client",
+          entityId: client.id,
+          entityLabel: client.name,
+        });
+      } else {
+        const [matter] = await tx
+          .select()
+          .from(mattersTable)
+          .where(and(
+            eq(mattersTable.id, id),
+            eq(mattersTable.workspaceId, access.workspaceId),
+          ))
+          .for("update")
+          .limit(1);
+        if (!matter) return { kind: "issue_missing" as const };
+        if (matter.responsibleMemberId !== null) return { kind: "already_resolved" as const };
+
+        const [updated] = await tx
+          .update(mattersTable)
+          .set({ responsible: label, responsibleMemberId: member.id, updatedAt: new Date() })
+          .where(and(
+            eq(mattersTable.id, matter.id),
+            eq(mattersTable.workspaceId, access.workspaceId),
+            isNull(mattersTable.responsibleMemberId),
+          ))
+          .returning({ id: mattersTable.id });
+        if (!updated) return { kind: "already_resolved" as const };
+        await tx.insert(activitiesTable).values({
+          workspaceId: access.workspaceId,
+          clerkUserId: access.userId,
+          actor,
+          action: `resolved legacy matter responsibility label to ${label}`,
+          entityType: "matter",
+          entityId: matter.id,
+          entityLabel: matter.title,
+        });
+      }
+
+      return { kind: "resolved" as const, entityType, id, memberId: member.id, label };
+    });
+
+    if (result.kind === "member_missing") {
+      res.status(400).json({ error: "Select an active teammate in this firm." });
+      return;
+    }
+    if (result.kind === "issue_missing") {
+      res.status(404).json({ error: "That unresolved assignment could not be found in this firm." });
+      return;
+    }
+    if (result.kind === "already_resolved") {
+      res.status(409).json({ error: "This assignment has changed. Refresh the review queue and try again." });
+      return;
+    }
+
+    res.json(ResolveWorkspaceAssignmentIssueResponse.parse(result));
+  },
+);
 
 router.get("/workspace/membership-conflicts", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);

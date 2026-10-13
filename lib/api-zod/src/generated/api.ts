@@ -274,6 +274,32 @@ export const ListWorkspaceAssignmentIssuesResponse = zod.object({
 
 
 /**
+ * @summary Resolve one legacy client or matter assignment by explicitly selecting an active teammate
+ */
+
+
+
+export const ResolveWorkspaceAssignmentIssueParams = zod.object({
+  "entityType": zod.enum(['client', 'matter']),
+  "id": zod.coerce.number().int().min(1)
+})
+
+
+
+
+export const ResolveWorkspaceAssignmentIssueBody = zod.object({
+  "memberId": zod.number().int().min(1)
+})
+
+export const ResolveWorkspaceAssignmentIssueResponse = zod.object({
+  "entityType": zod.enum(['client', 'matter']),
+  "id": zod.number().int(),
+  "memberId": zod.number().int(),
+  "label": zod.string()
+})
+
+
+/**
  * @summary Transfer firm ownership to an active member
  */
 

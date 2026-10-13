@@ -271,6 +271,45 @@ paths:
                 $ref: "#/components/schemas/WorkspaceAssignmentIssues"
         "403":
           description: Only owners and admins can review unresolved assignments
+  /workspace/assignment-issues/{entityType}/{id}/resolve:
+    parameters:
+      - name: entityType
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [client, matter]
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    patch:
+      operationId: resolveWorkspaceAssignmentIssue
+      tags: [members]
+      summary: Resolve one legacy client or matter assignment by explicitly selecting an active teammate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceAssignmentResolutionInput"
+      responses:
+        "200":
+          description: Assignment linked to the explicitly selected active teammate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAssignmentResolution"
+        "400":
+          description: The selected teammate is not an active member of this firm
+        "403":
+          description: Only owners and admins can resolve legacy assignments
+        "404":
+          description: Unresolved assignment not found in this firm
+        "409":
+          description: Assignment was already changed
   /workspace/members/{id}/transfer-ownership:
     parameters:
       - name: id
@@ -2131,6 +2170,23 @@ components:
               reference: { type: string }
               clientName: { type: string }
               label: { type: string }
+    WorkspaceAssignmentResolutionInput:
+      type: object
+      required: [memberId]
+      properties:
+        memberId:
+          type: integer
+          minimum: 1
+    WorkspaceAssignmentResolution:
+      type: object
+      required: [entityType, id, memberId, label]
+      properties:
+        entityType:
+          type: string
+          enum: [client, matter]
+        id: { type: integer }
+        memberId: { type: integer }
+        label: { type: string }
     WorkspaceMembershipConflict:
       type: object
       required:

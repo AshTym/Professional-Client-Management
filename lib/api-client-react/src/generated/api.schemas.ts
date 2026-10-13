@@ -141,6 +141,26 @@ export interface WorkspaceAssignmentIssues {
   matters: WorkspaceAssignmentIssuesMattersItem[];
 }
 
+export interface WorkspaceAssignmentResolutionInput {
+  /** @minimum 1 */
+  memberId: number;
+}
+
+export type WorkspaceAssignmentResolutionEntityType = typeof WorkspaceAssignmentResolutionEntityType[keyof typeof WorkspaceAssignmentResolutionEntityType];
+
+
+export const WorkspaceAssignmentResolutionEntityType = {
+  client: 'client',
+  matter: 'matter',
+} as const;
+
+export interface WorkspaceAssignmentResolution {
+  entityType: WorkspaceAssignmentResolutionEntityType;
+  id: number;
+  memberId: number;
+  label: string;
+}
+
 /**
  * @nullable
  */
