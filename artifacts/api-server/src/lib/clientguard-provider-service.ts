@@ -19,6 +19,13 @@ type TokenResponse = {
   token_type?: string;
 };
 
+export class ProviderHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`Provider request failed with HTTP ${status}.`);
+    this.name = "ProviderHttpError";
+  }
+}
+
 function configFor(provider: Provider): ProviderConfig | null {
   const prefix = {
     google: "GOOGLE",
@@ -60,10 +67,11 @@ function scopesFor(provider: Provider) {
         "email",
         "profile",
         "https://www.googleapis.com/auth/calendar.events",
-        "https://www.googleapis.com/auth/gmail.send",
+        "https://www.googleapis.com/auth/gmail.compose",
+        "https://www.googleapis.com/auth/gmail.readonly",
       ];
     case "microsoft":
-      return ["openid", "profile", "email", "offline_access", "User.Read", "Calendars.ReadWrite", "Mail.Send"];
+      return ["openid", "profile", "email", "offline_access", "User.Read", "Calendars.ReadWrite", "Mail.ReadWrite", "Mail.Send"];
     case "xero":
       return ["openid", "profile", "email", "offline_access", "accounting.transactions", "accounting.contacts"];
     case "quickbooks":
@@ -106,7 +114,7 @@ export function authorizationUrl(
 async function responseJson(response: Response): Promise<Record<string, unknown>> {
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`Provider request failed with HTTP ${response.status}.`);
+    throw new ProviderHttpError(response.status);
   }
   if (!text.trim()) return {};
   try {

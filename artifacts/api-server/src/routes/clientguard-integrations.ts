@@ -1,6 +1,6 @@
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, lte } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Response } from "express";
 import {
   auditEventsTable,
   billingDraftsTable,
@@ -26,6 +26,7 @@ import {
   hashOAuthState,
   providerJson,
   providerReady,
+  ProviderHttpError,
   providers,
   randomOAuthState,
   redirectUriFor,
@@ -251,23 +252,109 @@ async function reserveSync(
   entityId: number,
   clerkUserId: string,
 ) {
-  const [existing] = await db.select().from(providerSyncsTable).where(and(
+  const findExisting = () => db.select().from(providerSyncsTable).where(and(
     eq(providerSyncsTable.workspaceId, workspaceId),
     eq(providerSyncsTable.provider, provider),
     eq(providerSyncsTable.entityType, entityType),
     eq(providerSyncsTable.entityId, entityId),
   )).limit(1);
-  if (existing) return null;
+  const classifyExisting = async (existing: typeof providerSyncsTable.$inferSelect) => {
+    if (existing.externalId !== "pending") return { kind: "completed" as const, sync: existing };
+    if (!existing.idempotencyKey) return { kind: "uncertain" as const, sync: existing };
+
+    const leaseExpired = existing.syncStatus === "pending"
+      && Date.now() - existing.updatedAt.getTime() >= 60_000;
+    if (existing.syncStatus === "pending" && !leaseExpired) {
+      return { kind: "busy" as const, sync: existing };
+    }
+
+    if (leaseExpired) {
+      const [stale] = await db.update(providerSyncsTable).set({
+        syncStatus: "uncertain",
+        updatedAt: new Date(),
+      }).where(and(
+        eq(providerSyncsTable.id, existing.id),
+        eq(providerSyncsTable.syncStatus, "pending"),
+        lte(providerSyncsTable.updatedAt, new Date(Date.now() - 60_000)),
+      )).returning();
+      if (!stale) return { kind: "busy" as const, sync: existing };
+    }
+
+    const [claimed] = await db.update(providerSyncsTable).set({
+      syncStatus: "pending",
+      updatedAt: new Date(),
+    }).where(and(
+      eq(providerSyncsTable.id, existing.id),
+      eq(providerSyncsTable.syncStatus, "uncertain"),
+    )).returning();
+    return claimed
+      ? { kind: "retry" as const, sync: claimed }
+      : { kind: "busy" as const, sync: existing };
+  };
+
+  const [existing] = await findExisting();
+  if (existing) return classifyExisting(existing);
   try {
     const [sync] = await db.insert(providerSyncsTable).values({
       workspaceId, provider, entityType, entityId,
       externalId: "pending",
+      idempotencyKey: randomUUID(),
+      syncStatus: "pending",
       syncedByClerkUserId: clerkUserId,
     }).returning();
-    return sync;
-  } catch {
-    return null;
+    return { kind: "new" as const, sync };
+  } catch (error) {
+    const [raced] = await findExisting();
+    if (raced) return classifyExisting(raced);
+    throw error;
   }
+}
+
+function syncReservationRejected(
+  res: Response,
+  provider: Provider,
+  reservation: Awaited<ReturnType<typeof reserveSync>>,
+) {
+  if (reservation.kind === "new" || reservation.kind === "retry") return false;
+  if (reservation.kind === "uncertain") {
+    res.status(409).json({
+      error: `${providerLabel(provider)} may already have accepted this request. Its outcome is uncertain and no new record will be created until it can be reconciled.`,
+      code: "provider_sync_uncertain",
+      syncStatus: "uncertain",
+    });
+  } else {
+    res.status(409).json({
+      error: reservation.kind === "completed"
+        ? "This record has already been synced through this account."
+        : "This record is currently being synced. Wait a moment, then check again.",
+      code: reservation.kind === "completed" ? "provider_sync_completed" : "provider_sync_in_progress",
+      syncStatus: reservation.kind === "completed" ? "synced" : "pending",
+    });
+  }
+  return true;
+}
+
+function sendUncertainSyncResponse(res: Response, provider: Provider) {
+  res.status(409).json({
+    error: `${providerLabel(provider)} may already have accepted this request. Its outcome is uncertain; retrying will reconcile the existing request before creating anything else.`,
+    code: "provider_sync_uncertain",
+    syncStatus: "uncertain",
+  });
+}
+
+async function markSyncUncertain(id: number, remoteRecordId?: string | null) {
+  await db.update(providerSyncsTable).set({
+    syncStatus: "uncertain",
+    ...(remoteRecordId ? { remoteRecordId } : {}),
+    updatedAt: new Date(),
+  }).where(eq(providerSyncsTable.id, id));
+}
+
+async function saveRemoteRecordId(id: number, remoteRecordId: string) {
+  await db.update(providerSyncsTable).set({
+    remoteRecordId,
+    updatedAt: new Date(),
+  }).where(eq(providerSyncsTable.id, id));
 }
 
 async function finishSync(
@@ -281,17 +368,79 @@ async function finishSync(
   actor: string,
   label: string,
 ) {
-  await db.update(providerSyncsTable).set({
-    externalId, syncedAt: new Date(),
-  }).where(eq(providerSyncsTable.id, syncId));
-  await db.update(providerConnectionsTable).set({ lastSyncAt: new Date() }).where(eq(providerConnectionsTable.id, connectionId));
-  await audit(workspaceId, actor, "Firm user", "record_synced", entityType, entityId, label, {
-    provider, externalId,
+  const syncedAt = new Date();
+  await db.transaction(async (tx) => {
+    await tx.update(providerSyncsTable).set({
+      externalId,
+      remoteRecordId: null,
+      syncStatus: "synced",
+      syncedAt,
+      updatedAt: syncedAt,
+    }).where(eq(providerSyncsTable.id, syncId));
+    await tx.update(providerConnectionsTable).set({ lastSyncAt: syncedAt }).where(eq(providerConnectionsTable.id, connectionId));
+    await tx.insert(auditEventsTable).values({
+      workspaceId,
+      clerkUserId: actor,
+      actor: "Firm user",
+      action: "record_synced",
+      entityType,
+      entityId,
+      entityLabel: label,
+      details: { provider, externalId },
+    });
   });
 }
 
 async function removePendingSync(id: number) {
   await db.delete(providerSyncsTable).where(eq(providerSyncsTable.id, id));
+}
+
+async function preserveSyncAfterFailure(
+  syncId: number,
+  isNew: boolean,
+  createAttempted: boolean,
+  remoteRecordId?: string | null,
+) {
+  if (createAttempted || !isNew) {
+    await markSyncUncertain(syncId, remoteRecordId);
+  } else {
+    await removePendingSync(syncId);
+  }
+}
+
+function googleCalendarEventId(idempotencyKey: string) {
+  return idempotencyKey.replaceAll("-", "").toLowerCase();
+}
+
+const graphSyncPropertyId = "String {9d6c0a43-0f93-4b36-9f85-5d9e354cd2c1} Name ClientGuardSyncKey";
+
+async function reconcileCalendarEvent(provider: Provider, token: string, idempotencyKey: string) {
+  if (provider === "google") {
+    const eventId = googleCalendarEventId(idempotencyKey);
+    try {
+      const event = await providerJson(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`,
+        token,
+      );
+      return String(event.id ?? "") || null;
+    } catch (error) {
+      if (error instanceof ProviderHttpError && error.status === 404) return null;
+      throw error;
+    }
+  }
+  const url = new URL("https://graph.microsoft.com/v1.0/me/events");
+  url.searchParams.set(
+    "$filter",
+    `singleValueExtendedProperties/any(ep: ep/id eq '${graphSyncPropertyId}' and ep/value eq '${idempotencyKey}')`,
+  );
+  url.searchParams.set("$select", "id,transactionId");
+  url.searchParams.set("$expand", `singleValueExtendedProperties($filter=id eq '${graphSyncPropertyId}')`);
+  const result = await providerJson(
+    url.toString(),
+    token,
+  );
+  const events = Array.isArray(result.value) ? result.value as Array<Record<string, unknown>> : [];
+  return events[0]?.id ? String(events[0].id) : null;
 }
 
 router.post("/integrations/:provider/calendar/:id/sync", async (req, res): Promise<void> => {
@@ -317,31 +466,44 @@ router.post("/integrations/:provider/calendar/:id/sync", async (req, res): Promi
     res.status(409).json({ error: `Connect ${providerLabel(provider)} before syncing this item.` });
     return;
   }
-  const sync = await reserveSync(access.workspaceId, provider, "planner_item", id, access.userId);
-  if (!sync) {
-    res.status(409).json({ error: "This planner item has already been synced or is currently syncing." });
-    return;
-  }
+  const reservation = await reserveSync(access.workspaceId, provider, "planner_item", id, access.userId);
+  if (syncReservationRejected(res, provider, reservation)) return;
+  const { sync } = reservation;
+  let createAttempted = false;
   try {
     const token = await accessTokenFor(connection);
+    if (reservation.kind === "retry") {
+      const externalId = await reconcileCalendarEvent(provider, token, sync.idempotencyKey!);
+      if (externalId) {
+        await finishSync(sync.id, externalId, connection.id, access.workspaceId, provider, "planner_item", id, access.userId, item.title);
+        res.json(api.SyncApprovedPlannerItemResponse.parse({
+          provider, externalId, message: `Existing calendar event reconciled in ${providerLabel(provider)}.`,
+        }));
+        return;
+      }
+    }
     const start = new Date(item.dueAt);
     const end = new Date(start.getTime() + 30 * 60 * 1000);
     const description = [item.details, item.sourceQuote ? `Source: ${item.sourceQuote}` : ""].filter(Boolean).join("\n\n");
     let externalId = "";
     if (provider === "google") {
+      const eventId = googleCalendarEventId(sync.idempotencyKey!);
+      createAttempted = true;
       const result = await providerJson("https://www.googleapis.com/calendar/v3/calendars/primary/events", token, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          id: eventId,
           summary: item.title,
           description,
           start: { dateTime: start.toISOString(), timeZone: "UTC" },
           end: { dateTime: end.toISOString(), timeZone: "UTC" },
-          extendedProperties: { private: { clientguardPlannerItemId: String(item.id) } },
+          extendedProperties: { private: { clientguardSyncKey: sync.idempotencyKey! } },
         }),
       });
       externalId = String(result.id ?? "");
     } else {
+      createAttempted = true;
       const result = await providerJson("https://graph.microsoft.com/v1.0/me/events", token, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -350,7 +512,10 @@ router.post("/integrations/:provider/calendar/:id/sync", async (req, res): Promi
           body: { contentType: "text", content: description },
           start: { dateTime: start.toISOString().replace("Z", ""), timeZone: "UTC" },
           end: { dateTime: end.toISOString().replace("Z", ""), timeZone: "UTC" },
-          transactionId: randomUUID(),
+          transactionId: sync.idempotencyKey,
+          singleValueExtendedProperties: [
+            { id: graphSyncPropertyId, value: sync.idempotencyKey! },
+          ],
         }),
       });
       externalId = String(result.id ?? "");
@@ -361,8 +526,28 @@ router.post("/integrations/:provider/calendar/:id/sync", async (req, res): Promi
       provider, externalId, message: `Calendar event created in ${providerLabel(provider)}.`,
     }));
   } catch (error) {
-    await removePendingSync(sync.id);
+    if (createAttempted) {
+      try {
+        const token = await accessTokenFor(connection);
+        const externalId = await reconcileCalendarEvent(provider, token, sync.idempotencyKey!);
+        if (externalId) {
+          await finishSync(sync.id, externalId, connection.id, access.workspaceId, provider, "planner_item", id, access.userId, item.title);
+          res.json(api.SyncApprovedPlannerItemResponse.parse({
+            provider, externalId, message: `Existing calendar event reconciled in ${providerLabel(provider)}.`,
+          }));
+          return;
+        }
+      } catch (reconcileError) {
+        req.log.warn({ err: reconcileError, provider, plannerItemId: id }, "Calendar sync reconciliation failed");
+      }
+    }
+    const uncertain = createAttempted || reservation.kind === "retry";
+    await preserveSyncAfterFailure(sync.id, reservation.kind === "new", createAttempted);
     req.log.warn({ err: error, provider, plannerItemId: id }, "Calendar sync failed");
+    if (uncertain) {
+      sendUncertainSyncResponse(res, provider);
+      return;
+    }
     res.status(502).json({ error: "Calendar sync failed. Check the connected account and try again." });
   }
 });
@@ -485,6 +670,77 @@ async function quickbooksTaxCode(token: string, realmId: string, taxRateBps: num
   return String(match.Id);
 }
 
+function xeroInvoiceReference(idempotencyKey: string) {
+  return `ClientGuard-${idempotencyKey}`;
+}
+
+async function reconcileXeroInvoice(token: string, tenantId: string, idempotencyKey: string) {
+  const where = encodeURIComponent(`Reference=="${xeroInvoiceReference(idempotencyKey)}"`);
+  const result = await providerJson(
+    `https://api.xero.com/api.xro/2.0/Invoices?where=${where}`,
+    token,
+    { headers: { "xero-tenant-id": tenantId } },
+  );
+  const invoices = Array.isArray(result.Invoices) ? result.Invoices as Array<Record<string, unknown>> : [];
+  return invoices[0]?.InvoiceID ? String(invoices[0].InvoiceID) : null;
+}
+
+function gmailMessageId(idempotencyKey: string) {
+  return `clientguard-${idempotencyKey}@clientguard.invalid`;
+}
+
+async function reconcileGmailEmail(token: string, idempotencyKey: string) {
+  const messageId = gmailMessageId(idempotencyKey);
+  const query = `rfc822msgid:${messageId}`;
+  const sent = await providerJson(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(`in:sent ${query}`)}`,
+    token,
+  );
+  const sentMessages = Array.isArray(sent.messages) ? sent.messages as Array<Record<string, unknown>> : [];
+  if (sentMessages[0]?.id) return { kind: "sent" as const, id: String(sentMessages[0].id) };
+
+  const drafts = await providerJson(
+    `https://gmail.googleapis.com/gmail/v1/users/me/drafts?q=${encodeURIComponent(query)}`,
+    token,
+  );
+  const draftRows = Array.isArray(drafts.drafts) ? drafts.drafts as Array<Record<string, unknown>> : [];
+  return draftRows[0]?.id
+    ? { kind: "draft" as const, id: String(draftRows[0].id) }
+    : { kind: "missing" as const, id: null };
+}
+
+async function reconcileMicrosoftEmail(
+  token: string,
+  idempotencyKey: string,
+  remoteRecordId?: string | null,
+) {
+  const headers = { Prefer: 'IdType="ImmutableId"' };
+  if (remoteRecordId) {
+    try {
+      const message = await providerJson(
+        `https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(remoteRecordId)}?$select=id,isDraft`,
+        token,
+        { headers },
+      );
+      if (message.id) return { kind: message.isDraft === true ? "draft" as const : "sent" as const, id: String(message.id) };
+    } catch (error) {
+      if (!(error instanceof ProviderHttpError && error.status === 404)) throw error;
+    }
+  }
+  const url = new URL("https://graph.microsoft.com/v1.0/me/messages");
+  url.searchParams.set(
+    "$filter",
+    `singleValueExtendedProperties/any(ep: ep/id eq '${graphSyncPropertyId}' and ep/value eq '${idempotencyKey}')`,
+  );
+  url.searchParams.set("$select", "id,isDraft");
+  url.searchParams.set("$expand", `singleValueExtendedProperties($filter=id eq '${graphSyncPropertyId}')`);
+  const result = await providerJson(url.toString(), token, { headers });
+  const messages = Array.isArray(result.value) ? result.value as Array<Record<string, unknown>> : [];
+  return messages[0]?.id
+    ? { kind: messages[0].isDraft === true ? "draft" as const : "sent" as const, id: String(messages[0].id) }
+    : { kind: "missing" as const, id: null };
+}
+
 router.post("/integrations/:provider/billing/:id/sync", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res, true);
   if (!access) return;
@@ -515,13 +771,29 @@ router.post("/integrations/:provider/billing/:id/sync", async (req, res): Promis
     res.status(409).json({ error: `Connect ${providerLabel(provider)} before syncing this bill.` });
     return;
   }
-  const sync = await reserveSync(access.workspaceId, provider, "billing_draft", id, access.userId);
-  if (!sync) {
-    res.status(409).json({ error: "This reviewed bill has already been synced or is currently syncing." });
-    return;
-  }
+  const reservation = await reserveSync(access.workspaceId, provider, "billing_draft", id, access.userId);
+  if (syncReservationRejected(res, provider, reservation)) return;
+  const { sync } = reservation;
+  let createAttempted = false;
   try {
     const token = await accessTokenFor(connection);
+    if (reservation.kind === "retry" && provider === "xero") {
+      const tenantId = connection.remoteAccountId;
+      if (!tenantId) throw new Error("Reconnect Xero; the organisation identifier is unavailable.");
+      const externalId = await reconcileXeroInvoice(token, tenantId, sync.idempotencyKey!);
+      if (externalId) {
+        await finishSync(sync.id, externalId, connection.id, access.workspaceId, provider, "billing_draft", id, access.userId, `Billing draft ${id}`);
+        res.json(api.SyncReviewedBillResponse.parse({
+          provider, externalId, message: `Existing reviewed bill reconciled in ${providerLabel(provider)}.`,
+        }));
+        return;
+      }
+      if (Date.now() - sync.createdAt.getTime() > 6 * 60 * 1000) {
+        await markSyncUncertain(sync.id);
+        sendUncertainSyncResponse(res, provider);
+        return;
+      }
+    }
     const taxRateBps = row.profile?.taxRateBps ?? 0;
     const expectedTax = Math.round(row.draft.subtotalCents * taxRateBps / 10_000);
     if (Math.abs(expectedTax - row.draft.taxCents) > 1) {
@@ -535,9 +807,14 @@ router.post("/integrations/:provider/billing/:id/sync", async (req, res): Promis
         xeroContact(token, tenantId, row.client.name, row.client.email),
         xeroAccountAndTax(token, tenantId, taxRateBps),
       ]);
+      createAttempted = true;
       const response = await providerJson("https://api.xero.com/api.xro/2.0/Invoices", token, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "xero-tenant-id": tenantId },
+        headers: {
+          "Content-Type": "application/json",
+          "xero-tenant-id": tenantId,
+          "Idempotency-Key": sync.idempotencyKey!,
+        },
         body: JSON.stringify({
           Invoices: [{
             Type: "ACCREC",
@@ -545,7 +822,7 @@ router.post("/integrations/:provider/billing/:id/sync", async (req, res): Promis
             Contact: { ContactID: contactId },
             Date: row.draft.periodEndAt.toISOString().slice(0, 10),
             CurrencyCode: row.draft.currency,
-            Reference: `ClientGuard reviewed draft ${row.draft.id}`,
+            Reference: xeroInvoiceReference(sync.idempotencyKey!),
             LineItems: row.draft.lineItems.map((line) => ({
               Description: line.description,
               Quantity: 1,
@@ -569,14 +846,15 @@ router.post("/integrations/:provider/billing/:id/sync", async (req, res): Promis
       const base = process.env.QUICKBOOKS_ENVIRONMENT === "sandbox"
         ? "https://sandbox-quickbooks.api.intuit.com"
         : "https://quickbooks.api.intuit.com";
+      createAttempted = true;
       const response = await providerJsonWithBody(
-        `${base}/v3/company/${encodeURIComponent(realmId)}/invoice?minorversion=75`,
+        `${base}/v3/company/${encodeURIComponent(realmId)}/invoice?minorversion=75&requestid=${encodeURIComponent(sync.idempotencyKey!)}`,
         token,
         {
           CustomerRef: { value: customerId },
           TxnDate: row.draft.periodEndAt.toISOString().slice(0, 10),
           CurrencyRef: { value: row.draft.currency },
-          PrivateNote: `ClientGuard reviewed draft ${row.draft.id}`,
+          PrivateNote: `ClientGuard reviewed draft ${row.draft.id}; sync ${sync.idempotencyKey}`,
           EmailStatus: "NotSet",
           GlobalTaxCalculation: "TaxExcluded",
           TxnTaxDetail: { TxnTaxCodeRef: { value: taxCodeId }, TotalTax: row.draft.taxCents / 100 },
@@ -602,8 +880,28 @@ router.post("/integrations/:provider/billing/:id/sync", async (req, res): Promis
       provider, externalId, message: `Reviewed bill created in ${providerLabel(provider)} without sending it to the client.`,
     }));
   } catch (error) {
-    await removePendingSync(sync.id);
+    if (createAttempted && provider === "xero" && connection.remoteAccountId) {
+      try {
+        const token = await accessTokenFor(connection);
+        const externalId = await reconcileXeroInvoice(token, connection.remoteAccountId, sync.idempotencyKey!);
+        if (externalId) {
+          await finishSync(sync.id, externalId, connection.id, access.workspaceId, provider, "billing_draft", id, access.userId, `Billing draft ${id}`);
+          res.json(api.SyncReviewedBillResponse.parse({
+            provider, externalId, message: `Existing reviewed bill reconciled in ${providerLabel(provider)}.`,
+          }));
+          return;
+        }
+      } catch (reconcileError) {
+        req.log.warn({ err: reconcileError, provider, billingDraftId: id }, "Invoice sync reconciliation failed");
+      }
+    }
+    const uncertain = createAttempted || reservation.kind === "retry";
+    await preserveSyncAfterFailure(sync.id, reservation.kind === "new", createAttempted);
     req.log.warn({ err: error, provider, billingDraftId: id }, "Reviewed bill sync failed");
+    if (uncertain) {
+      sendUncertainSyncResponse(res, provider);
+      return;
+    }
     const message = error instanceof Error ? error.message : "";
     const status = message.includes("Set up") || message.includes("matching") || message.includes("reconnect") || message.includes("matches the billing profile")
       ? 409
@@ -645,52 +943,143 @@ router.post("/integrations/:provider/email", async (req, res): Promise<void> => 
     res.status(409).json({ error: `Connect ${providerLabel(provider)} before sending this update.` });
     return;
   }
-  const sync = await reserveSync(access.workspaceId, provider, "client_update_email", draft.draft.id, access.userId);
-  if (!sync) {
-    res.status(409).json({ error: "This update has already been sent through this account." });
-    return;
-  }
+  const reservation = await reserveSync(access.workspaceId, provider, "client_update_email", draft.draft.id, access.userId);
+  if (syncReservationRejected(res, provider, reservation)) return;
+  const { sync } = reservation;
+  let createAttempted = false;
+  let remoteRecordId = sync.remoteRecordId;
   try {
     const token = await accessTokenFor(connection);
     const subject = draft.draft.subject.replace(/[\r\n]+/g, " ").trim();
     let externalId = "";
     if (provider === "google") {
-      const mime = [
-        `To: ${draft.client.email}`,
-        `Subject: ${subject}`,
-        "MIME-Version: 1.0",
-        "Content-Type: text/plain; charset=UTF-8",
-        "",
-        draft.draft.body,
-      ].join("\r\n");
-      const result = await providerJson("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", token, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ raw: Buffer.from(mime, "utf8").toString("base64url") }),
-      });
-      externalId = String(result.id ?? randomUUID());
+      if (reservation.kind === "retry") {
+        const reconciled = await reconcileGmailEmail(token, sync.idempotencyKey!);
+        if (reconciled.kind === "sent") {
+          externalId = reconciled.id!;
+        } else if (reconciled.kind === "draft") {
+          remoteRecordId = reconciled.id;
+          await saveRemoteRecordId(sync.id, remoteRecordId!);
+        } else {
+          await markSyncUncertain(sync.id);
+          sendUncertainSyncResponse(res, provider);
+          return;
+        }
+      }
+      if (!externalId) {
+        if (!remoteRecordId) {
+          const mime = [
+            `To: ${draft.client.email}`,
+            `Subject: ${subject}`,
+            `Message-ID: <${gmailMessageId(sync.idempotencyKey!)}>`,
+            "MIME-Version: 1.0",
+            "Content-Type: text/plain; charset=UTF-8",
+            "",
+            draft.draft.body,
+          ].join("\r\n");
+          createAttempted = true;
+          const created = await providerJson("https://gmail.googleapis.com/gmail/v1/users/me/drafts", token, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: { raw: Buffer.from(mime, "utf8").toString("base64url") } }),
+          });
+          remoteRecordId = String(created.id ?? "");
+          if (!remoteRecordId) throw new Error("Gmail did not return the saved draft identifier.");
+          await saveRemoteRecordId(sync.id, remoteRecordId);
+        }
+        createAttempted = true;
+        const sent = await providerJson("https://gmail.googleapis.com/gmail/v1/users/me/drafts/send", token, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: remoteRecordId }),
+        });
+        const sentMessage = sent.message as Record<string, unknown> | undefined;
+        externalId = String(sentMessage?.id ?? sent.id ?? "");
+        if (!externalId) {
+          const reconciled = await reconcileGmailEmail(token, sync.idempotencyKey!);
+          if (reconciled.kind !== "sent") throw new Error("Gmail accepted the send request without confirming the sent message.");
+          externalId = reconciled.id!;
+        }
+      }
     } else {
-      const result = await providerJson("https://graph.microsoft.com/v1.0/me/sendMail", token, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: {
-            subject,
-            body: { contentType: "Text", content: draft.draft.body },
-            toRecipients: [{ emailAddress: { address: draft.client.email } }],
-          },
-          saveToSentItems: true,
-        }),
-      });
-      externalId = String(result.id ?? randomUUID());
+      if (reservation.kind === "retry") {
+        const reconciled = await reconcileMicrosoftEmail(token, sync.idempotencyKey!, remoteRecordId);
+        if (reconciled.kind === "sent") {
+          externalId = reconciled.id!;
+        } else if (reconciled.kind === "draft") {
+          remoteRecordId = reconciled.id;
+          await saveRemoteRecordId(sync.id, remoteRecordId!);
+        } else {
+          await markSyncUncertain(sync.id);
+          sendUncertainSyncResponse(res, provider);
+          return;
+        }
+      }
+      if (!externalId) {
+        if (!remoteRecordId) {
+          createAttempted = true;
+          const created = await providerJson("https://graph.microsoft.com/v1.0/me/messages", token, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Prefer: 'IdType="ImmutableId"',
+            },
+            body: JSON.stringify({
+              subject,
+              body: { contentType: "Text", content: draft.draft.body },
+              toRecipients: [{ emailAddress: { address: draft.client.email } }],
+              internetMessageHeaders: [
+                { name: "x-clientguard-sync-key", value: sync.idempotencyKey! },
+              ],
+              singleValueExtendedProperties: [
+                { id: graphSyncPropertyId, value: sync.idempotencyKey! },
+              ],
+            }),
+          });
+          remoteRecordId = String(created.id ?? "");
+          if (!remoteRecordId) throw new Error("Microsoft did not return the saved draft identifier.");
+          await saveRemoteRecordId(sync.id, remoteRecordId);
+        }
+        createAttempted = true;
+        await providerJson(`https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(remoteRecordId)}/send`, token, {
+          method: "POST",
+          headers: { Prefer: 'IdType="ImmutableId"' },
+        });
+        const sent = await reconcileMicrosoftEmail(token, sync.idempotencyKey!, remoteRecordId);
+        if (sent.kind !== "sent") throw new Error("Microsoft accepted the send request without confirming the sent message.");
+        externalId = sent.id!;
+      }
     }
     await finishSync(sync.id, externalId, connection.id, access.workspaceId, provider, "client_update_email", draft.draft.id, access.userId, draft.draft.subject);
     res.json(api.SendReviewedClientUpdateEmailResponse.parse({
       provider, externalId, message: "Reviewed client update sent.",
     }));
   } catch (error) {
-    await removePendingSync(sync.id);
+    if (createAttempted) {
+      try {
+        const token = await accessTokenFor(connection);
+        const reconciled = provider === "google"
+          ? await reconcileGmailEmail(token, sync.idempotencyKey!)
+          : await reconcileMicrosoftEmail(token, sync.idempotencyKey!, remoteRecordId);
+        if (reconciled.kind === "sent") {
+          await finishSync(sync.id, reconciled.id!, connection.id, access.workspaceId, provider, "client_update_email", draft.draft.id, access.userId, draft.draft.subject);
+          res.json(api.SendReviewedClientUpdateEmailResponse.parse({
+            provider, externalId: reconciled.id, message: "Existing sent email reconciled.",
+          }));
+          return;
+        }
+        if (reconciled.kind === "draft") remoteRecordId = reconciled.id;
+      } catch (reconcileError) {
+        req.log.warn({ err: reconcileError, provider, draftId: draft.draft.id }, "Client update email reconciliation failed");
+      }
+    }
+    const uncertain = createAttempted || reservation.kind === "retry";
+    await preserveSyncAfterFailure(sync.id, reservation.kind === "new", createAttempted, remoteRecordId);
     req.log.warn({ err: error, provider, draftId: draft.draft.id }, "Reviewed client update email failed");
+    if (uncertain) {
+      sendUncertainSyncResponse(res, provider);
+      return;
+    }
     res.status(502).json({ error: "Email delivery failed. Check the connected account and try again." });
   }
 });

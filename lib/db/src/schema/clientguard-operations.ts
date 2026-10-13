@@ -377,10 +377,20 @@ export const providerSyncsTable = pgTable(
     entityType: text("entity_type").notNull(),
     entityId: integer("entity_id").notNull(),
     externalId: text("external_id").notNull(),
+    idempotencyKey: text("idempotency_key"),
+    remoteRecordId: text("remote_record_id"),
+    syncStatus: text("sync_status").notNull().default("synced"),
     syncedByClerkUserId: text("synced_by_clerk_user_id").notNull(),
     syncedAt: timestamp("synced_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("clientguard_provider_sync_entity_unique").on(
@@ -392,6 +402,9 @@ export const providerSyncsTable = pgTable(
     index("clientguard_provider_sync_workspace_idx").on(
       table.workspaceId,
       table.syncedAt,
+    ),
+    uniqueIndex("clientguard_provider_sync_idempotency_unique").on(
+      table.idempotencyKey,
     ),
   ],
 );
