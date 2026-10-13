@@ -36,4 +36,12 @@ entityType?: ListActivityEntityType;
  * @minimum 1
  */
 entityId?: number;
+/**
+ * Include events occurring on or after this UTC calendar date.
+ */
+startDate?: Date;
+/**
+ * Include events occurring on or before this UTC calendar date.
+ */
+endDate?: Date;
 };

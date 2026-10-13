@@ -11,7 +11,12 @@ const apiMocks = vi.hoisted(() => ({
   useListClients: vi.fn(),
   useCreateClient: vi.fn(),
   useGetIntakeOverview: vi.fn(),
+  useGetIntakeDrafts: vi.fn(),
   useCreateIntake: vi.fn(),
+  useCreateIntakeDraft: vi.fn(),
+  useUpdateIntakeDraft: vi.fn(),
+  useDeleteIntakeDraft: vi.fn(),
+  useSubmitIntakeDraft: vi.fn(),
   useSaveIntakeChecks: vi.fn(),
   useListWorkspaceAssignmentMembers: vi.fn(),
   useOpenMatterFromIntake: vi.fn(),
@@ -25,6 +30,7 @@ vi.mock('@workspace/api-client-react', () => ({
   getListActivityQueryKey: () => ['activity'],
   getListClientsQueryKey: () => ['clients'],
   getGetIntakeOverviewQueryKey: () => ['intake'],
+  getGetIntakeDraftsQueryKey: () => ['intake-drafts'],
 }));
 
 import { ClientsPage, Dashboard, SetupPage } from './App';
@@ -94,7 +100,17 @@ describe('new-firm dashboard onboarding', () => {
       isError: false,
       refetch: vi.fn(),
     });
+    apiMocks.useGetIntakeDrafts.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
     apiMocks.useCreateIntake.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    apiMocks.useCreateIntakeDraft.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    apiMocks.useUpdateIntakeDraft.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    apiMocks.useDeleteIntakeDraft.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    apiMocks.useSubmitIntakeDraft.mockReturnValue({ mutate: vi.fn(), isPending: false });
     apiMocks.useSaveIntakeChecks.mockReturnValue({ mutate: vi.fn(), isPending: false });
     apiMocks.useListWorkspaceAssignmentMembers.mockReturnValue({
       data: [],

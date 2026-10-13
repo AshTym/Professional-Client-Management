@@ -466,11 +466,6 @@ export const listActivityQuerySnapshotIdMin = 0;
 
 export const listActivityQueryActorNameMax = 255;
 
-const ActivityCalendarDate = zod.string().refine((value) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}, 'Expected a valid date in YYYY-MM-DD format');
 
 
 
@@ -481,16 +476,8 @@ export const ListActivityQueryParams = zod.object({
   "actorName": zod.coerce.string().max(listActivityQueryActorNameMax).optional().describe('Restrict results to activity by this exact actor name in the current firm\'s history.'),
   "entityType": zod.enum(['client', 'matter', 'workspace']).optional().describe('Restrict results to a related client, matter, or workspace record.'),
   "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.'),
-  "startDate": ActivityCalendarDate.optional().describe('Include events occurring on or after this UTC calendar date.'),
-  "endDate": ActivityCalendarDate.optional().describe('Include events occurring on or before this UTC calendar date.')
-}).superRefine((value, context) => {
-  if (value.startDate && value.endDate && value.startDate > value.endDate) {
-    context.addIssue({
-      code: zod.ZodIssueCode.custom,
-      path: ['endDate'],
-      message: 'End date must be on or after the start date.',
-    });
-  }
+  "startDate": zod.date().optional().describe('Include events occurring on or after this UTC calendar date.'),
+  "endDate": zod.date().optional().describe('Include events occurring on or before this UTC calendar date.')
 })
 
 export const listActivityResponseSnapshotIdMin = 0;
@@ -523,16 +510,8 @@ export const ExportActivityQueryParams = zod.object({
   "actorName": zod.coerce.string().max(exportActivityQueryActorNameMax).optional().describe('Restrict results to activity by this exact actor name in the current firm\'s history.'),
   "entityType": zod.enum(['client', 'matter', 'workspace']).optional().describe('Restrict results to a related client, matter, or workspace record.'),
   "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.'),
-  "startDate": ActivityCalendarDate.optional().describe('Include events occurring on or after this UTC calendar date.'),
-  "endDate": ActivityCalendarDate.optional().describe('Include events occurring on or before this UTC calendar date.')
-}).superRefine((value, context) => {
-  if (value.startDate && value.endDate && value.startDate > value.endDate) {
-    context.addIssue({
-      code: zod.ZodIssueCode.custom,
-      path: ['endDate'],
-      message: 'End date must be on or after the start date.',
-    });
-  }
+  "startDate": zod.date().optional().describe('Include events occurring on or after this UTC calendar date.'),
+  "endDate": zod.date().optional().describe('Include events occurring on or before this UTC calendar date.')
 })
 
 export const ExportActivityResponse = zod.unknown()
@@ -1416,6 +1395,321 @@ export const SaveIntakeChecksResponse = zod.object({
   "required": zod.boolean(),
   "category": zod.string().min(1).max(saveIntakeChecksResponseChecksItemCategoryMax)
 })).max(saveIntakeChecksResponseChecksMax)
+})
+
+
+/**
+ * @summary List saved intake drafts for the current firm
+ */
+
+export const getIntakeDraftsResponseDataClientNameMax = 200;
+
+export const getIntakeDraftsResponseDataEmailMax = 320;
+
+export const getIntakeDraftsResponseDataPhoneMax = 80;
+
+export const getIntakeDraftsResponseDataIndustryMax = 160;
+
+export const getIntakeDraftsResponseDataMatterTitleMax = 240;
+
+export const getIntakeDraftsResponseDataMatterTypeMax = 160;
+
+
+export const getIntakeDraftsResponseDataDueAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getIntakeDraftsResponseDataPartyNamesItemMax = 200;
+
+export const getIntakeDraftsResponseDataPartyNamesMax = 100;
+
+export const getIntakeDraftsResponseDataAnswersMaxOne = 5000;
+
+
+
+export const GetIntakeDraftsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "data": zod.object({
+  "clientId": zod.number().int().min(1).nullable(),
+  "clientName": zod.string().max(getIntakeDraftsResponseDataClientNameMax),
+  "clientType": zod.enum(['individual', 'organization']),
+  "email": zod.string().max(getIntakeDraftsResponseDataEmailMax).nullable(),
+  "phone": zod.string().max(getIntakeDraftsResponseDataPhoneMax).nullable(),
+  "industry": zod.string().max(getIntakeDraftsResponseDataIndustryMax).nullable(),
+  "matterTitle": zod.string().max(getIntakeDraftsResponseDataMatterTitleMax),
+  "matterType": zod.string().max(getIntakeDraftsResponseDataMatterTypeMax),
+  "responsibleMemberId": zod.number().int().min(1).nullable(),
+  "dueAt": zod.string().regex(getIntakeDraftsResponseDataDueAtRegExp).nullable(),
+  "partyNames": zod.array(zod.string().max(getIntakeDraftsResponseDataPartyNamesItemMax)).max(getIntakeDraftsResponseDataPartyNamesMax),
+  "answers": zod.record(zod.string(), zod.string().max(getIntakeDraftsResponseDataAnswersMaxOne))
+}),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const GetIntakeDraftsResponse = zod.array(GetIntakeDraftsResponseItem)
+
+
+/**
+ * @summary Save an incomplete intake draft
+ */
+
+export const createIntakeDraftBodyClientNameMax = 200;
+
+export const createIntakeDraftBodyEmailMax = 320;
+
+export const createIntakeDraftBodyPhoneMax = 80;
+
+export const createIntakeDraftBodyIndustryMax = 160;
+
+export const createIntakeDraftBodyMatterTitleMax = 240;
+
+export const createIntakeDraftBodyMatterTypeMax = 160;
+
+
+export const createIntakeDraftBodyDueAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const createIntakeDraftBodyPartyNamesItemMax = 200;
+
+export const createIntakeDraftBodyPartyNamesMax = 100;
+
+export const createIntakeDraftBodyAnswersMaxOne = 5000;
+
+
+
+export const CreateIntakeDraftBody = zod.object({
+  "clientId": zod.number().int().min(1).nullable(),
+  "clientName": zod.string().max(createIntakeDraftBodyClientNameMax),
+  "clientType": zod.enum(['individual', 'organization']),
+  "email": zod.string().max(createIntakeDraftBodyEmailMax).nullable(),
+  "phone": zod.string().max(createIntakeDraftBodyPhoneMax).nullable(),
+  "industry": zod.string().max(createIntakeDraftBodyIndustryMax).nullable(),
+  "matterTitle": zod.string().max(createIntakeDraftBodyMatterTitleMax),
+  "matterType": zod.string().max(createIntakeDraftBodyMatterTypeMax),
+  "responsibleMemberId": zod.number().int().min(1).nullable(),
+  "dueAt": zod.string().regex(createIntakeDraftBodyDueAtRegExp).nullable(),
+  "partyNames": zod.array(zod.string().max(createIntakeDraftBodyPartyNamesItemMax)).max(createIntakeDraftBodyPartyNamesMax),
+  "answers": zod.record(zod.string(), zod.string().max(createIntakeDraftBodyAnswersMaxOne))
+})
+
+
+export const createIntakeDraftResponseDataClientNameMax = 200;
+
+export const createIntakeDraftResponseDataEmailMax = 320;
+
+export const createIntakeDraftResponseDataPhoneMax = 80;
+
+export const createIntakeDraftResponseDataIndustryMax = 160;
+
+export const createIntakeDraftResponseDataMatterTitleMax = 240;
+
+export const createIntakeDraftResponseDataMatterTypeMax = 160;
+
+
+export const createIntakeDraftResponseDataDueAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const createIntakeDraftResponseDataPartyNamesItemMax = 200;
+
+export const createIntakeDraftResponseDataPartyNamesMax = 100;
+
+export const createIntakeDraftResponseDataAnswersMaxOne = 5000;
+
+
+
+export const CreateIntakeDraftResponse = zod.object({
+  "id": zod.number().int(),
+  "data": zod.object({
+  "clientId": zod.number().int().min(1).nullable(),
+  "clientName": zod.string().max(createIntakeDraftResponseDataClientNameMax),
+  "clientType": zod.enum(['individual', 'organization']),
+  "email": zod.string().max(createIntakeDraftResponseDataEmailMax).nullable(),
+  "phone": zod.string().max(createIntakeDraftResponseDataPhoneMax).nullable(),
+  "industry": zod.string().max(createIntakeDraftResponseDataIndustryMax).nullable(),
+  "matterTitle": zod.string().max(createIntakeDraftResponseDataMatterTitleMax),
+  "matterType": zod.string().max(createIntakeDraftResponseDataMatterTypeMax),
+  "responsibleMemberId": zod.number().int().min(1).nullable(),
+  "dueAt": zod.string().regex(createIntakeDraftResponseDataDueAtRegExp).nullable(),
+  "partyNames": zod.array(zod.string().max(createIntakeDraftResponseDataPartyNamesItemMax)).max(createIntakeDraftResponseDataPartyNamesMax),
+  "answers": zod.record(zod.string(), zod.string().max(createIntakeDraftResponseDataAnswersMaxOne))
+}),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update a saved intake draft
+ */
+
+
+
+export const UpdateIntakeDraftParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+
+export const updateIntakeDraftBodyClientNameMax = 200;
+
+export const updateIntakeDraftBodyEmailMax = 320;
+
+export const updateIntakeDraftBodyPhoneMax = 80;
+
+export const updateIntakeDraftBodyIndustryMax = 160;
+
+export const updateIntakeDraftBodyMatterTitleMax = 240;
+
+export const updateIntakeDraftBodyMatterTypeMax = 160;
+
+
+export const updateIntakeDraftBodyDueAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const updateIntakeDraftBodyPartyNamesItemMax = 200;
+
+export const updateIntakeDraftBodyPartyNamesMax = 100;
+
+export const updateIntakeDraftBodyAnswersMaxOne = 5000;
+
+
+
+export const UpdateIntakeDraftBody = zod.object({
+  "clientId": zod.number().int().min(1).nullable(),
+  "clientName": zod.string().max(updateIntakeDraftBodyClientNameMax),
+  "clientType": zod.enum(['individual', 'organization']),
+  "email": zod.string().max(updateIntakeDraftBodyEmailMax).nullable(),
+  "phone": zod.string().max(updateIntakeDraftBodyPhoneMax).nullable(),
+  "industry": zod.string().max(updateIntakeDraftBodyIndustryMax).nullable(),
+  "matterTitle": zod.string().max(updateIntakeDraftBodyMatterTitleMax),
+  "matterType": zod.string().max(updateIntakeDraftBodyMatterTypeMax),
+  "responsibleMemberId": zod.number().int().min(1).nullable(),
+  "dueAt": zod.string().regex(updateIntakeDraftBodyDueAtRegExp).nullable(),
+  "partyNames": zod.array(zod.string().max(updateIntakeDraftBodyPartyNamesItemMax)).max(updateIntakeDraftBodyPartyNamesMax),
+  "answers": zod.record(zod.string(), zod.string().max(updateIntakeDraftBodyAnswersMaxOne))
+})
+
+
+export const updateIntakeDraftResponseDataClientNameMax = 200;
+
+export const updateIntakeDraftResponseDataEmailMax = 320;
+
+export const updateIntakeDraftResponseDataPhoneMax = 80;
+
+export const updateIntakeDraftResponseDataIndustryMax = 160;
+
+export const updateIntakeDraftResponseDataMatterTitleMax = 240;
+
+export const updateIntakeDraftResponseDataMatterTypeMax = 160;
+
+
+export const updateIntakeDraftResponseDataDueAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const updateIntakeDraftResponseDataPartyNamesItemMax = 200;
+
+export const updateIntakeDraftResponseDataPartyNamesMax = 100;
+
+export const updateIntakeDraftResponseDataAnswersMaxOne = 5000;
+
+
+
+export const UpdateIntakeDraftResponse = zod.object({
+  "id": zod.number().int(),
+  "data": zod.object({
+  "clientId": zod.number().int().min(1).nullable(),
+  "clientName": zod.string().max(updateIntakeDraftResponseDataClientNameMax),
+  "clientType": zod.enum(['individual', 'organization']),
+  "email": zod.string().max(updateIntakeDraftResponseDataEmailMax).nullable(),
+  "phone": zod.string().max(updateIntakeDraftResponseDataPhoneMax).nullable(),
+  "industry": zod.string().max(updateIntakeDraftResponseDataIndustryMax).nullable(),
+  "matterTitle": zod.string().max(updateIntakeDraftResponseDataMatterTitleMax),
+  "matterType": zod.string().max(updateIntakeDraftResponseDataMatterTypeMax),
+  "responsibleMemberId": zod.number().int().min(1).nullable(),
+  "dueAt": zod.string().regex(updateIntakeDraftResponseDataDueAtRegExp).nullable(),
+  "partyNames": zod.array(zod.string().max(updateIntakeDraftResponseDataPartyNamesItemMax)).max(updateIntakeDraftResponseDataPartyNamesMax),
+  "answers": zod.record(zod.string(), zod.string().max(updateIntakeDraftResponseDataAnswersMaxOne))
+}),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Discard a saved intake draft
+ */
+
+
+
+export const DeleteIntakeDraftParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const DeleteIntakeDraftResponse = zod.void()
+
+
+/**
+ * @summary Submit a saved intake draft for professional review
+ */
+
+
+
+export const SubmitIntakeDraftParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+
+export const submitIntakeDraftBodyClientNameMax = 200;
+
+export const submitIntakeDraftBodyPhoneMax = 80;
+
+export const submitIntakeDraftBodyIndustryMax = 160;
+
+export const submitIntakeDraftBodyMatterTitleMax = 240;
+
+export const submitIntakeDraftBodyMatterTypeMax = 160;
+
+export const submitIntakeDraftBodyResponsibleMax = 160;
+
+
+export const submitIntakeDraftBodyPartyNamesItemMax = 200;
+
+export const submitIntakeDraftBodyPartyNamesMax = 100;
+
+export const submitIntakeDraftBodyAnswersMaxOne = 5000;
+
+
+
+export const SubmitIntakeDraftBody = zod.object({
+  "clientId": zod.number().int().min(1).nullish(),
+  "clientName": zod.string().min(1).max(submitIntakeDraftBodyClientNameMax),
+  "clientType": zod.enum(['individual', 'organization']),
+  "email": zod.string().email().nullish(),
+  "phone": zod.string().max(submitIntakeDraftBodyPhoneMax).nullish(),
+  "industry": zod.string().max(submitIntakeDraftBodyIndustryMax).nullish(),
+  "matterTitle": zod.string().min(1).max(submitIntakeDraftBodyMatterTitleMax),
+  "matterType": zod.string().min(1).max(submitIntakeDraftBodyMatterTypeMax),
+  "responsible": zod.string().min(1).max(submitIntakeDraftBodyResponsibleMax).optional(),
+  "responsibleMemberId": zod.number().int().min(1),
+  "dueAt": zod.coerce.date().nullish(),
+  "partyNames": zod.array(zod.string().min(1).max(submitIntakeDraftBodyPartyNamesItemMax)).max(submitIntakeDraftBodyPartyNamesMax),
+  "answers": zod.record(zod.string(), zod.string().max(submitIntakeDraftBodyAnswersMaxOne))
+})
+
+export const SubmitIntakeDraftResponse = zod.object({
+  "id": zod.number().int(),
+  "clientId": zod.number().int().nullable(),
+  "clientName": zod.string(),
+  "clientType": zod.string(),
+  "email": zod.string().nullable(),
+  "phone": zod.string().nullable(),
+  "industry": zod.string().nullable(),
+  "matterTitle": zod.string(),
+  "matterType": zod.string(),
+  "responsible": zod.string(),
+  "dueAt": zod.coerce.date().nullable(),
+  "partyNames": zod.array(zod.string()),
+  "answers": zod.record(zod.string(), zod.string()),
+  "conflictFindings": zod.array(zod.object({
+  "name": zod.string(),
+  "recordType": zod.enum(['client', 'matter']),
+  "recordId": zod.number().int(),
+  "recordLabel": zod.string()
+})),
+  "status": zod.enum(['review_required', 'cleared', 'rejected', 'converted']),
+  "reviewNote": zod.string().nullable(),
+  "reviewerClerkUserId": zod.string().nullable(),
+  "openedMatterId": zod.number().int().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 })
 
 

@@ -1153,6 +1153,98 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntakeChecksInput"
+  /intake/drafts:
+    get:
+      operationId: getIntakeDrafts
+      tags: [intake]
+      summary: List saved intake drafts for the current firm
+      responses:
+        "200":
+          description: Saved drafts available to firm members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntakeDraft"
+    post:
+      operationId: createIntakeDraft
+      tags: [intake]
+      summary: Save an incomplete intake draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntakeDraftData"
+      responses:
+        "201":
+          description: Saved intake draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntakeDraft"
+  /intake/drafts/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    put:
+      operationId: updateIntakeDraft
+      tags: [intake]
+      summary: Update a saved intake draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntakeDraftData"
+      responses:
+        "200":
+          description: Updated intake draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntakeDraft"
+        "404":
+          description: Draft not found in this firm
+    delete:
+      operationId: deleteIntakeDraft
+      tags: [intake]
+      summary: Discard a saved intake draft
+      responses:
+        "204":
+          description: Draft discarded
+        "404":
+          description: Draft not found in this firm
+  /intake/drafts/{id}/submit:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    post:
+      operationId: submitIntakeDraft
+      tags: [intake]
+      summary: Submit a saved intake draft for professional review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntakeInput"
+      responses:
+        "201":
+          description: Intake record requiring professional review
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntakeCase"
+        "404":
+          description: Draft not found in this firm
+        "400":
+          description: Required onboarding information is missing
   /intakes:
     post:
       operationId: createIntake
@@ -2891,6 +2983,35 @@ components:
         answers:
           type: object
           additionalProperties: { type: string, maxLength: 5000 }
+    IntakeDraftData:
+      type: object
+      required: [clientId, clientName, clientType, email, phone, industry, matterTitle, matterType, responsibleMemberId, dueAt, partyNames, answers]
+      properties:
+        clientId: { type: ["integer", "null"], minimum: 1 }
+        clientName: { type: string, maxLength: 200 }
+        clientType: { type: string, enum: [individual, organization] }
+        email: { type: ["string", "null"], maxLength: 320 }
+        phone: { type: ["string", "null"], maxLength: 80 }
+        industry: { type: ["string", "null"], maxLength: 160 }
+        matterTitle: { type: string, maxLength: 240 }
+        matterType: { type: string, maxLength: 160 }
+        responsibleMemberId: { type: ["integer", "null"], minimum: 1 }
+        dueAt: { type: ["string", "null"], pattern: '^\d{4}-\d{2}-\d{2}$' }
+        partyNames:
+          type: array
+          maxItems: 100
+          items: { type: string, maxLength: 200 }
+        answers:
+          type: object
+          additionalProperties: { type: string, maxLength: 5000 }
+    IntakeDraft:
+      type: object
+      required: [id, data, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        data: { $ref: "#/components/schemas/IntakeDraftData" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     IntakeReviewInput:
       type: object
       required: [decision, note, conflictsResolved]

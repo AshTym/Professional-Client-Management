@@ -67,6 +67,8 @@ import type {
   HealthStatus,
   IntakeCase,
   IntakeChecksInput,
+  IntakeDraft,
+  IntakeDraftData,
   IntakeInput,
   IntakeOverview,
   IntakeReviewInput,
@@ -5046,6 +5048,447 @@ export const useSaveIntakeChecks = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getSaveIntakeChecksMutationOptions(options), queryClient);
+    }
+
+export const getGetIntakeDraftsUrl = () => {
+
+
+
+
+  return `/api/intake/drafts`
+}
+
+/**
+ * @summary List saved intake drafts for the current firm
+ */
+export const getIntakeDrafts = async ( options?: Parameters<typeof customFetch>[1]): Promise<IntakeDraft[]> => {
+
+  return customFetch<IntakeDraft[]>(getGetIntakeDraftsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetIntakeDraftsQueryKey = () => {
+    return [
+    `/api/intake/drafts`
+    ] as const;
+    }
+
+
+export const getGetIntakeDraftsQueryOptions = <TData = Awaited<ReturnType<typeof getIntakeDrafts>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getIntakeDrafts>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetIntakeDraftsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getIntakeDrafts>>> = ({ signal }) => getIntakeDrafts({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getIntakeDrafts>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetIntakeDraftsQueryResult = NonNullable<Awaited<ReturnType<typeof getIntakeDrafts>>>
+export type GetIntakeDraftsQueryError = ErrorType<unknown>
+
+
+export function useGetIntakeDrafts<TData = Awaited<ReturnType<typeof getIntakeDrafts>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getIntakeDrafts>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getIntakeDrafts>>,
+          TError,
+          Awaited<ReturnType<typeof getIntakeDrafts>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetIntakeDrafts<TData = Awaited<ReturnType<typeof getIntakeDrafts>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getIntakeDrafts>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getIntakeDrafts>>,
+          TError,
+          Awaited<ReturnType<typeof getIntakeDrafts>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetIntakeDrafts<TData = Awaited<ReturnType<typeof getIntakeDrafts>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getIntakeDrafts>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List saved intake drafts for the current firm
+ */
+
+export function useGetIntakeDrafts<TData = Awaited<ReturnType<typeof getIntakeDrafts>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getIntakeDrafts>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetIntakeDraftsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateIntakeDraftUrl = () => {
+
+
+
+
+  return `/api/intake/drafts`
+}
+
+/**
+ * @summary Save an incomplete intake draft
+ */
+export const createIntakeDraft = async (intakeDraftData: IntakeDraftData, options?: Parameters<typeof customFetch>[1]): Promise<IntakeDraft> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<IntakeDraft>(getCreateIntakeDraftUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(intakeDraftData)
+  }
+);}
+
+
+
+
+
+export const getCreateIntakeDraftMutationKey = () => ['createIntakeDraft'] as const;
+
+export const getCreateIntakeDraftMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createIntakeDraft>>, TError,CreateIntakeDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createIntakeDraft>>, TError,CreateIntakeDraftMutationVariables, TContext> => {
+
+const mutationKey = getCreateIntakeDraftMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createIntakeDraft>>, CreateIntakeDraftMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createIntakeDraft(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateIntakeDraftMutationResult = NonNullable<Awaited<ReturnType<typeof createIntakeDraft>>>
+    export type CreateIntakeDraftMutationBody = BodyType<IntakeDraftData>
+    export type CreateIntakeDraftMutationError = ErrorType<unknown>
+    export type CreateIntakeDraftMutationVariables = {data: BodyType<IntakeDraftData>}
+
+    /**
+ * @summary Save an incomplete intake draft
+ */
+export const useCreateIntakeDraft = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createIntakeDraft>>, TError,CreateIntakeDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createIntakeDraft>>,
+        TError,
+        CreateIntakeDraftMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateIntakeDraftMutationOptions(options), queryClient);
+    }
+
+export const getUpdateIntakeDraftUrl = (id: number,) => {
+
+
+
+
+  return `/api/intake/drafts/${id}`
+}
+
+/**
+ * @summary Update a saved intake draft
+ */
+export const updateIntakeDraft = async (id: number,
+    intakeDraftData: IntakeDraftData, options?: Parameters<typeof customFetch>[1]): Promise<IntakeDraft> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<IntakeDraft>(getUpdateIntakeDraftUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(intakeDraftData)
+  }
+);}
+
+
+
+
+
+export const getUpdateIntakeDraftMutationKey = () => ['updateIntakeDraft'] as const;
+
+export const getUpdateIntakeDraftMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateIntakeDraft>>, TError,UpdateIntakeDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateIntakeDraft>>, TError,UpdateIntakeDraftMutationVariables, TContext> => {
+
+const mutationKey = getUpdateIntakeDraftMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateIntakeDraft>>, UpdateIntakeDraftMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateIntakeDraft(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateIntakeDraftMutationResult = NonNullable<Awaited<ReturnType<typeof updateIntakeDraft>>>
+    export type UpdateIntakeDraftMutationBody = BodyType<IntakeDraftData>
+    export type UpdateIntakeDraftMutationError = ErrorType<void>
+    export type UpdateIntakeDraftMutationVariables = {id: number;data: BodyType<IntakeDraftData>}
+
+    /**
+ * @summary Update a saved intake draft
+ */
+export const useUpdateIntakeDraft = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateIntakeDraft>>, TError,UpdateIntakeDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateIntakeDraft>>,
+        TError,
+        UpdateIntakeDraftMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateIntakeDraftMutationOptions(options), queryClient);
+    }
+
+export const getDeleteIntakeDraftUrl = (id: number,) => {
+
+
+
+
+  return `/api/intake/drafts/${id}`
+}
+
+/**
+ * @summary Discard a saved intake draft
+ */
+export const deleteIntakeDraft = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteIntakeDraftUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteIntakeDraftMutationKey = () => ['deleteIntakeDraft'] as const;
+
+export const getDeleteIntakeDraftMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteIntakeDraft>>, TError,DeleteIntakeDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteIntakeDraft>>, TError,DeleteIntakeDraftMutationVariables, TContext> => {
+
+const mutationKey = getDeleteIntakeDraftMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteIntakeDraft>>, DeleteIntakeDraftMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteIntakeDraft(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteIntakeDraftMutationResult = NonNullable<Awaited<ReturnType<typeof deleteIntakeDraft>>>
+
+    export type DeleteIntakeDraftMutationError = ErrorType<void>
+    export type DeleteIntakeDraftMutationVariables = {id: number}
+
+    /**
+ * @summary Discard a saved intake draft
+ */
+export const useDeleteIntakeDraft = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteIntakeDraft>>, TError,DeleteIntakeDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteIntakeDraft>>,
+        TError,
+        DeleteIntakeDraftMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteIntakeDraftMutationOptions(options), queryClient);
+    }
+
+export const getSubmitIntakeDraftUrl = (id: number,) => {
+
+
+
+
+  return `/api/intake/drafts/${id}/submit`
+}
+
+/**
+ * @summary Submit a saved intake draft for professional review
+ */
+export const submitIntakeDraft = async (id: number,
+    intakeInput: IntakeInput, options?: Parameters<typeof customFetch>[1]): Promise<IntakeCase> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<IntakeCase>(getSubmitIntakeDraftUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(intakeInput)
+  }
+);}
+
+
+
+
+
+export const getSubmitIntakeDraftMutationKey = () => ['submitIntakeDraft'] as const;
+
+export const getSubmitIntakeDraftMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitIntakeDraft>>, TError,SubmitIntakeDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitIntakeDraft>>, TError,SubmitIntakeDraftMutationVariables, TContext> => {
+
+const mutationKey = getSubmitIntakeDraftMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitIntakeDraft>>, SubmitIntakeDraftMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  submitIntakeDraft(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitIntakeDraftMutationResult = NonNullable<Awaited<ReturnType<typeof submitIntakeDraft>>>
+    export type SubmitIntakeDraftMutationBody = BodyType<IntakeInput>
+    export type SubmitIntakeDraftMutationError = ErrorType<void>
+    export type SubmitIntakeDraftMutationVariables = {id: number;data: BodyType<IntakeInput>}
+
+    /**
+ * @summary Submit a saved intake draft for professional review
+ */
+export const useSubmitIntakeDraft = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitIntakeDraft>>, TError,SubmitIntakeDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof submitIntakeDraft>>,
+        TError,
+        SubmitIntakeDraftMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSubmitIntakeDraftMutationOptions(options), queryClient);
     }
 
 export const getCreateIntakeUrl = () => {

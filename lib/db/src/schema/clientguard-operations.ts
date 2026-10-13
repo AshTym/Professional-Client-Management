@@ -33,6 +33,21 @@ export type IntakeConflict = {
   recordLabel: string;
 };
 
+export type IntakeDraftData = {
+  clientId: number | null;
+  clientName: string;
+  clientType: "individual" | "organization";
+  email: string | null;
+  phone: string | null;
+  industry: string | null;
+  matterTitle: string;
+  matterType: string;
+  responsibleMemberId: number | null;
+  dueAt: string | null;
+  partyNames: string[];
+  answers: Record<string, string>;
+};
+
 export const intakeSettingsTable = pgTable(
   "clientguard_intake_settings",
   {
@@ -50,6 +65,31 @@ export const intakeSettingsTable = pgTable(
   (table) => [
     uniqueIndex("clientguard_intake_settings_workspace_unique").on(
       table.workspaceId,
+    ),
+  ],
+);
+
+export const intakeDraftsTable = pgTable(
+  "clientguard_intake_drafts",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspace_id")
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: "cascade" }),
+    data: jsonb("data").$type<IntakeDraftData>().notNull(),
+    createdByClerkUserId: text("created_by_clerk_user_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("clientguard_intake_drafts_workspace_updated_idx").on(
+      table.workspaceId,
+      table.updatedAt,
     ),
   ],
 );

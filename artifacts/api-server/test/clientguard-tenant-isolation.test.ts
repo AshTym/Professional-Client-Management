@@ -40,6 +40,7 @@ let invitationsTable: typeof import("@workspace/db").invitationsTable;
 let clientsTable: typeof import("@workspace/db").clientsTable;
 let mattersTable: typeof import("@workspace/db").mattersTable;
 let intakesTable: typeof import("@workspace/db").intakesTable;
+let intakeDraftsTable: typeof import("@workspace/db").intakeDraftsTable;
 let activitiesTable: typeof import("@workspace/db").activitiesTable;
 let portalAccessTable: typeof import("@workspace/db").portalAccessTable;
 let portalMessagesTable: typeof import("@workspace/db").portalMessagesTable;
@@ -273,6 +274,14 @@ before(async () => {
       updated_by_clerk_user_id text NOT NULL,
       updated_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE "${schemaName}".clientguard_intake_drafts (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,
+      data jsonb NOT NULL,
+      created_by_clerk_user_id text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
     CREATE TABLE "${schemaName}".clientguard_intakes (
       id serial PRIMARY KEY,
       workspace_id integer NOT NULL REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,
@@ -365,6 +374,7 @@ before(async () => {
     clientsTable,
     mattersTable,
     intakesTable,
+    intakeDraftsTable,
     activitiesTable,
     portalAccessTable,
     portalMessagesTable,
@@ -4069,6 +4079,141 @@ test("all permitted firm roles can create client records", async () => {
     });
     assert.equal(created.response.status, 201);
   }
+});
+
+test("intake drafts persist for firm teammates, stay out of review, and convert or discard safely", async () => {
+  const suffix = randomUUID();
+  const [teammate, viewer] = await db.insert(membershipsTable).values([
+    {
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: `draft-teammate-${suffix}`,
+      email: `draft-teammate-${suffix}@example.test`,
+      displayName: `Draft Teammate ${suffix}`,
+      role: "professional",
+    },
+    {
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: `draft-viewer-${suffix}`,
+      email: `draft-viewer-${suffix}@example.test`,
+      displayName: `Draft Viewer ${suffix}`,
+      role: "viewer",
+    },
+  ]).returning();
+  const incomplete = {
+    clientId: null,
+    clientName: "",
+    clientType: "individual",
+    email: "not-yet-a-valid-email",
+    phone: null,
+    industry: null,
+    matterTitle: "",
+    matterType: "",
+    responsibleMemberId: null,
+    dueAt: null,
+    partyNames: [],
+    answers: { identity: "Started identity check" },
+  };
+  const created = await request("/intake/drafts", {
+    userId: firms.primary.ownerId,
+    method: "POST",
+    body: incomplete,
+  });
+  assert.equal(created.response.status, 201);
+  const draftId = (created.body as { id: number }).id;
+  assert.deepEqual(created.body.data, incomplete);
+
+  const [intakeRowCount, primaryDrafts, teammateDrafts, otherFirmDrafts, viewerDrafts] = await Promise.all([
+    db.select({ id: intakesTable.id }).from(intakesTable).where(eq(intakesTable.workspaceId, firms.primary.workspaceId)),
+    request("/intake/drafts", { userId: firms.primary.ownerId }),
+    request("/intake/drafts", { userId: teammate.clerkUserId }),
+    request("/intake/drafts", { userId: firms.other.ownerId }),
+    request("/intake/drafts", { userId: viewer.clerkUserId }),
+  ]);
+  assert.equal(intakeRowCount.some((row) => row.id === draftId), false);
+  assert.equal(primaryDrafts.response.status, 200);
+  assert.equal(teammateDrafts.response.status, 200);
+  assert.equal(viewerDrafts.response.status, 200);
+  assert(primaryDrafts.body.some((draft: { id: number }) => draft.id === draftId));
+  assert(teammateDrafts.body.some((draft: { id: number }) => draft.id === draftId));
+  assert.equal(otherFirmDrafts.response.status, 200);
+  assert.equal(otherFirmDrafts.body.some((draft: { id: number }) => draft.id === draftId), false);
+
+  const viewerCannotSave = await request("/intake/drafts", {
+    userId: viewer.clerkUserId,
+    method: "POST",
+    body: incomplete,
+  });
+  assert.equal(viewerCannotSave.response.status, 403);
+  const otherFirmCannotEdit = await request(`/intake/drafts/${draftId}`, {
+    userId: firms.other.ownerId,
+    method: "PUT",
+    body: incomplete,
+  });
+  assert.equal(otherFirmCannotEdit.response.status, 404);
+
+  const completeData = {
+    clientId: null,
+    clientName: `Resumed Intake Client ${suffix}`,
+    clientType: "individual",
+    email: null,
+    phone: null,
+    industry: "Advisory",
+    matterTitle: `Resumed Intake Matter ${suffix}`,
+    matterType: "advisory",
+    responsibleMemberId: teammate.id,
+    dueAt: null,
+    partyNames: [`Related Party ${suffix}`],
+    answers: {
+      identity: "Identity confirmed",
+      parties: "All parties captured",
+      matter_scope: "Advisory scope recorded",
+      conflicts: "Conflict search reviewed",
+    },
+  };
+  const updated = await request(`/intake/drafts/${draftId}`, {
+    userId: teammate.clerkUserId,
+    method: "PUT",
+    body: completeData,
+  });
+  assert.equal(updated.response.status, 200);
+  assert.deepEqual(updated.body.data, completeData);
+  const submitted = await request(`/intake/drafts/${draftId}/submit`, {
+    userId: teammate.clerkUserId,
+    method: "POST",
+    body: {
+      ...completeData,
+      responsible: teammate.displayName,
+    },
+  });
+  assert.equal(submitted.response.status, 201);
+  assert.equal(submitted.body.status, "review_required");
+  assert.equal(submitted.body.clientName, completeData.clientName);
+  const [remainingDraft] = await db
+    .select()
+    .from(intakeDraftsTable)
+    .where(eq(intakeDraftsTable.id, draftId));
+  assert.equal(remainingDraft, undefined);
+  const submittedIntake = await db
+    .select()
+    .from(intakesTable)
+    .where(eq(intakesTable.id, submitted.body.id));
+  assert.equal(submittedIntake.length, 1);
+
+  const discardable = await request("/intake/drafts", {
+    userId: teammate.clerkUserId,
+    method: "POST",
+    body: incomplete,
+  });
+  const discarded = await request(`/intake/drafts/${discardable.body.id}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+  });
+  assert.equal(discarded.response.status, 204);
+  const missingDraft = await request(`/intake/drafts/${discardable.body.id}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+  });
+  assert.equal(missingDraft.response.status, 404);
 });
 
 test("client creation assigns a selected firm teammate and reflects their current name", async () => {

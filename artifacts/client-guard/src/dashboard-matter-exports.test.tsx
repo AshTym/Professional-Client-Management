@@ -15,9 +15,14 @@ const mocks = vi.hoisted(() => ({
   useCloseMatter: vi.fn(),
   useLogMatterExportRequest: vi.fn(),
   useGetIntakeOverview: vi.fn(),
+  useGetIntakeDrafts: vi.fn(),
   useGetClient: vi.fn(),
   useSaveIntakeChecks: vi.fn(),
   useCreateIntake: vi.fn(),
+  useCreateIntakeDraft: vi.fn(),
+  useUpdateIntakeDraft: vi.fn(),
+  useDeleteIntakeDraft: vi.fn(),
+  useSubmitIntakeDraft: vi.fn(),
   useUpdateClient: vi.fn(),
   useDeleteClient: vi.fn(),
   useReviewIntake: vi.fn(),
@@ -36,6 +41,7 @@ vi.mock('@workspace/api-client-react', () => ({
   getListClientsQueryKey: () => ['clients'],
   getListWorkspaceAssignmentIssuesQueryKey: () => ['assignment-issues'],
   getGetIntakeOverviewQueryKey: () => ['intake'],
+  getGetIntakeDraftsQueryKey: () => ['intake-drafts'],
   getListMattersQueryKey: () => ['matters'],
 }));
 
@@ -152,6 +158,12 @@ describe('dashboard shortcuts and matter exports', () => {
       isError: false,
       refetch: vi.fn(),
     });
+    mocks.useGetIntakeDrafts.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
     mocks.useGetClient.mockReturnValue({
       data: {
         id: 5, name: 'Northstar Ltd', clientType: 'business', email: 'northstar@example.test',
@@ -166,6 +178,10 @@ describe('dashboard shortcuts and matter exports', () => {
     mocks.useDeleteClient.mockReturnValue({ mutate: vi.fn(), isPending: false });
     mocks.useSaveIntakeChecks.mockReturnValue({ mutate: vi.fn(), isPending: false });
     mocks.useCreateIntake.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    mocks.useCreateIntakeDraft.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    mocks.useUpdateIntakeDraft.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    mocks.useDeleteIntakeDraft.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    mocks.useSubmitIntakeDraft.mockReturnValue({ mutate: vi.fn(), isPending: false });
     mocks.useReviewIntake.mockReturnValue({ mutate: vi.fn(), isPending: false });
     mocks.useOpenMatterFromIntake.mockImplementation((options: any) => ({
       mutate: (variables: any, callbacks: any) => {
@@ -283,6 +299,88 @@ describe('dashboard shortcuts and matter exports', () => {
 
     expect((screen.getByTestId('select-intake-client') as HTMLSelectElement).value).toBe('');
     expect((screen.getByLabelText('Client / entity name') as HTMLInputElement).value).toBe('');
+  });
+
+  it('saves an incomplete intake as a draft instead of submitting it for review', () => {
+    const saveDraft = vi.fn();
+    const submitIntake = vi.fn();
+    mocks.useCreateIntakeDraft.mockReturnValue({ mutate: saveDraft, isPending: false });
+    mocks.useCreateIntake.mockReturnValue({ mutate: submitIntake, isPending: false });
+
+    renderAt('/intake?create=1');
+    fireEvent.change(screen.getByLabelText('Client / entity name'), {
+      target: { value: 'Incomplete prospect' },
+    });
+    fireEvent.click(screen.getByTestId('button-save-intake-draft'));
+
+    expect(saveDraft).toHaveBeenCalledTimes(1);
+    expect(saveDraft.mock.calls[0][0].data).toMatchObject({
+      clientName: 'Incomplete prospect',
+      clientType: 'individual',
+      matterTitle: '',
+      matterType: '',
+      responsibleMemberId: null,
+    });
+    expect(submitIntake).not.toHaveBeenCalled();
+  });
+
+  it('resumes a saved intake draft with its collected relationship and review details', async () => {
+    const draft = {
+      id: 34,
+      data: {
+        clientId: null,
+        clientName: 'Saved client',
+        clientType: 'organization',
+        email: 'saved@example.test',
+        phone: '555-0134',
+        industry: 'Technology',
+        matterTitle: 'Saved matter',
+        matterType: 'Advisory',
+        responsibleMemberId: 1,
+        dueAt: '2026-11-14',
+        partyNames: ['Related party'],
+        answers: { identity: 'Identity captured' },
+      },
+      createdAt: '2026-10-01T00:00:00.000Z',
+      updatedAt: '2026-10-10T00:00:00.000Z',
+    };
+    const saveDraft = vi.fn();
+    mocks.useGetIntakeDrafts.mockReturnValue({
+      data: [draft],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    mocks.useGetIntakeOverview.mockReturnValue({
+      data: {
+        intakes: [],
+        checks: [{ key: 'identity', label: 'Identity', description: 'Identity check', required: false, category: 'Review' }],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    mocks.useUpdateIntakeDraft.mockReturnValue({ mutate: saveDraft, isPending: false });
+
+    renderAt('/intake');
+    fireEvent.click(screen.getByTestId('button-resume-intake-draft-34'));
+
+    await waitFor(() => {
+      expect((screen.getByLabelText('Client / entity name') as HTMLInputElement).value).toBe('Saved client');
+      expect((screen.getByLabelText('Email') as HTMLInputElement).value).toBe('saved@example.test');
+      expect((screen.getByLabelText('Matter title') as HTMLInputElement).value).toBe('Saved matter');
+      expect((screen.getByLabelText('Related parties, one per line') as HTMLTextAreaElement).value).toBe('Related party');
+      expect((screen.getByLabelText('Identity') as HTMLTextAreaElement).value).toBe('Identity captured');
+    });
+    fireEvent.click(screen.getByTestId('button-save-intake-draft'));
+
+    expect(saveDraft).toHaveBeenCalledWith(expect.objectContaining({ id: 34, data: expect.objectContaining({
+      clientName: 'Saved client',
+      matterTitle: 'Saved matter',
+      responsibleMemberId: 1,
+      partyNames: ['Related party'],
+      answers: { identity: 'Identity captured' },
+    }) }), expect.any(Object));
   });
 
   it('refreshes client counts and related views after a matter is opened', async () => {

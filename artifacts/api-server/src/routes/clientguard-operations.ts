@@ -9,6 +9,7 @@ import {
   billingDraftsTable,
   clientsTable,
   documentsTable,
+  intakeDraftsTable,
   intakeSettingsTable,
   intakesTable,
   legalHoldsTable,
@@ -23,6 +24,7 @@ import {
   retentionSettingsTable,
   workspacesTable,
   type IntakeRule,
+  type IntakeDraftData,
 } from "@workspace/db";
 import * as api from "@workspace/api-zod";
 import { db } from "@workspace/db";
@@ -125,6 +127,101 @@ async function findConflicts(workspaceId: number, parties: string[], excludeClie
     }
   }
   return [...found.values()];
+}
+
+async function validateDraftReferences(
+  workspaceId: number,
+  data: IntakeDraftData,
+): Promise<boolean> {
+  const checks: Promise<unknown>[] = [];
+  if (data.clientId !== null) {
+    checks.push(
+      db
+        .select({ id: clientsTable.id })
+        .from(clientsTable)
+        .where(and(eq(clientsTable.id, data.clientId), eq(clientsTable.workspaceId, workspaceId)))
+        .limit(1),
+    );
+  }
+  if (data.responsibleMemberId !== null) {
+    checks.push(
+      db
+        .select({ id: membershipsTable.id })
+        .from(membershipsTable)
+        .where(and(
+          eq(membershipsTable.id, data.responsibleMemberId),
+          eq(membershipsTable.workspaceId, workspaceId),
+        ))
+        .limit(1),
+    );
+  }
+  const references = await Promise.all(checks);
+  return references.every((rows) => Array.isArray(rows) && rows.length > 0);
+}
+
+async function prepareIntakeSubmission(
+  firm: FirmAccess,
+  input: ReturnType<typeof api.CreateIntakeBody.parse>,
+  res: Response,
+) {
+  const [responsibleMember] = await db
+    .select()
+    .from(membershipsTable)
+    .where(and(
+      eq(membershipsTable.id, input.responsibleMemberId),
+      eq(membershipsTable.workspaceId, firm.workspaceId),
+    ))
+    .limit(1);
+  if (!responsibleMember) {
+    res.status(400).json({ error: "Choose an active teammate in this firm." });
+    return null;
+  }
+  if (input.clientId) {
+    const [client] = await db
+      .select({ id: clientsTable.id })
+      .from(clientsTable)
+      .where(and(eq(clientsTable.id, input.clientId), eq(clientsTable.workspaceId, firm.workspaceId)))
+      .limit(1);
+    if (!client) {
+      res.status(404).json({ error: "The selected client is not in this firm." });
+      return null;
+    }
+  }
+  const rules = await rulesForWorkspace(firm.workspaceId, firm.practiceType);
+  const missing = rules
+    .filter((rule) => rule.required && !String(input.answers[rule.key] ?? "").trim())
+    .map((rule) => rule.label);
+  if (missing.length) {
+    res.status(400).json({ error: `Complete required checks: ${missing.join(", ")}.` });
+    return null;
+  }
+  const parties = [input.clientName, ...input.partyNames];
+  const conflictFindings = await findConflicts(
+    firm.workspaceId,
+    parties,
+    input.clientId ?? undefined,
+  );
+  return {
+    values: {
+      workspaceId: firm.workspaceId,
+      clientId: input.clientId ?? null,
+      clientName: input.clientName.trim(),
+      clientType: input.clientType,
+      email: input.email ?? null,
+      phone: input.phone ?? null,
+      industry: input.industry ?? null,
+      matterTitle: input.matterTitle.trim(),
+      matterType: input.matterType.trim(),
+      responsible: responsibleMember.displayName || responsibleMember.email || "Firm teammate",
+      responsibleMemberId: responsibleMember.id,
+      dueAt: input.dueAt ? new Date(String(input.dueAt)) : null,
+      partyNames: [...new Set(parties.map((name) => name.trim()).filter(Boolean))],
+      answers: input.answers,
+      conflictFindings,
+      createdByClerkUserId: firm.userId,
+    },
+    conflictFindings,
+  };
 }
 
 async function appendAudit(
@@ -272,6 +369,90 @@ router.get("/intake", async (req, res): Promise<void> => {
   res.json(api.GetIntakeOverviewResponse.parse({ checks, intakes }));
 });
 
+router.get("/intake/drafts", async (req, res): Promise<void> => {
+  const firm = await firmAccess(req, res);
+  if (!firm) return;
+  const drafts = await db
+    .select()
+    .from(intakeDraftsTable)
+    .where(eq(intakeDraftsTable.workspaceId, firm.workspaceId))
+    .orderBy(desc(intakeDraftsTable.updatedAt));
+  res.json(api.GetIntakeDraftsResponse.parse(drafts));
+});
+
+router.post("/intake/drafts", async (req, res): Promise<void> => {
+  const firm = await firmAccess(req, res, true);
+  if (!firm) return;
+  const parsed = api.CreateIntakeDraftBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  if (!(await validateDraftReferences(firm.workspaceId, parsed.data))) {
+    res.status(400).json({ error: "Choose a client and responsible teammate from this firm." });
+    return;
+  }
+  const [draft] = await db
+    .insert(intakeDraftsTable)
+    .values({
+      workspaceId: firm.workspaceId,
+      data: parsed.data,
+      createdByClerkUserId: firm.userId,
+    })
+    .returning();
+  res.status(201).json(api.CreateIntakeDraftResponse.parse(draft));
+});
+
+router.put("/intake/drafts/:id", async (req, res): Promise<void> => {
+  const firm = await firmAccess(req, res, true);
+  if (!firm) return;
+  const id = idFrom(req.params.id);
+  const parsed = api.UpdateIntakeDraftBody.safeParse(req.body);
+  if (!id || !parsed.success) {
+    res.status(400).json({ error: parsed.success ? "Invalid draft ID." : parsed.error.message });
+    return;
+  }
+  if (!(await validateDraftReferences(firm.workspaceId, parsed.data))) {
+    res.status(400).json({ error: "Choose a client and responsible teammate from this firm." });
+    return;
+  }
+  const [draft] = await db
+    .update(intakeDraftsTable)
+    .set({ data: parsed.data, updatedAt: new Date() })
+    .where(and(
+      eq(intakeDraftsTable.id, id),
+      eq(intakeDraftsTable.workspaceId, firm.workspaceId),
+    ))
+    .returning();
+  if (!draft) {
+    res.status(404).json({ error: "Intake draft not found." });
+    return;
+  }
+  res.json(api.UpdateIntakeDraftResponse.parse(draft));
+});
+
+router.delete("/intake/drafts/:id", async (req, res): Promise<void> => {
+  const firm = await firmAccess(req, res, true);
+  if (!firm) return;
+  const id = idFrom(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "Invalid draft ID." });
+    return;
+  }
+  const [draft] = await db
+    .delete(intakeDraftsTable)
+    .where(and(
+      eq(intakeDraftsTable.id, id),
+      eq(intakeDraftsTable.workspaceId, firm.workspaceId),
+    ))
+    .returning({ id: intakeDraftsTable.id });
+  if (!draft) {
+    res.status(404).json({ error: "Intake draft not found." });
+    return;
+  }
+  res.sendStatus(204);
+});
+
 router.put("/intake", async (req, res): Promise<void> => {
   const firmAccess = (await import("../lib/clientguard-auth")).firmAccess;
   const firm = await firmAccess(req, res, true);
@@ -316,65 +497,51 @@ router.post("/intakes", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const input = parsed.data;
-  const [responsibleMember] = await db
-    .select()
-    .from(membershipsTable)
-    .where(and(
-      eq(membershipsTable.id, input.responsibleMemberId),
-      eq(membershipsTable.workspaceId, firm.workspaceId),
-    ))
-    .limit(1);
-  if (!responsibleMember) {
-    res.status(400).json({ error: "Choose an active teammate in this firm." });
-    return;
-  }
-  if (input.clientId) {
-    const [client] = await db
-      .select({ id: clientsTable.id, name: clientsTable.name })
-      .from(clientsTable)
-      .where(and(eq(clientsTable.id, input.clientId), eq(clientsTable.workspaceId, firm.workspaceId)))
-      .limit(1);
-    if (!client) {
-      res.status(404).json({ error: "The selected client is not in this firm." });
-      return;
-    }
-  }
-  const rules = await rulesForWorkspace(firm.workspaceId, firm.practiceType);
-  const missing = rules
-    .filter((rule) => rule.required && !String(input.answers[rule.key] ?? "").trim())
-    .map((rule) => rule.label);
-  if (missing.length) {
-    res.status(400).json({ error: `Complete required checks: ${missing.join(", ")}.` });
-    return;
-  }
-  const parties = [input.clientName, ...input.partyNames];
-  const conflictFindings = await findConflicts(firm.workspaceId, parties, input.clientId ?? undefined);
-  const [created] = await db
-    .insert(intakesTable)
-    .values({
-      workspaceId: firm.workspaceId,
-      clientId: input.clientId ?? null,
-      clientName: input.clientName.trim(),
-      clientType: input.clientType,
-      email: input.email ?? null,
-      phone: input.phone ?? null,
-      industry: input.industry ?? null,
-      matterTitle: input.matterTitle.trim(),
-      matterType: input.matterType.trim(),
-      responsible: responsibleMember.displayName || responsibleMember.email || "Firm teammate",
-      responsibleMemberId: responsibleMember.id,
-      dueAt: input.dueAt ? new Date(input.dueAt) : null,
-      partyNames: [...new Set(parties.map((name) => name.trim()).filter(Boolean))],
-      answers: input.answers,
-      conflictFindings,
-      createdByClerkUserId: firm.userId,
-    })
-    .returning();
+  const prepared = await prepareIntakeSubmission(firm, parsed.data, res);
+  if (!prepared) return;
+  const [created] = await db.insert(intakesTable).values(prepared.values).returning();
   await appendAudit(firm.workspaceId, firm, "intake_created", "intake", created.id, created.matterTitle, {
-    conflictCount: conflictFindings.length,
+    conflictCount: prepared.conflictFindings.length,
   });
   res.status(201).json(api.CreateIntakeResponse.parse(created));
+});
+
+router.post("/intake/drafts/:id/submit", async (req, res): Promise<void> => {
+  const firm = await firmAccess(req, res, true);
+  if (!firm) return;
+  const id = idFrom(req.params.id);
+  const parsed = api.SubmitIntakeDraftBody.safeParse(req.body);
+  if (!id || !parsed.success) {
+    res.status(400).json({ error: parsed.success ? "Invalid draft ID." : parsed.error.message });
+    return;
+  }
+  const prepared = await prepareIntakeSubmission(firm, parsed.data, res);
+  if (!prepared) return;
+
+  const created = await db.transaction(async (tx) => {
+    const [draft] = await tx
+      .delete(intakeDraftsTable)
+      .where(and(
+        eq(intakeDraftsTable.id, id),
+        eq(intakeDraftsTable.workspaceId, firm.workspaceId),
+      ))
+      .returning({ id: intakeDraftsTable.id });
+    if (!draft) return null;
+    const [intake] = await tx
+      .insert(intakesTable)
+      .values(prepared.values)
+      .returning();
+    return intake ?? null;
+  });
+  if (!created) {
+    res.status(404).json({ error: "Intake draft not found." });
+    return;
+  }
+  await appendAudit(firm.workspaceId, firm, "intake_created", "intake", created.id, created.matterTitle, {
+    conflictCount: prepared.conflictFindings.length,
+    submittedDraft: true,
+  });
+  res.status(201).json(api.SubmitIntakeDraftResponse.parse(created));
 });
 
 router.patch("/intakes/:id/review", async (req, res): Promise<void> => {

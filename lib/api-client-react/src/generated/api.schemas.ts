@@ -1167,6 +1167,69 @@ export interface IntakeInput {
   answers: IntakeInputAnswers;
 }
 
+export type IntakeDraftDataClientType = typeof IntakeDraftDataClientType[keyof typeof IntakeDraftDataClientType];
+
+
+export const IntakeDraftDataClientType = {
+  individual: 'individual',
+  organization: 'organization',
+} as const;
+
+export type IntakeDraftDataAnswers = {[key: string]: string};
+
+export interface IntakeDraftData {
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  clientId: number | null;
+  /** @maxLength 200 */
+  clientName: string;
+  clientType: IntakeDraftDataClientType;
+  /**
+     * @maxLength 320
+     * @nullable
+     */
+  email: string | null;
+  /**
+     * @maxLength 80
+     * @nullable
+     */
+  phone: string | null;
+  /**
+     * @maxLength 160
+     * @nullable
+     */
+  industry: string | null;
+  /** @maxLength 240 */
+  matterTitle: string;
+  /** @maxLength 160 */
+  matterType: string;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  responsibleMemberId: number | null;
+  /**
+     * @nullable
+     * @pattern ^\d{4}-\d{2}-\d{2}$
+     */
+  dueAt: string | null;
+  /**
+     * @maxItems 100
+     * @items.maxLength 200
+     */
+  partyNames: string[];
+  answers: IntakeDraftDataAnswers;
+}
+
+export interface IntakeDraft {
+  id: number;
+  data: IntakeDraftData;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type IntakeReviewInputDecision = typeof IntakeReviewInputDecision[keyof typeof IntakeReviewInputDecision];
 
 
@@ -2121,12 +2184,10 @@ entityType?: ListActivityEntityType;
 entityId?: number;
 /**
  * Include events occurring on or after this UTC calendar date.
- * @format date
  */
 startDate?: string;
 /**
  * Include events occurring on or before this UTC calendar date.
- * @format date
  */
 endDate?: string;
 };
@@ -2157,12 +2218,10 @@ entityType?: ExportActivityEntityType;
 entityId?: number;
 /**
  * Include events occurring on or after this UTC calendar date.
- * @format date
  */
 startDate?: string;
 /**
  * Include events occurring on or before this UTC calendar date.
- * @format date
  */
 endDate?: string;
 };
