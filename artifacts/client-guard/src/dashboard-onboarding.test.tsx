@@ -247,6 +247,60 @@ describe('new-firm dashboard onboarding', () => {
     expect(screen.queryByTestId('dashboard-first-matter-onboarding')).toBeNull();
   });
 
+  it('renders dashboard metrics and navigation while recent activity is loading', () => {
+    apiMocks.useGetDashboard.mockReturnValue({
+      data: {
+        clientCount: 3,
+        matterCount: 2,
+        activeClientCount: 2,
+        openMatterCount: 1,
+        overdueMatterCount: 0,
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    apiMocks.useListActivity.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderDashboard();
+
+    expect(screen.getByTestId('metric-clients')).toBeTruthy();
+    expect(screen.getByTestId('metric-open-matters')).toBeTruthy();
+    expect(screen.getByTestId('button-dashboard-create-client')).toBeTruthy();
+    expect(screen.getByTestId('quick-clients')).toBeTruthy();
+    expect(screen.getByText('Recent activity')).toBeTruthy();
+    expect(screen.getByTestId('dashboard-activity-loading')).toBeTruthy();
+    expect(screen.queryByTestId('loading-skeleton')).toBeNull();
+  });
+
+  it('keeps the full-page loading state while both dashboard queries are loading', () => {
+    apiMocks.useGetDashboard.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    apiMocks.useListActivity.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderDashboard();
+
+    expect(screen.getByTestId('loading-skeleton').getAttribute('aria-label')).toBe(
+      'Loading firm overview',
+    );
+    expect(screen.queryByTestId('metric-clients')).toBeNull();
+    expect(screen.queryByTestId('dashboard-activity-loading')).toBeNull();
+  });
+
   it('shows an activity error and retries without hiding dashboard metrics or navigation', () => {
     const refetchActivity = vi.fn();
     apiMocks.useGetDashboard.mockReturnValue({
