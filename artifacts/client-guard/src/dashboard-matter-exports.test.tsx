@@ -317,9 +317,28 @@ describe('dashboard shortcuts and matter exports', () => {
     });
   });
 
-  it('exports every matter in the all-matters PDF and audit request', async () => {
+  it('does not create a PDF or audit event when all-matters export is cancelled', () => {
     renderAt('/matters');
     fireEvent.click(screen.getByTestId('button-download-all-matters'));
+
+    expect(screen.getByRole('alertdialog', { name: 'Download every matter?' })).toBeTruthy();
+    expect(screen.getByText(/2 records from across your entire firm/)).toBeTruthy();
+    expect(mocks.downloadMattersPdf).not.toHaveBeenCalled();
+    expect(mocks.useLogMatterExportRequest.mock.results[0].value.mutateAsync).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('button-cancel-all-matters-export'));
+
+    expect(screen.queryByRole('alertdialog', { name: 'Download every matter?' })).toBeNull();
+    expect(mocks.downloadMattersPdf).not.toHaveBeenCalled();
+    expect(mocks.useLogMatterExportRequest.mock.results[0].value.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('exports every matter in the all-matters PDF and audit request after confirmation', async () => {
+    renderAt('/matters');
+    fireEvent.click(screen.getByTestId('button-download-all-matters'));
+
+    expect(mocks.downloadMattersPdf).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('button-confirm-all-matters-export'));
 
     await waitFor(() => {
       expect(mocks.downloadMattersPdf).toHaveBeenCalledWith([firstMatter, secondMatter], 'all');

@@ -38,6 +38,16 @@ import MembershipConflicts from './MembershipConflicts';
 import PracticeOperations from './PracticeOperations';
 import OperationsReport from './OperationsReport';
 import MatterCloseout from './MatterCloseout';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './components/ui/alert-dialog';
 import './index.css';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 20_000, retry: 1 } } });
@@ -274,6 +284,7 @@ export function MattersPage() {
  const [dueFilter,setDueFilter]=useState<'overdue'|''>(()=>new URLSearchParams(window.location.search).get('due')==='overdue'?'overdue':'');
  const [clientId,setClientId]=useState<number|null>(()=>{const raw=new URLSearchParams(window.location.search).get('clientId');const parsed=Number(raw);return raw&&Number.isSafeInteger(parsed)&&parsed>0?parsed:null;});
  const [selectedIds,setSelectedIds]=useState<Set<number>>(()=>new Set());
+ const [pendingAllMattersExport,setPendingAllMattersExport]=useState<Matter[]|null>(null);
  const [pdfError,setPdfError]=useState('');
  const [isExportingPdf,setIsExportingPdf]=useState(false);
  const list=useListMatters();
@@ -342,7 +353,7 @@ export function MattersPage() {
      </div>
      <div className="flex flex-wrap gap-2">
       <Button variant="outline" onClick={()=>downloadPdf(selectedMatters,'selected')} disabled={!selectedMatters.length||isExportingPdf} testId="button-download-selected-matters"><Download className="h-4 w-4" />{isExportingPdf?'Preparing PDF…':`Download selected PDF (${selectedMatters.length})`}</Button>
-      <Button onClick={()=>downloadPdf(list.data||[],'all')} disabled={!list.data?.length||isExportingPdf} testId="button-download-all-matters"><Download className="h-4 w-4" />{isExportingPdf?'Preparing PDF…':`Download all matters PDF (${list.data.length})`}</Button>
+      <Button onClick={()=>setPendingAllMattersExport([...(list.data||[])])} disabled={!list.data?.length||isExportingPdf} testId="button-download-all-matters"><Download className="h-4 w-4" />{isExportingPdf?'Preparing PDF…':`Download all matters PDF (${list.data.length})`}</Button>
      </div>
     </div>
     {pdfError&&<p role="alert" className="mt-3 text-xs text-[#9b4941]" data-testid="status-matter-pdf-error">{pdfError}</p>}
@@ -355,8 +366,33 @@ export function MattersPage() {
       <Link href={`/matters/${m.id}`} className="contents" data-testid={`link-matter-${m.id}`}><div className="min-w-0"><div className="truncate text-sm font-semibold">{m.title}</div><div className="mt-1 text-[11px] text-[#7e8985]">{m.clientName}<span className="mx-2">·</span><span className="mono">{m.reference}</span></div></div><div className="col-start-2 text-xs md:col-start-auto">{m.responsible}</div><div className="col-start-2 md:col-start-auto"><StatusPill value={m.status} /></div><div className="col-start-2 md:col-start-auto"><StatusPill value={m.riskLevel} /></div><div className="col-start-2 text-xs text-[#72807d] md:col-start-auto">{m.dueAt?formatTime(m.dueAt):'No due date'}</div></Link>
      </div>)}
     </div>}
-  </>}
- </>;
+   </>}
+   <AlertDialog
+    open={pendingAllMattersExport!==null}
+    onOpenChange={open=>{if(!open)setPendingAllMattersExport(null);}}
+   >
+    <AlertDialogContent>
+     <AlertDialogHeader>
+      <AlertDialogTitle>Download every matter?</AlertDialogTitle>
+      <AlertDialogDescription>
+       This will create a PDF containing {pendingAllMattersExport?.length||0} {pendingAllMattersExport?.length===1?'record':'records'} from across your entire firm, including matters hidden by current filters and selection. The export will be recorded in firm activity.
+      </AlertDialogDescription>
+     </AlertDialogHeader>
+     <AlertDialogFooter>
+      <AlertDialogCancel data-testid="button-cancel-all-matters-export">Cancel</AlertDialogCancel>
+      <AlertDialogAction
+       data-testid="button-confirm-all-matters-export"
+       onClick={()=>{
+        if(!pendingAllMattersExport)return;
+        const records=pendingAllMattersExport;
+        setPendingAllMattersExport(null);
+        void downloadPdf(records,'all');
+       }}
+      >Download all matters</AlertDialogAction>
+     </AlertDialogFooter>
+    </AlertDialogContent>
+   </AlertDialog>
+  </>;
 }
 function MatterDetail() {
   const params = useRoute('/matters/:id')[1];
@@ -448,7 +484,7 @@ function MatterDetail() {
       <aside className="rounded-md bg-[#294651] p-6 text-[#f3f1e9]"><div className="mono text-[9px] uppercase tracking-[.16em] text-[#c5b389]">Matter reference</div><div className="mono mt-3 text-xl">{m.reference}</div><div className="my-5 h-px bg-[#ffffff26]" /><div className="flex justify-between text-xs text-[#c8d2ce]"><span>Risk classification</span><span className="capitalize text-[#f0d79f]">{m.riskLevel}</span></div><p className="mt-5 text-xs leading-5 text-[#b9c8c3]">Matter status and ownership are maintained as part of the firm's shared audit trail.</p></aside>
     </div>
      {close.isError && <p role="alert" className="mt-3 rounded border border-[#e6c7c1] bg-[#fff9f6] p-3 text-xs text-[#843f38]">{close.error instanceof Error ? close.error.message : 'Matter could not be closed. Review the closeout checklist and try again.'}</p>}
-     <MatterCloseout matterId={id} />
+      <MatterCloseout matterId={id} />
   </>;
 }
 
