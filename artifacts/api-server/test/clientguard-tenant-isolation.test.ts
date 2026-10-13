@@ -3907,6 +3907,62 @@ test("all permitted firm roles can create client records", async () => {
   }
 });
 
+test("client creation assigns a selected firm teammate and reflects their current name", async () => {
+  const suffix = randomUUID();
+  const [member] = await db.insert(membershipsTable).values({
+    workspaceId: firms.primary.workspaceId,
+    clerkUserId: `client-owner-${suffix}`,
+    email: `client-owner-${suffix}@example.test`,
+    displayName: `Initial Client Owner ${suffix}`,
+    role: "professional",
+  }).returning();
+  const clientName = `Assigned Client ${suffix}`;
+  const created = await request("/clients", {
+    userId: firms.primary.ownerId,
+    method: "POST",
+    body: {
+      name: clientName,
+      clientType: "business",
+      ownerMemberId: member.id,
+    },
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.ownerMemberId, member.id);
+  assert.equal(created.body.owner, member.displayName);
+
+  const renamed = `Renamed Client Owner ${suffix}`;
+  await db.update(membershipsTable).set({ displayName: renamed }).where(eq(membershipsTable.id, member.id));
+  const clientId = created.body.id as number;
+  const [clientList, clientDetail] = await Promise.all([
+    request("/clients", { userId: firms.primary.ownerId }),
+    request(`/clients/${clientId}`, { userId: firms.primary.ownerId }),
+  ]);
+  assert.equal(clientList.body.find((row: { id: number }) => row.id === clientId).owner, renamed);
+  assert.equal(clientDetail.body.owner, renamed);
+  assert.equal(clientDetail.body.ownerMemberId, member.id);
+});
+
+test("client creation rejects a relationship owner from another firm", async () => {
+  const [otherFirmMember] = await db.select().from(membershipsTable).where(
+    eq(membershipsTable.clerkUserId, firms.other.ownerId),
+  ).limit(1);
+  assert(otherFirmMember);
+  const name = `Cross-firm owner client ${randomUUID()}`;
+  const created = await request("/clients", {
+    userId: firms.primary.ownerId,
+    method: "POST",
+    body: {
+      name,
+      clientType: "individual",
+      ownerMemberId: otherFirmMember.id,
+    },
+  });
+  assert.equal(created.response.status, 400);
+  assert.match(created.body.error, /active teammate in this firm/i);
+  const persisted = await db.select().from(clientsTable).where(eq(clientsTable.name, name));
+  assert.equal(persisted.length, 0);
+});
+
 test("owner can create, update, archive, and close records", async () => {
   const createdClient = await request("/clients", {
     userId: firms.primary.ownerId,

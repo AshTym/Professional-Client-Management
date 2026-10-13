@@ -2258,21 +2258,33 @@ router.post("/clients", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const [membership] = await db.select().from(membershipsTable).where(and(
+  const [requestingMembership] = await db.select().from(membershipsTable).where(and(
     eq(membershipsTable.workspaceId, access.workspaceId),
     eq(membershipsTable.clerkUserId, access.userId),
   )).limit(1);
-  if (!membership) {
+  if (!requestingMembership) {
     res.status(403).json({ error: "An active firm membership is required to assign this client." });
     return;
+  }
+  let assignedMembership = requestingMembership;
+  if (parsed.data.ownerMemberId !== undefined) {
+    const [selectedMembership] = await db.select().from(membershipsTable).where(and(
+      eq(membershipsTable.id, parsed.data.ownerMemberId),
+      eq(membershipsTable.workspaceId, access.workspaceId),
+    )).limit(1);
+    if (!selectedMembership) {
+      res.status(400).json({ error: "Choose an active teammate in this firm." });
+      return;
+    }
+    assignedMembership = selectedMembership;
   }
   const [client] = await db
     .insert(clientsTable)
     .values({
       ...parsed.data,
       workspaceId: access.workspaceId,
-      owner: membership.displayName || membership.email || "Firm teammate",
-      ownerMemberId: membership.id,
+      owner: assignedMembership.displayName || assignedMembership.email || "Firm teammate",
+      ownerMemberId: assignedMembership.id,
     })
     .returning();
   await logActivity(access, "client", client.id, client.name, "created client");

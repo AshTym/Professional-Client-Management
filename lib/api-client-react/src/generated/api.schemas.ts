@@ -349,6 +349,8 @@ export interface ClientInput {
   /** @nullable */
   industry?: string | null;
   status?: ClientInputStatus;
+  /** @minimum 1 */
+  ownerMemberId?: number;
 }
 
 export type ClientUpdateClientType = typeof ClientUpdateClientType[keyof typeof ClientUpdateClientType];

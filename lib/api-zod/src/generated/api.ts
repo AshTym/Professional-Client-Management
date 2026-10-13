@@ -498,13 +498,15 @@ export const createClientBodyNameMax = 160;
 
 
 
+
 export const CreateClientBody = zod.object({
   "name": zod.string().min(1).max(createClientBodyNameMax),
   "clientType": zod.enum(['individual', 'business']),
   "email": zod.string().email().nullish(),
   "phone": zod.string().nullish(),
   "industry": zod.string().nullish(),
-  "status": zod.enum(['prospect', 'active', 'archived']).optional()
+  "status": zod.enum(['prospect', 'active', 'archived']).optional(),
+  "ownerMemberId": zod.number().int().min(1).optional()
 })
 
 export const CreateClientResponse = zod.object({

@@ -2288,6 +2288,7 @@ components:
         status:
           type: string
           enum: [prospect, active, archived]
+        ownerMemberId: { type: integer, minimum: 1 }
     ClientUpdate:
       type: object
       minProperties: 1
