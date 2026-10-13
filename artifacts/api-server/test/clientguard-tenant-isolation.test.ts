@@ -516,6 +516,14 @@ before(async () => {
       { [Symbol.for("@clerk/express.auth")]: true },
     );
     (req as Request & { auth: typeof authHandler }).auth = authHandler;
+    (
+      req as Request & {
+        log?: {
+          error: (...args: unknown[]) => void;
+          warn: (...args: unknown[]) => void;
+        };
+      }
+    ).log = { error: () => {}, warn: () => {} };
     next();
   });
   const { default: router } = await import("../src/routes/clientguard.ts");
@@ -2870,6 +2878,91 @@ test("firm admins can renew expired invitations with a new seven-day link", asyn
     ({ id }) => id === expired.id,
   );
   assert.equal(renewedInvitation?.expired, false);
+});
+
+test("failed expired invitation renewal leaves it safe to retry", async (t) => {
+  const oldToken = randomUUID();
+  const oldCreatedAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+  const oldExpiresAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [expired] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email: `retry-expired-${randomUUID()}@example.test`,
+      role: "professional",
+      invitedByClerkUserId: firms.primary.ownerId,
+      clerkInvitationId: "retry_old_clerk_invitation",
+      tokenHash: createHash("sha256").update(oldToken).digest("hex"),
+      expiresAt: oldExpiresAt,
+      createdAt: oldCreatedAt,
+    })
+    .returning();
+  const [before] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, expired.id));
+
+  let newToken = "";
+  let providerAttempts = 0;
+  const createInvitation = t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async (params) => {
+      providerAttempts += 1;
+      if (providerAttempts === 1) {
+        throw new Error("Simulated email provider failure");
+      }
+      const match = params.redirectUrl?.match(/[?&]token=([^&]+)/);
+      assert(match);
+      newToken = decodeURIComponent(match[1]);
+      return { id: "retry_new_clerk_invitation" } as never;
+    },
+  );
+  const revokeInvitation = t.mock.method(
+    clerkClient.invitations,
+    "revokeInvitation",
+    async () => ({ id: "retry_old_clerk_invitation" }) as never,
+  );
+
+  const failed = await request(`/workspace/invitations/${expired.id}/resend`, {
+    userId: firms.primary.ownerId,
+    method: "POST",
+  });
+  assert.equal(failed.response.status, 502);
+  assert.equal(providerAttempts, 1);
+  assert.deepEqual(failed.body, {
+    error: "The invitation email could not be sent. Please try again.",
+  });
+  assert.equal(createInvitation.mock.callCount(), 1);
+
+  const [afterFailure] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, expired.id));
+  assert.deepEqual(afterFailure, before);
+  assert.equal(afterFailure.tokenHash, createHash("sha256").update(oldToken).digest("hex"));
+  assert.equal(afterFailure.clerkInvitationId, "retry_old_clerk_invitation");
+  assert.equal(revokeInvitation.mock.callCount(), 0);
+
+  const retried = await request(`/workspace/invitations/${expired.id}/resend`, {
+    userId: firms.primary.ownerId,
+    method: "POST",
+  });
+  assert.equal(retried.response.status, 200);
+  assert.equal(providerAttempts, 2);
+  assert.equal(createInvitation.mock.callCount(), 2);
+  assert.equal(revokeInvitation.mock.callCount(), 1);
+  assert.equal(revokeInvitation.mock.calls[0].arguments[0], "retry_old_clerk_invitation");
+
+  const [renewed] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, expired.id));
+  assert.equal(renewed.tokenHash, createHash("sha256").update(newToken).digest("hex"));
+  assert.notEqual(renewed.tokenHash, before.tokenHash);
+  assert.equal(renewed.clerkInvitationId, "retry_new_clerk_invitation");
+  assert(renewed.createdAt > before.createdAt);
+  assert(renewed.expiresAt > new Date(Date.now() + 6 * 24 * 60 * 60 * 1000));
 });
 
 test("renewing an expired invitation does not replace another live invitation", async (t) => {
