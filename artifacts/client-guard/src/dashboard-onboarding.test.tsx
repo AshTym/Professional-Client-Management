@@ -301,8 +301,12 @@ describe('new-firm dashboard onboarding', () => {
     expect(screen.queryByTestId('dashboard-activity-loading')).toBeNull();
   });
 
-  it('shows an activity error and retries without hiding dashboard metrics or navigation', () => {
-    const refetchActivity = vi.fn();
+  it('shows a pending activity retry, prevents duplicates, and returns to the activity list', async () => {
+    let resolveRefetch!: () => void;
+    const pendingRefetch = new Promise<void>((resolve) => {
+      resolveRefetch = resolve;
+    });
+    const refetchActivity = vi.fn(() => pendingRefetch);
     apiMocks.useGetDashboard.mockReturnValue({
       data: {
         clientCount: 3,
@@ -322,7 +326,7 @@ describe('new-firm dashboard onboarding', () => {
       refetch: refetchActivity,
     });
 
-    renderDashboard();
+    const view = renderDashboard();
 
     expect(screen.getByRole('alert').textContent).toContain('Activity could not be loaded.');
     expect(screen.getByTestId('metric-clients')).toBeTruthy();
@@ -334,6 +338,35 @@ describe('new-firm dashboard onboarding', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry activity' }));
 
     expect(refetchActivity).toHaveBeenCalledTimes(1);
+    const retryButton = screen.getByRole('button', { name: 'Reloading activity' }) as HTMLButtonElement;
+    expect(retryButton.disabled).toBe(true);
+    expect(retryButton.textContent).toBe('Reloading…');
+    fireEvent.click(retryButton);
+    expect(refetchActivity).toHaveBeenCalledTimes(1);
+
+    apiMocks.useListActivity.mockReturnValue({
+      data: {
+        items: [{
+          id: 'activity-1',
+          actor: 'Taylor',
+          action: 'updated',
+          entityType: 'client',
+          entityId: 42,
+          entityLabel: 'Harbor Co',
+          occurredAt: '2026-10-13T10:00:00.000Z',
+        }],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: refetchActivity,
+    });
+    await act(async () => {
+      resolveRefetch();
+      await pendingRefetch;
+    });
+
+    expect(view.getByTestId('activity-item-activity-1')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Reloading activity' })).toBeNull();
   });
 
   it('keeps firm details and offers a retry when workspace setup fails', () => {
