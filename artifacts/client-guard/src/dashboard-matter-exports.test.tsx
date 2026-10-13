@@ -334,6 +334,83 @@ describe('dashboard shortcuts and matter exports', () => {
     expect(screen.getByRole('status').textContent).toContain('Matter opened');
   });
 
+  it('keeps the client list matter total current after several matters open quickly', async () => {
+    let openedMatterCount = 0;
+    const client = {
+      id: 5, name: 'Northstar Ltd', clientType: 'business', email: 'northstar@example.test',
+      phone: '555-0105', industry: 'Technology', status: 'active', owner: 'A. Morgan',
+      ownerMemberId: 1, matterCount: 0, lastActivityAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    mocks.useListClients.mockImplementation(() => ({
+      data: [{ ...client, matterCount: openedMatterCount }],
+      isLoading: false,
+      isError: false,
+    }));
+    mocks.useGetIntakeOverview.mockReturnValue({
+      data: {
+        intakes: [21, 22, 23].map(id => ({
+          id,
+          clientId: 5,
+          clientName: client.name,
+          clientType: 'business',
+          email: client.email,
+          matterTitle: `Northstar matter ${id}`,
+          matterType: 'Advisory',
+          responsible: 'A. Morgan',
+          dueAt: null,
+          partyNames: [],
+          answers: {},
+          conflictFindings: [],
+          status: 'cleared',
+          reviewNote: 'Conflict review complete',
+          reviewerClerkUserId: 'reviewer',
+          openedMatterId: null,
+          createdByClerkUserId: 'assistant',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        })),
+        checks: [],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    mocks.useOpenMatterFromIntake.mockImplementation((options: any) => ({
+      mutate: (variables: any, callbacks: any) => {
+        openedMatterCount += 1;
+        const matter = { id: 100 + openedMatterCount, clientId: client.id };
+        options?.mutation?.onSuccess?.(matter, variables, undefined, undefined);
+        callbacks?.onSuccess?.(matter, variables, undefined);
+      },
+      isPending: false,
+    }));
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    renderAt('/intake', queryClient);
+
+    fireEvent.click(screen.getByTestId('button-open-matter-21'));
+    fireEvent.click(screen.getByTestId('button-open-matter-22'));
+    fireEvent.click(screen.getByTestId('button-open-matter-23'));
+
+    expect(invalidate.mock.calls.filter(([filters]) => (
+      JSON.stringify(filters.queryKey) === JSON.stringify(['clients'])
+    ))).toHaveLength(3);
+    expect(invalidate.mock.calls.filter(([filters]) => (
+      JSON.stringify(filters.queryKey) === JSON.stringify(['client', client.id])
+    ))).toHaveLength(3);
+
+    cleanup();
+    renderAt('/clients', queryClient);
+
+    await waitFor(() => {
+      const row = screen.getByTestId(`row-client-${client.id}`);
+      expect(row.textContent).toContain('3matters');
+    });
+  });
+
   it('refreshes both client matter totals when a matter is reassigned', async () => {
     mocks.useListClients.mockReturnValue({
       data: [
