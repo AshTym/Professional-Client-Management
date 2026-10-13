@@ -2,3 +2,4 @@
 - [ClientGuard AI safeguards](clientguard-ai-safeguards.md) — keep AI bills/updates as review drafts and document suggestions source-cited and human-confirmed.
 - [ClientGuard provider OAuth](clientguard-provider-oauth.md) — firm integrations use firm-scoped OAuth grants, encrypted tokens, and reviewed actions rather than a shared provider identity.
 - [Membership conflict review](membership-conflict-review.md) — each affected firm's owner/admin decides only on local access; no cross-firm identity details are exposed.
+- [ClientGuard medical market](clientguard-medical-market.md) — the first medical market is Australia, focused on general practice.
