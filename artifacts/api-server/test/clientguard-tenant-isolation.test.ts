@@ -640,6 +640,62 @@ test("database rejects a second firm membership for the same signed-in identity"
   assert.equal(existingMembership.workspaceId, firms.primary.workspaceId);
 });
 
+test("invalid workspace details leave no setup records and the owner can retry", async () => {
+  const userId = `invalid-workspace-setup-${randomUUID()}`;
+  const invalidWorkspaceName = "X";
+  const validWorkspaceName = `Valid Workspace ${randomUUID()}`;
+
+  const invalid = await request("/workspace", {
+    userId,
+    method: "POST",
+    body: { name: invalidWorkspaceName, practiceType: "law" },
+  });
+  assert.equal(invalid.response.status, 400);
+
+  const rejectedWorkspaces = await db
+    .select()
+    .from(workspacesTable)
+    .where(eq(workspacesTable.name, invalidWorkspaceName));
+  const rejectedMemberships = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, userId));
+  const rejectedActivities = await db
+    .select()
+    .from(activitiesTable)
+    .where(eq(activitiesTable.clerkUserId, userId));
+  assert.equal(rejectedWorkspaces.length, 0);
+  assert.equal(rejectedMemberships.length, 0);
+  assert.equal(rejectedActivities.length, 0);
+
+  const valid = await request("/workspace", {
+    userId,
+    method: "POST",
+    body: { name: validWorkspaceName, practiceType: "law" },
+  });
+  assert.equal(valid.response.status, 201);
+
+  const createdWorkspaces = await db
+    .select()
+    .from(workspacesTable)
+    .where(eq(workspacesTable.name, validWorkspaceName));
+  const ownerMemberships = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, userId));
+  const setupActivities = await db
+    .select()
+    .from(activitiesTable)
+    .where(eq(activitiesTable.clerkUserId, userId));
+  assert.equal(createdWorkspaces.length, 1);
+  assert.equal(ownerMemberships.length, 1);
+  assert.equal(ownerMemberships[0].workspaceId, createdWorkspaces[0].id);
+  assert.equal(ownerMemberships[0].role, "owner");
+  assert.equal(setupActivities.length, 1);
+  assert.equal(setupActivities[0].workspaceId, createdWorkspaces[0].id);
+  assert.equal(setupActivities[0].action, "created the firm workspace");
+});
+
 test("concurrent workspace setup requests create one firm for the signed-in owner", async () => {
   const userId = `workspace-setup-${randomUUID()}`;
   const workspaceNames = Array.from(
