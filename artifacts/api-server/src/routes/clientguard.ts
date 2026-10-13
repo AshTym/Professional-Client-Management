@@ -1052,7 +1052,7 @@ router.get("/dashboard", async (req, res): Promise<void> => {
     .select()
     .from(activitiesTable)
     .where(eq(activitiesTable.workspaceId, access.workspaceId))
-    .orderBy(desc(activitiesTable.occurredAt))
+    .orderBy(desc(activitiesTable.occurredAt), desc(activitiesTable.id))
     .limit(6);
 
   res.json(

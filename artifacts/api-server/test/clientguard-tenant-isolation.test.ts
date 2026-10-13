@@ -845,6 +845,76 @@ test("dashboard returns only the six newest events for each firm in descending t
   }
 });
 
+test("dashboard orders equally timed events by id independently for each firm", async () => {
+  const occurredAt = new Date(Date.now() + 6 * 60 * 60 * 1000);
+  const insertedActivityIds: number[] = [];
+
+  try {
+    const insertedEvents = await db
+      .insert(activitiesTable)
+      .values(
+        (["primary", "other"] as const).flatMap((firmName) => {
+          const firm = firms[firmName];
+          return [0, 1].map((index) => ({
+            workspaceId: firm.workspaceId,
+            clerkUserId: firm.ownerId,
+            actor:
+              firmName === "primary" ? "Primary Owner" : "Other Firm Owner",
+            action: `${firmName} tied dashboard event ${index}`,
+            entityType: "client",
+            entityId: firm.clientId,
+            entityLabel: `${firmName} tied dashboard client`,
+            occurredAt,
+          }));
+        }),
+      )
+      .returning({
+        id: activitiesTable.id,
+        workspaceId: activitiesTable.workspaceId,
+      });
+    insertedActivityIds.push(...insertedEvents.map(({ id }) => id));
+
+    for (const firmName of ["primary", "other"] as const) {
+      const dashboard = await request("/dashboard", {
+        userId: firms[firmName].ownerId,
+      });
+      assert.equal(dashboard.response.status, 200);
+
+      const recentActivity = (
+        dashboard.body as {
+          recentActivity: Array<{
+            id: number;
+            action: string;
+            occurredAt: string;
+          }>;
+        }
+      ).recentActivity;
+      const tiedEvents = recentActivity.filter(({ action }) =>
+        action.startsWith(`${firmName} tied dashboard event `),
+      );
+      const expectedIds = insertedEvents
+        .filter(({ workspaceId }) => workspaceId === firms[firmName].workspaceId)
+        .map(({ id }) => id)
+        .sort((a, b) => b - a);
+
+      assert.deepEqual(
+        tiedEvents.map(({ id }) => id),
+        expectedIds,
+      );
+      assert.deepEqual(
+        tiedEvents.map(({ occurredAt: eventTime }) => eventTime),
+        [occurredAt.toISOString(), occurredAt.toISOString()],
+      );
+    }
+  } finally {
+    if (insertedActivityIds.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, insertedActivityIds));
+    }
+  }
+});
+
 test("clients, matters, and activity lists and details stay inside the signed-in firm", async () => {
   const clients = await request("/clients", { userId: firms.primary.ownerId });
   assert.equal(clients.response.status, 200);
