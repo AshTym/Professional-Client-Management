@@ -19,9 +19,9 @@ Use these package scripts rather than invoking `drizzle-kit push` directly; a di
 
 If conflicts are reported:
 
-1. Pause the schema change and review the listed identities with the affected firm administrators.
-2. Confirm which firm access should remain for each person, and whether any membership change is authorized. Do not choose a firm automatically.
-3. Apply only the explicitly approved membership corrections using the established administrative process. Do not move or delete membership rows automatically, and do not alter client, matter, or other firm records as a side effect.
+1. Pause the schema change and ask an owner or admin from each affected firm to review that firm's own access.
+2. Each firm admin sees only their local membership and aggregate duplicate counts; do not disclose other firm names or records to them. Each firm admin independently records whether their firm's access should remain or be removed.
+3. Apply only the explicitly approved, firm-local decision. A removal cannot delete the firm owner or the acting admin's own access. If the membership owns client or matter assignments, the admin must explicitly select a replacement in the same firm; the records remain in place and the approval is written to the firm's audit history.
 4. Rerun the preflight. Apply the schema change only after it exits successfully.
 
 The preflight opens a read-only database transaction and never modifies membership data.

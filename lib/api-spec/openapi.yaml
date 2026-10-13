@@ -119,6 +119,55 @@ paths:
                   $ref: "#/components/schemas/WorkspaceMember"
         "403":
           description: Only owners and admins can view firm members
+  /workspace/membership-conflicts:
+    get:
+      operationId: listWorkspaceMembershipConflicts
+      tags: [members]
+      summary: List duplicate identity memberships visible to current firm administrators
+      responses:
+        "200":
+          description: Conflicts within the current firm only; other firms' identities and names are not returned
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkspaceMembershipConflict"
+        "403":
+          description: Only firm owners and admins can view membership conflicts
+  /workspace/membership-conflicts/{id}/decision:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    post:
+      operationId: resolveWorkspaceMembershipConflict
+      tags: [members]
+      summary: Record an explicit access decision for a conflicted membership in the current firm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceMembershipConflictDecisionInput"
+      responses:
+        "200":
+          description: The firm-local decision and any explicitly approved access change were recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMembershipConflictDecision"
+        "400":
+          description: Invalid decision or decision reason
+        "403":
+          description: Only firm owners and admins can decide membership conflicts
+        "404":
+          description: Membership is not part of a current conflict in this firm
+        "409":
+          description: The membership changed, is a protected firm owner, or assigned records need an explicit replacement
   /workspace/members/{id}:
     parameters:
       - name: id
@@ -1505,6 +1554,59 @@ components:
         name: { type: string }
         role: { type: string }
         createdAt: { type: string, format: date-time }
+    WorkspaceMembershipConflict:
+      type: object
+      required:
+        - membershipId
+        - memberName
+        - email
+        - role
+        - firmName
+        - otherFirmCount
+        - otherMembershipCount
+        - lastDecision
+        - lastDecisionBy
+        - lastDecisionAt
+        - lastDecisionReason
+      properties:
+        membershipId: { type: integer }
+        memberName: { type: string }
+        email: { type: string }
+        role: { type: string }
+        firmName: { type: string }
+        otherFirmCount: { type: integer }
+        otherMembershipCount: { type: integer }
+        lastDecision:
+          type: ["string", "null"]
+          enum: [retain, remove, null]
+        lastDecisionBy: { type: ["string", "null"] }
+        lastDecisionAt: { type: ["string", "null"], format: date-time }
+        lastDecisionReason: { type: ["string", "null"] }
+    WorkspaceMembershipConflictDecisionInput:
+      type: object
+      required: [decision, reason]
+      properties:
+        decision:
+          type: string
+          enum: [retain, remove]
+        reason:
+          type: string
+          minLength: 3
+          maxLength: 500
+        replacementMemberId:
+          type: integer
+          minimum: 1
+    WorkspaceMembershipConflictDecision:
+      type: object
+      required: [membershipId, decision, accessRemoved, remainingMembershipCount, decidedAt]
+      properties:
+        membershipId: { type: integer }
+        decision:
+          type: string
+          enum: [retain, remove]
+        accessRemoved: { type: boolean }
+        remainingMembershipCount: { type: integer }
+        decidedAt: { type: string, format: date-time }
     WorkspaceMemberUpdate:
       type: object
       required: [role]

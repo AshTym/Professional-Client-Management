@@ -99,7 +99,10 @@ import type {
   WorkspaceMember,
   WorkspaceMemberAssignments,
   WorkspaceMemberRemoval,
-  WorkspaceMemberUpdate
+  WorkspaceMemberUpdate,
+  WorkspaceMembershipConflict,
+  WorkspaceMembershipConflictDecision,
+  WorkspaceMembershipConflictDecisionInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -708,6 +711,196 @@ export function useListWorkspaceMembers<TData = Awaited<ReturnType<typeof listWo
 
 
 
+
+export const getListWorkspaceMembershipConflictsUrl = () => {
+
+
+
+
+  return `/api/workspace/membership-conflicts`
+}
+
+/**
+ * @summary List duplicate identity memberships visible to current firm administrators
+ */
+export const listWorkspaceMembershipConflicts = async ( options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceMembershipConflict[]> => {
+
+  return customFetch<WorkspaceMembershipConflict[]>(getListWorkspaceMembershipConflictsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListWorkspaceMembershipConflictsQueryKey = () => {
+    return [
+    `/api/workspace/membership-conflicts`
+    ] as const;
+    }
+
+
+export const getListWorkspaceMembershipConflictsQueryOptions = <TData = Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>, TError = ErrorType<void>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListWorkspaceMembershipConflictsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>> = ({ signal }) => listWorkspaceMembershipConflicts({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListWorkspaceMembershipConflictsQueryResult = NonNullable<Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>>
+export type ListWorkspaceMembershipConflictsQueryError = ErrorType<void>
+
+
+export function useListWorkspaceMembershipConflicts<TData = Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>, TError = ErrorType<void>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>,
+          TError,
+          Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListWorkspaceMembershipConflicts<TData = Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>,
+          TError,
+          Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListWorkspaceMembershipConflicts<TData = Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List duplicate identity memberships visible to current firm administrators
+ */
+
+export function useListWorkspaceMembershipConflicts<TData = Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceMembershipConflicts>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListWorkspaceMembershipConflictsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getResolveWorkspaceMembershipConflictUrl = (id: number,) => {
+
+
+
+
+  return `/api/workspace/membership-conflicts/${id}/decision`
+}
+
+/**
+ * @summary Record an explicit access decision for a conflicted membership in the current firm
+ */
+export const resolveWorkspaceMembershipConflict = async (id: number,
+    workspaceMembershipConflictDecisionInput: WorkspaceMembershipConflictDecisionInput, options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceMembershipConflictDecision> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<WorkspaceMembershipConflictDecision>(getResolveWorkspaceMembershipConflictUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(workspaceMembershipConflictDecisionInput)
+  }
+);}
+
+
+
+
+
+export const getResolveWorkspaceMembershipConflictMutationKey = () => ['resolveWorkspaceMembershipConflict'] as const;
+
+export const getResolveWorkspaceMembershipConflictMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveWorkspaceMembershipConflict>>, TError,ResolveWorkspaceMembershipConflictMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resolveWorkspaceMembershipConflict>>, TError,ResolveWorkspaceMembershipConflictMutationVariables, TContext> => {
+
+const mutationKey = getResolveWorkspaceMembershipConflictMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resolveWorkspaceMembershipConflict>>, ResolveWorkspaceMembershipConflictMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  resolveWorkspaceMembershipConflict(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResolveWorkspaceMembershipConflictMutationResult = NonNullable<Awaited<ReturnType<typeof resolveWorkspaceMembershipConflict>>>
+    export type ResolveWorkspaceMembershipConflictMutationBody = BodyType<WorkspaceMembershipConflictDecisionInput>
+    export type ResolveWorkspaceMembershipConflictMutationError = ErrorType<void>
+    export type ResolveWorkspaceMembershipConflictMutationVariables = {id: number;data: BodyType<WorkspaceMembershipConflictDecisionInput>}
+
+    /**
+ * @summary Record an explicit access decision for a conflicted membership in the current firm
+ */
+export const useResolveWorkspaceMembershipConflict = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveWorkspaceMembershipConflict>>, TError,ResolveWorkspaceMembershipConflictMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof resolveWorkspaceMembershipConflict>>,
+        TError,
+        ResolveWorkspaceMembershipConflictMutationVariables,
+        TContext
+      > => {
+      return useMutation(getResolveWorkspaceMembershipConflictMutationOptions(options), queryClient);
+    }
 
 export const getUpdateWorkspaceMemberUrl = (id: number,) => {
 

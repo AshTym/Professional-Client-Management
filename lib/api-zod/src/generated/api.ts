@@ -110,6 +110,56 @@ export const ListWorkspaceMembersResponse = zod.array(ListWorkspaceMembersRespon
 
 
 /**
+ * @summary List duplicate identity memberships visible to current firm administrators
+ */
+export const ListWorkspaceMembershipConflictsResponseItem = zod.object({
+  "membershipId": zod.number().int(),
+  "memberName": zod.string(),
+  "email": zod.string(),
+  "role": zod.string(),
+  "firmName": zod.string(),
+  "otherFirmCount": zod.number().int(),
+  "otherMembershipCount": zod.number().int(),
+  "lastDecision": zod.union([zod.literal('retain'),zod.literal('remove'),zod.literal(null)]).nullable(),
+  "lastDecisionBy": zod.string().nullable(),
+  "lastDecisionAt": zod.coerce.date().nullable(),
+  "lastDecisionReason": zod.string().nullable()
+})
+export const ListWorkspaceMembershipConflictsResponse = zod.array(ListWorkspaceMembershipConflictsResponseItem)
+
+
+/**
+ * @summary Record an explicit access decision for a conflicted membership in the current firm
+ */
+
+
+
+export const ResolveWorkspaceMembershipConflictParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const resolveWorkspaceMembershipConflictBodyReasonMin = 3;
+export const resolveWorkspaceMembershipConflictBodyReasonMax = 500;
+
+
+
+
+export const ResolveWorkspaceMembershipConflictBody = zod.object({
+  "decision": zod.enum(['retain', 'remove']),
+  "reason": zod.string().min(resolveWorkspaceMembershipConflictBodyReasonMin).max(resolveWorkspaceMembershipConflictBodyReasonMax),
+  "replacementMemberId": zod.number().int().min(1).optional()
+})
+
+export const ResolveWorkspaceMembershipConflictResponse = zod.object({
+  "membershipId": zod.number().int(),
+  "decision": zod.enum(['retain', 'remove']),
+  "accessRemoved": zod.boolean(),
+  "remainingMembershipCount": zod.number().int(),
+  "decidedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Change a firm member's role
  */
 

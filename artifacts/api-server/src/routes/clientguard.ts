@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { clerkClient } from "@clerk/express";
 import {
   and,
+  asc,
   count,
   desc,
   eq,
@@ -17,6 +18,7 @@ import {
 } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
+  auditEventsTable,
   activitiesTable,
   clientsTable,
   invitationsTable,
@@ -46,6 +48,10 @@ import {
   GetWorkspaceResponse,
   ListWorkspaceInvitationsResponse,
   ListWorkspaceMembersResponse,
+  ListWorkspaceMembershipConflictsResponse,
+  ResolveWorkspaceMembershipConflictBody,
+  ResolveWorkspaceMembershipConflictParams,
+  ResolveWorkspaceMembershipConflictResponse,
   GetWorkspaceMemberAssignmentsParams,
   GetWorkspaceMemberAssignmentsResponse,
   ResendWorkspaceInvitationParams,
@@ -174,6 +180,375 @@ router.get("/workspace/members", async (req, res): Promise<void> => {
     .orderBy(desc(membershipsTable.createdAt), desc(membershipsTable.id));
   res.json(ListWorkspaceMembersResponse.parse(members.map(memberResponse)));
 });
+
+router.get("/workspace/membership-conflicts", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+  if (!canManageInvitations(access.role)) {
+    res.status(403).json({ error: "Only firm owners and admins can review membership conflicts." });
+    return;
+  }
+
+  const groups = await db
+    .select({
+      clerkUserId: membershipsTable.clerkUserId,
+      membershipCount: count(),
+      firmCount: sql<number>`count(distinct ${membershipsTable.workspaceId})`,
+    })
+    .from(membershipsTable)
+    .groupBy(membershipsTable.clerkUserId)
+    .having(sql`count(*) > 1`);
+  if (!groups.length) {
+    res.json(ListWorkspaceMembershipConflictsResponse.parse([]));
+    return;
+  }
+
+  const groupByUserId = new Map(groups.map((group) => [group.clerkUserId, group]));
+  const localMembers = await db
+    .select()
+    .from(membershipsTable)
+    .where(
+      and(
+        eq(membershipsTable.workspaceId, access.workspaceId),
+        inArray(membershipsTable.clerkUserId, groups.map((group) => group.clerkUserId)),
+      ),
+    )
+    .orderBy(asc(membershipsTable.displayName), asc(membershipsTable.id));
+  if (!localMembers.length) {
+    res.json(ListWorkspaceMembershipConflictsResponse.parse([]));
+    return;
+  }
+
+  const reviews = await db
+    .select()
+    .from(auditEventsTable)
+    .where(
+      and(
+        eq(auditEventsTable.workspaceId, access.workspaceId),
+        eq(auditEventsTable.entityType, "membership_access_conflict"),
+        inArray(auditEventsTable.entityId, localMembers.map((member) => member.id)),
+      ),
+    )
+    .orderBy(desc(auditEventsTable.occurredAt), desc(auditEventsTable.id));
+  const latestReviewByMembership = new Map<
+    number,
+    (typeof reviews)[number]
+  >();
+  for (const review of reviews) {
+    if (review.entityId !== null && !latestReviewByMembership.has(review.entityId)) {
+      latestReviewByMembership.set(review.entityId, review);
+    }
+  }
+
+  const localMembershipCountByUserId = new Map<string, number>();
+  for (const member of localMembers) {
+    localMembershipCountByUserId.set(
+      member.clerkUserId,
+      (localMembershipCountByUserId.get(member.clerkUserId) ?? 0) + 1,
+    );
+  }
+
+  const conflicts = localMembers.map((member) => {
+    const group = groupByUserId.get(member.clerkUserId)!;
+    const review = latestReviewByMembership.get(member.id);
+    const decision = review?.details.decision;
+    const localCount = localMembershipCountByUserId.get(member.clerkUserId) ?? 1;
+    return {
+      membershipId: member.id,
+      memberName: member.displayName || member.email || "Unnamed teammate",
+      email: member.email,
+      role: member.role,
+      firmName: access.workspaceName,
+      otherFirmCount: Math.max(0, Number(group.firmCount) - 1),
+      otherMembershipCount: Math.max(0, Number(group.membershipCount) - localCount),
+      lastDecision: decision === "retain" || decision === "remove" ? decision : null,
+      lastDecisionBy: review?.actor ?? null,
+      lastDecisionAt: review?.occurredAt?.toISOString() ?? null,
+      lastDecisionReason:
+        typeof review?.details.reason === "string" ? review.details.reason : null,
+    };
+  });
+
+  res.json(ListWorkspaceMembershipConflictsResponse.parse(conflicts));
+});
+
+router.post(
+  "/workspace/membership-conflicts/:id/decision",
+  async (req, res): Promise<void> => {
+    const access = await firmAccess(req, res);
+    if (!access) return;
+    if (!canManageInvitations(access.role)) {
+      res.status(403).json({ error: "Only firm owners and admins can decide membership conflicts." });
+      return;
+    }
+
+    const params = ResolveWorkspaceMembershipConflictParams.safeParse(req.params);
+    const body = ResolveWorkspaceMembershipConflictBody.safeParse(req.body);
+    if (!params.success || !body.success || body.data.reason.trim().length < 3) {
+      res.status(400).json({
+        error: "Provide a valid decision and a reason of at least three non-space characters.",
+        details: !params.success ? params.error.flatten() : !body.success ? body.error.flatten() : undefined,
+      });
+      return;
+    }
+    if (body.data.decision === "retain" && body.data.replacementMemberId !== undefined) {
+      res.status(400).json({ error: "A replacement teammate is only used when removing access." });
+      return;
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [candidate] = await tx
+        .select()
+        .from(membershipsTable)
+        .where(
+          and(
+            eq(membershipsTable.id, params.data.id),
+            eq(membershipsTable.workspaceId, access.workspaceId),
+          ),
+        )
+        .limit(1);
+      if (!candidate) return { kind: "member_missing" as const };
+
+      const duplicateMemberships = await tx
+        .select()
+        .from(membershipsTable)
+        .where(eq(membershipsTable.clerkUserId, candidate.clerkUserId))
+        .orderBy(asc(membershipsTable.id))
+        .for("update");
+      const member = duplicateMemberships.find(
+        (row) =>
+          row.id === params.data.id &&
+          row.workspaceId === access.workspaceId,
+      );
+      if (!member) return { kind: "member_missing" as const };
+      if (duplicateMemberships.length < 2) {
+        return { kind: "conflict_gone" as const };
+      }
+
+      let replacementMemberId: number | null = null;
+      if (body.data.decision === "remove") {
+        if (member.role === "owner") return { kind: "owner_protected" as const };
+        if (member.clerkUserId === access.userId) return { kind: "self_removal" as const };
+
+        const labels = assignmentLabels(member);
+        const assignedClients = await tx
+          .select()
+          .from(clientsTable)
+          .where(
+            and(
+              eq(clientsTable.workspaceId, access.workspaceId),
+              inArray(clientsTable.owner, labels),
+            ),
+          )
+          .for("update");
+        const assignedMatters = await tx
+          .select()
+          .from(mattersTable)
+          .where(
+            and(
+              eq(mattersTable.workspaceId, access.workspaceId),
+              inArray(mattersTable.responsible, labels),
+            ),
+          )
+          .for("update");
+        if (
+          (assignedClients.length || assignedMatters.length) &&
+          body.data.replacementMemberId === undefined
+        ) {
+          return {
+            kind: "replacement_required" as const,
+            assignedClientCount: assignedClients.length,
+            assignedMatterCount: assignedMatters.length,
+          };
+        }
+
+        if (body.data.replacementMemberId !== undefined) {
+          const [replacement] = await tx
+            .select()
+            .from(membershipsTable)
+            .where(
+              and(
+                eq(membershipsTable.id, body.data.replacementMemberId),
+                eq(membershipsTable.workspaceId, access.workspaceId),
+              ),
+            )
+            .for("update");
+          if (
+            !replacement ||
+            replacement.id === member.id ||
+            replacement.clerkUserId === member.clerkUserId
+          ) {
+            return { kind: "replacement_invalid" as const };
+          }
+          replacementMemberId = replacement.id;
+          const replacementLabel =
+            replacement.displayName || replacement.email || "Firm teammate";
+          if (assignedClients.length) {
+            await tx
+              .update(clientsTable)
+              .set({ owner: replacementLabel, updatedAt: new Date() })
+              .where(
+                and(
+                  eq(clientsTable.workspaceId, access.workspaceId),
+                  inArray(
+                    clientsTable.id,
+                    assignedClients.map((client) => client.id),
+                  ),
+                ),
+              );
+          }
+          if (assignedMatters.length) {
+            await tx
+              .update(mattersTable)
+              .set({ responsible: replacementLabel, updatedAt: new Date() })
+              .where(
+                and(
+                  eq(mattersTable.workspaceId, access.workspaceId),
+                  inArray(
+                    mattersTable.id,
+                    assignedMatters.map((matter) => matter.id),
+                  ),
+                ),
+              );
+          }
+
+          const actor = access.name || access.email || "Firm user";
+          const previousLabel = member.displayName || member.email;
+          if (assignedClients.length) {
+            await tx.insert(activitiesTable).values(
+              assignedClients.map((client) => ({
+                workspaceId: access.workspaceId,
+                clerkUserId: access.userId,
+                actor,
+                action: `reassigned client ownership from ${previousLabel} to ${replacementLabel}`,
+                entityType: "client",
+                entityId: client.id,
+                entityLabel: client.name,
+              })),
+            );
+          }
+          if (assignedMatters.length) {
+            await tx.insert(activitiesTable).values(
+              assignedMatters.map((matter) => ({
+                workspaceId: access.workspaceId,
+                clerkUserId: access.userId,
+                actor,
+                action: `reassigned matter responsibility from ${previousLabel} to ${replacementLabel}`,
+                entityType: "matter",
+                entityId: matter.id,
+                entityLabel: matter.title,
+              })),
+            );
+          }
+        }
+
+        await tx
+          .delete(membershipsTable)
+          .where(
+            and(
+              eq(membershipsTable.id, member.id),
+              eq(membershipsTable.workspaceId, access.workspaceId),
+            ),
+          );
+      }
+
+      const [review] = await tx
+        .insert(auditEventsTable)
+        .values({
+          workspaceId: access.workspaceId,
+          clerkUserId: access.userId,
+          actor: access.name || access.email || "Firm user",
+          action:
+            body.data.decision === "remove"
+              ? "membership_access_conflict_removed"
+              : "membership_access_conflict_retained",
+          entityType: "membership_access_conflict",
+          entityId: member.id,
+          entityLabel: member.displayName || member.email || "Unnamed teammate",
+          details: {
+            membershipId: member.id,
+            decision: body.data.decision,
+            reason: body.data.reason.trim(),
+            replacementMemberId,
+          },
+        })
+        .returning();
+
+      if (body.data.decision === "remove") {
+        await tx.insert(activitiesTable).values({
+          workspaceId: access.workspaceId,
+          clerkUserId: access.userId,
+          actor: access.name || access.email || "Firm user",
+          action: "removed after reviewing duplicate firm access",
+          entityType: "membership",
+          entityId: member.id,
+          entityLabel: member.displayName || member.email || "Unnamed teammate",
+        });
+      }
+
+      const [remaining] = await tx
+        .select({ count: count() })
+        .from(membershipsTable)
+        .where(eq(membershipsTable.clerkUserId, member.clerkUserId));
+      return {
+        kind: "recorded" as const,
+        membershipId: member.id,
+        decision: body.data.decision,
+        decidedAt: review.occurredAt,
+        remainingMembershipCount: Number(remaining?.count ?? 0),
+      };
+    });
+
+    if (result.kind === "member_missing") {
+      res.status(404).json({ error: "That membership is not part of this firm." });
+      return;
+    }
+    if (result.kind === "conflict_gone") {
+      res.status(404).json({ error: "This membership no longer has a duplicate access conflict." });
+      return;
+    }
+    if (result.kind === "owner_protected") {
+      res.status(409).json({
+        error: "Transfer firm ownership before removing the current firm owner.",
+        code: "firm_owner_protected",
+      });
+      return;
+    }
+    if (result.kind === "self_removal") {
+      res.status(409).json({
+        error: "You cannot remove your own firm access through conflict review.",
+        code: "self_removal_protected",
+      });
+      return;
+    }
+    if (result.kind === "replacement_required") {
+      res.status(409).json({
+        error: "Assigned clients and matters need an active teammate before access is removed.",
+        code: "membership_assignments_replacement_required",
+        assignedClientCount: result.assignedClientCount,
+        assignedMatterCount: result.assignedMatterCount,
+      });
+      return;
+    }
+    if (result.kind === "replacement_invalid") {
+      res.status(400).json({
+        error: "Choose a different active teammate in this firm to take assigned work.",
+        code: "invalid_replacement_member",
+      });
+      return;
+    }
+
+    res.json(
+      ResolveWorkspaceMembershipConflictResponse.parse({
+        membershipId: result.membershipId,
+        decision: result.decision,
+        accessRemoved: result.decision === "remove",
+        remainingMembershipCount: result.remainingMembershipCount,
+        decidedAt: result.decidedAt.toISOString(),
+      }),
+    );
+  },
+);
 
 router.get(
   "/workspace/members/:id/assignments",

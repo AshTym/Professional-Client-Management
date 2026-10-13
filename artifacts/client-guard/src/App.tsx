@@ -29,6 +29,7 @@ import Governance from './Governance';
 import Integrations from './Integrations';
 import Portal from './Portal';
 import PortalInvitation from './PortalInvitation';
+import MembershipConflicts from './MembershipConflicts';
 import './index.css';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 20_000, retry: 1 } } });
@@ -551,6 +552,7 @@ function TeamPage() {
           </div>)}</div>}
       </section>
     </div>
+      {(workspace.data?.role === 'owner' || workspace.data?.role === 'admin') && <MembershipConflicts />}
     <section className="mt-6 overflow-hidden rounded-md border border-[#e0dace] bg-[#fbfaf5]" data-testid="panel-workspace-members">
       <div className="flex items-center justify-between border-b border-[#e9e4d9] px-5 py-4">
         <div><h2 className="serif text-xl font-bold">Current members</h2><p className="mt-1 text-xs text-[#87918d]">Review who can access this firm and update teammate roles.</p></div>

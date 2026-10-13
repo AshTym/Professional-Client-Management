@@ -93,6 +93,70 @@ export interface WorkspaceMember {
   createdAt: string;
 }
 
+/**
+ * @nullable
+ */
+export type WorkspaceMembershipConflictLastDecision = typeof WorkspaceMembershipConflictLastDecision[keyof typeof WorkspaceMembershipConflictLastDecision] | null;
+
+
+export const WorkspaceMembershipConflictLastDecision = {
+  retain: 'retain',
+  remove: 'remove',
+} as const;
+
+export interface WorkspaceMembershipConflict {
+  membershipId: number;
+  memberName: string;
+  email: string;
+  role: string;
+  firmName: string;
+  otherFirmCount: number;
+  otherMembershipCount: number;
+  /** @nullable */
+  lastDecision: WorkspaceMembershipConflictLastDecision;
+  /** @nullable */
+  lastDecisionBy: string | null;
+  /** @nullable */
+  lastDecisionAt: string | null;
+  /** @nullable */
+  lastDecisionReason: string | null;
+}
+
+export type WorkspaceMembershipConflictDecisionInputDecision = typeof WorkspaceMembershipConflictDecisionInputDecision[keyof typeof WorkspaceMembershipConflictDecisionInputDecision];
+
+
+export const WorkspaceMembershipConflictDecisionInputDecision = {
+  retain: 'retain',
+  remove: 'remove',
+} as const;
+
+export interface WorkspaceMembershipConflictDecisionInput {
+  decision: WorkspaceMembershipConflictDecisionInputDecision;
+  /**
+     * @minLength 3
+     * @maxLength 500
+     */
+  reason: string;
+  /** @minimum 1 */
+  replacementMemberId?: number;
+}
+
+export type WorkspaceMembershipConflictDecisionDecision = typeof WorkspaceMembershipConflictDecisionDecision[keyof typeof WorkspaceMembershipConflictDecisionDecision];
+
+
+export const WorkspaceMembershipConflictDecisionDecision = {
+  retain: 'retain',
+  remove: 'remove',
+} as const;
+
+export interface WorkspaceMembershipConflictDecision {
+  membershipId: number;
+  decision: WorkspaceMembershipConflictDecisionDecision;
+  accessRemoved: boolean;
+  remainingMembershipCount: number;
+  decidedAt: string;
+}
+
 export type WorkspaceMemberUpdateRole = typeof WorkspaceMemberUpdateRole[keyof typeof WorkspaceMemberUpdateRole];
 
 
