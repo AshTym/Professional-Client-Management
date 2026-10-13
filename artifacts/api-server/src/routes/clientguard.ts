@@ -1143,7 +1143,12 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
   res.sendStatus(204);
 });
 
-function invitationResponse(invitation: typeof invitationsTable.$inferSelect) {
+function invitationResponse(
+  invitation: Pick<
+    typeof invitationsTable.$inferSelect,
+    "id" | "email" | "role" | "createdAt" | "expiresAt"
+  >,
+) {
   return {
     id: invitation.id,
     email: invitation.email,
@@ -1163,7 +1168,13 @@ router.get("/workspace/invitations", async (req, res): Promise<void> => {
   }
 
   const invitations = await db
-    .select()
+    .select({
+      id: invitationsTable.id,
+      email: invitationsTable.email,
+      role: invitationsTable.role,
+      createdAt: invitationsTable.createdAt,
+      expiresAt: invitationsTable.expiresAt,
+    })
     .from(invitationsTable)
     .where(
       and(

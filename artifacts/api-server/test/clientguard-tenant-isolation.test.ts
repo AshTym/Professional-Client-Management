@@ -2446,7 +2446,19 @@ test("firm admins can resend a pending invitation and invalidate its previous li
     userId: adminId,
   });
   assert.equal(listed.response.status, 200);
-  assert((listed.body as Array<{ id: number }>).some(({ id }) => id === pending.id));
+  const listedInvitation = (
+    listed.body as Array<Record<string, unknown> & { id: number }>
+  ).find(({ id }) => id === pending.id);
+  assert.deepEqual(listedInvitation, {
+    id: pending.id,
+    email: "resend-target@example.test",
+    role: "professional",
+    createdAt: updated.createdAt.toISOString(),
+    expiresAt: updated.expiresAt.toISOString(),
+    expired: false,
+  });
+  assert.equal("tokenHash" in listedInvitation!, false);
+  assert.equal("clerkInvitationId" in listedInvitation!, false);
 
   const oldLink = await request("/workspace/invitations/accept", {
     userId: `resend-target-${randomUUID()}`,
