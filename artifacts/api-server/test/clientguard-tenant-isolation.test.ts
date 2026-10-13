@@ -1654,6 +1654,145 @@ test("only the current owner can transfer ownership to an active member", async 
     await db
       .delete(membershipsTable)
       .where(inArray(membershipsTable.id, [admin.id, successor.id]));
+    await db
+      .update(membershipsTable)
+      .set({ role: "owner" })
+      .where(eq(membershipsTable.id, currentOwner.id));
+  }
+});
+
+test("simultaneous ownership transfers leave one owner and one matching audit event", async () => {
+  const firstSuccessorName = `Ownership Candidate One ${randomUUID()}`;
+  const secondSuccessorName = `Ownership Candidate Two ${randomUUID()}`;
+  const [currentOwner] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, firms.primary.ownerId))
+    .limit(1);
+  const [firstSuccessor] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: `ownership-candidate-one-${randomUUID()}`,
+      email: "ownership-candidate-one@example.test",
+      displayName: firstSuccessorName,
+      role: "professional",
+    })
+    .returning();
+  const [secondSuccessor] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: `ownership-candidate-two-${randomUUID()}`,
+      email: "ownership-candidate-two@example.test",
+      displayName: secondSuccessorName,
+      role: "professional",
+    })
+    .returning();
+  const activityIds: number[] = [];
+
+  try {
+    const [firstTransfer, secondTransfer] = await Promise.all([
+      request(
+        `/workspace/members/${firstSuccessor.id}/transfer-ownership`,
+        { userId: firms.primary.ownerId, method: "POST" },
+      ),
+      request(
+        `/workspace/members/${secondSuccessor.id}/transfer-ownership`,
+        { userId: firms.primary.ownerId, method: "POST" },
+      ),
+    ]);
+    const transfers = [
+      { response: firstTransfer, successor: firstSuccessor, name: firstSuccessorName },
+      { response: secondTransfer, successor: secondSuccessor, name: secondSuccessorName },
+    ];
+    const committedTransfers = transfers.filter(({ response }) =>
+      response.response.status === 200,
+    );
+    const rejectedTransfers = transfers.filter(({ response }) =>
+      response.response.status === 403,
+    );
+
+    assert.equal(committedTransfers.length, 1);
+    assert.equal(rejectedTransfers.length, 1);
+    const committed = committedTransfers[0]!;
+    assert.equal(
+      (committed.response.body as { id: number; role: string }).id,
+      committed.successor.id,
+    );
+    assert.equal(
+      (committed.response.body as { role: string }).role,
+      "owner",
+    );
+    assert.deepEqual(rejectedTransfers[0]!.response.body, {
+      error: "Only the current firm owner can transfer ownership.",
+    });
+
+    const roster = await db
+      .select()
+      .from(membershipsTable)
+      .where(eq(membershipsTable.workspaceId, firms.primary.workspaceId));
+    assert.equal(roster.filter((member) => member.role === "owner").length, 1);
+    assert.equal(
+      roster.find((member) => member.id === currentOwner.id)?.role,
+      "admin",
+    );
+    assert.equal(
+      roster.find((member) => member.id === committed.successor.id)?.role,
+      "owner",
+    );
+    const rejectedSuccessor = rejectedTransfers[0]!.successor;
+    assert.equal(
+      roster.find((member) => member.id === rejectedSuccessor.id)?.role,
+      "professional",
+    );
+
+    const listedRoster = await request("/workspace/members", {
+      userId: committed.successor.clerkUserId,
+    });
+    assert.equal(listedRoster.response.status, 200);
+    const listedMembers = listedRoster.body as Array<{ id: number; role: string }>;
+    assert.equal(
+      listedMembers.filter(({ role }) => role === "owner").length,
+      1,
+    );
+    assert.equal(
+      listedMembers.find(({ id }) => id === committed.successor.id)?.role,
+      "owner",
+    );
+    assert.equal(
+      listedMembers.find(({ id }) => id === rejectedSuccessor.id)?.role,
+      "professional",
+    );
+
+    const events = await db
+      .select()
+      .from(activitiesTable)
+      .where(eq(activitiesTable.workspaceId, firms.primary.workspaceId));
+    const ownershipEvents = events.filter((event) =>
+      event.action.startsWith("transferred firm ownership from "),
+    );
+    assert.equal(ownershipEvents.length, 1);
+    assert.equal(
+      ownershipEvents[0]?.action,
+      `transferred firm ownership from ${currentOwner.displayName} to ${committed.name}`,
+    );
+    assert.equal(ownershipEvents[0]?.clerkUserId, firms.primary.ownerId);
+    assert.equal(ownershipEvents[0]?.entityId, firms.primary.workspaceId);
+    if (ownershipEvents[0]) activityIds.push(ownershipEvents[0].id);
+  } finally {
+    if (activityIds.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, activityIds));
+    }
+    await db
+      .delete(membershipsTable)
+      .where(inArray(membershipsTable.id, [firstSuccessor.id, secondSuccessor.id]));
+    await db
+      .update(membershipsTable)
+      .set({ role: "owner" })
+      .where(eq(membershipsTable.id, currentOwner.id));
   }
 });
 
