@@ -146,6 +146,25 @@ export const RemoveWorkspaceMemberResponse = zod.void()
 
 
 /**
+ * @summary Transfer firm ownership to an active member
+ */
+
+
+
+export const TransferWorkspaceOwnershipParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const TransferWorkspaceOwnershipResponse = zod.object({
+  "id": zod.number().int(),
+  "email": zod.string(),
+  "name": zod.string(),
+  "role": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Send a fresh invitation link to a pending or expired teammate
  */
 

@@ -161,6 +161,31 @@ paths:
           description: Only owners and admins can remove members
         "404":
           description: Member not found in this firm or is the firm owner
+  /workspace/members/{id}/transfer-ownership:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    post:
+      operationId: transferWorkspaceOwnership
+      tags: [members]
+      summary: Transfer firm ownership to an active member
+      responses:
+        "200":
+          description: Ownership transferred; the previous owner becomes an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMember"
+        "400":
+          description: The current owner cannot transfer ownership to themself
+        "403":
+          description: Only the current firm owner can transfer ownership
+        "404":
+          description: The selected member was not found in this firm
   /workspace/invitations/{id}/resend:
     parameters:
       - name: id

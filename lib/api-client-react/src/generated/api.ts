@@ -837,6 +837,80 @@ export const useRemoveWorkspaceMember = <TError = ErrorType<void>,
       return useMutation(getRemoveWorkspaceMemberMutationOptions(options), queryClient);
     }
 
+export const getTransferWorkspaceOwnershipUrl = (id: number,) => {
+
+
+
+
+  return `/api/workspace/members/${id}/transfer-ownership`
+}
+
+/**
+ * @summary Transfer firm ownership to an active member
+ */
+export const transferWorkspaceOwnership = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceMember> => {
+
+  return customFetch<WorkspaceMember>(getTransferWorkspaceOwnershipUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getTransferWorkspaceOwnershipMutationKey = () => ['transferWorkspaceOwnership'] as const;
+
+export const getTransferWorkspaceOwnershipMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transferWorkspaceOwnership>>, TError,TransferWorkspaceOwnershipMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof transferWorkspaceOwnership>>, TError,TransferWorkspaceOwnershipMutationVariables, TContext> => {
+
+const mutationKey = getTransferWorkspaceOwnershipMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof transferWorkspaceOwnership>>, TransferWorkspaceOwnershipMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  transferWorkspaceOwnership(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TransferWorkspaceOwnershipMutationResult = NonNullable<Awaited<ReturnType<typeof transferWorkspaceOwnership>>>
+
+    export type TransferWorkspaceOwnershipMutationError = ErrorType<void>
+    export type TransferWorkspaceOwnershipMutationVariables = {id: number}
+
+    /**
+ * @summary Transfer firm ownership to an active member
+ */
+export const useTransferWorkspaceOwnership = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transferWorkspaceOwnership>>, TError,TransferWorkspaceOwnershipMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof transferWorkspaceOwnership>>,
+        TError,
+        TransferWorkspaceOwnershipMutationVariables,
+        TContext
+      > => {
+      return useMutation(getTransferWorkspaceOwnershipMutationOptions(options), queryClient);
+    }
+
 export const getResendWorkspaceInvitationUrl = (id: number,) => {
 
 

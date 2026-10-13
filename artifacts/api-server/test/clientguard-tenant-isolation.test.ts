@@ -1026,6 +1026,126 @@ test("firm owners and admins can manage teammate roles with scoped audit events"
   }
 });
 
+test("only the current owner can transfer ownership to an active member", async () => {
+  const adminId = `ownership-admin-${randomUUID()}`;
+  const successorId = `ownership-successor-${randomUUID()}`;
+  const successorName = `Ownership Successor ${randomUUID()}`;
+  const [currentOwner] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, firms.primary.ownerId))
+    .limit(1);
+  const [foreignOwner] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, firms.other.ownerId))
+    .limit(1);
+  const [admin] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: adminId,
+      email: "ownership-admin@example.test",
+      displayName: "Ownership Admin",
+      role: "admin",
+    })
+    .returning();
+  const [successor] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: successorId,
+      email: "ownership-successor@example.test",
+      displayName: successorName,
+      role: "professional",
+    })
+    .returning();
+  const activityIds: number[] = [];
+
+  try {
+    const adminTransfer = await request(
+      `/workspace/members/${successor.id}/transfer-ownership`,
+      { userId: adminId, method: "POST" },
+    );
+    assert.equal(adminTransfer.response.status, 403);
+
+    const selfTransfer = await request(
+      `/workspace/members/${currentOwner.id}/transfer-ownership`,
+      { userId: firms.primary.ownerId, method: "POST" },
+    );
+    assert.equal(selfTransfer.response.status, 400);
+
+    const foreignTransfer = await request(
+      `/workspace/members/${foreignOwner.id}/transfer-ownership`,
+      { userId: firms.primary.ownerId, method: "POST" },
+    );
+    assert.equal(foreignTransfer.response.status, 404);
+
+    const transferred = await request(
+      `/workspace/members/${successor.id}/transfer-ownership`,
+      { userId: firms.primary.ownerId, method: "POST" },
+    );
+    assert.equal(transferred.response.status, 200);
+    assert.equal((transferred.body as { id: number; role: string }).id, successor.id);
+    assert.equal((transferred.body as { role: string }).role, "owner");
+
+    const oldOwnerContext = await request("/workspace", {
+      userId: firms.primary.ownerId,
+    });
+    assert.equal((oldOwnerContext.body as { role: string }).role, "admin");
+    const newOwnerContext = await request("/workspace", {
+      userId: successorId,
+    });
+    assert.equal((newOwnerContext.body as { role: string }).role, "owner");
+
+    const workspaceMembers = await db
+      .select()
+      .from(membershipsTable)
+      .where(eq(membershipsTable.workspaceId, firms.primary.workspaceId));
+    assert.equal(
+      workspaceMembers.filter((member) => member.role === "owner").length,
+      1,
+    );
+    assert.equal(
+      workspaceMembers.find((member) => member.id === currentOwner.id)?.role,
+      "admin",
+    );
+    assert.equal(
+      workspaceMembers.find((member) => member.id === successor.id)?.role,
+      "owner",
+    );
+
+    const events = await db
+      .select()
+      .from(activitiesTable)
+      .where(eq(activitiesTable.workspaceId, firms.primary.workspaceId));
+    const ownershipEvent = events.find((event) =>
+      event.action.includes(successorName),
+    );
+    assert.equal(
+      ownershipEvent?.action,
+      `transferred firm ownership from ${currentOwner.displayName} to ${successorName}`,
+    );
+    assert.equal(ownershipEvent?.clerkUserId, firms.primary.ownerId);
+    if (ownershipEvent) activityIds.push(ownershipEvent.id);
+
+    const oldOwnerTransfer = await request(
+      `/workspace/members/${admin.id}/transfer-ownership`,
+      { userId: firms.primary.ownerId, method: "POST" },
+    );
+    assert.equal(oldOwnerTransfer.response.status, 403);
+  } finally {
+    if (activityIds.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, activityIds));
+    }
+    await db
+      .delete(membershipsTable)
+      .where(inArray(membershipsTable.id, [admin.id, successor.id]));
+  }
+});
+
 test("signed-in users without a firm cannot list or create invitations", async (t) => {
   const userId = `no-firm-invitations-${randomUUID()}`;
   const email = `no-firm-invite-${randomUUID()}@example.test`;

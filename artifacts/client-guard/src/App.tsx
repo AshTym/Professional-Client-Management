@@ -8,7 +8,7 @@ import {
   useHealthCheck, useGetWorkspace, useCreateWorkspace, useGetDashboard, useListActivity,
   useListWorkspaceInvitations, useCreateWorkspaceInvitation, useResendWorkspaceInvitation,
   useWithdrawWorkspaceInvitation, useAcceptWorkspaceInvitation, useListWorkspaceMembers,
-  useUpdateWorkspaceMember, useRemoveWorkspaceMember,
+  useUpdateWorkspaceMember, useRemoveWorkspaceMember, useTransferWorkspaceOwnership,
   useListClients, useCreateClient, useGetClient, useUpdateClient, useDeleteClient,
   useListMatters, useCreateMatter, useGetMatter, useUpdateMatter, useCloseMatter,
   getHealthCheckQueryKey, getGetWorkspaceQueryKey, getGetDashboardQueryKey, getListActivityQueryKey,
@@ -354,6 +354,8 @@ function TeamPage() {
   const members = useListWorkspaceMembers();
   const updateMember = useUpdateWorkspaceMember();
   const removeMember = useRemoveWorkspaceMember();
+  const transferOwnership = useTransferWorkspaceOwnership();
+  const workspace = useGetWorkspace();
   const qc = useQueryClient();
   const [invitationActionMessage, setInvitationActionMessage] = useState('');
   const [memberActionMessage, setMemberActionMessage] = useState('');
@@ -390,6 +392,21 @@ function TeamPage() {
       onSuccess: async () => {
         await refreshAccessViews();
         setMemberActionMessage(`${memberName} no longer has access to this firm.`);
+      },
+      onError: async () => {
+        await qc.invalidateQueries({ queryKey: getListWorkspaceMembersQueryKey() });
+      },
+    });
+  }
+
+  function transferFirmOwnership(memberId: number, memberName: string) {
+    if (!window.confirm(`Transfer firm ownership to ${memberName}? You will become an admin, and ${memberName} will become the owner.`)) return;
+    setMemberActionMessage('');
+    transferOwnership.reset();
+    transferOwnership.mutate({ id: memberId }, {
+      onSuccess: async () => {
+        await refreshAccessViews();
+        setMemberActionMessage(`Firm ownership was transferred to ${memberName}. You are now an admin.`);
       },
       onError: async () => {
         await qc.invalidateQueries({ queryKey: getListWorkspaceMembersQueryKey() });
@@ -482,7 +499,7 @@ function TeamPage() {
         <Users className="h-5 w-5 text-[#987747]" />
       </div>
       {memberActionMessage && <p className="px-5 pt-4 text-sm text-[#446b55]" role="status" data-testid="status-member-action">{memberActionMessage}</p>}
-      {(updateMember.isError || removeMember.isError) && <p className="px-5 pt-4 text-sm text-[#9b4941]" role="alert" data-testid="status-member-action-error">That access change could not be completed. The member list has been refreshed; please try again.</p>}
+      {(updateMember.isError || removeMember.isError || transferOwnership.isError) && <p className="px-5 pt-4 text-sm text-[#9b4941]" role="alert" data-testid="status-member-action-error">That access change could not be completed. The member list has been refreshed; please try again.</p>}
       {members.isLoading ? <div className="p-5"><Skeleton title="Loading firm members" /></div> :
         members.isError ? <div className="p-5 text-sm text-[#9b4941]">Firm members could not be loaded. <button onClick={() => members.refetch()} className="underline" data-testid="button-retry-members">Try again</button></div> :
         !members.data?.length ? <div className="p-6"><EmptyState title="No current members" detail="Firm members will appear here after they accept an invitation." /></div> :
@@ -507,11 +524,14 @@ function TeamPage() {
                       <option value="assistant">Assistant</option>
                     </select>
                   </Field>
-                  <Button type="submit" variant="outline" disabled={updateMember.isPending || removeMember.isPending} testId={`button-save-member-role-${member.id}`}>
+                  <Button type="submit" variant="outline" disabled={updateMember.isPending || removeMember.isPending || transferOwnership.isPending} testId={`button-save-member-role-${member.id}`}>
                     {updateMember.isPending ? 'Saving…' : 'Save role'}
                   </Button>
                 </form>
-                <Button variant="outline" disabled={updateMember.isPending || removeMember.isPending} testId={`button-remove-member-${member.id}`} onClick={() => removeTeammate(member.id, memberName)}>
+                {workspace.data?.role === 'owner' && <Button variant="outline" disabled={updateMember.isPending || removeMember.isPending || transferOwnership.isPending} testId={`button-transfer-ownership-${member.id}`} onClick={() => transferFirmOwnership(member.id, memberName)}>
+                  {transferOwnership.isPending ? 'Transferring…' : 'Make firm owner'}
+                </Button>}
+                <Button variant="outline" disabled={updateMember.isPending || removeMember.isPending || transferOwnership.isPending} testId={`button-remove-member-${member.id}`} onClick={() => removeTeammate(member.id, memberName)}>
                   {removeMember.isPending ? 'Removing…' : 'Remove access'}
                 </Button>
               </div>}

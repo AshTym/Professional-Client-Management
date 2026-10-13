@@ -66,6 +66,8 @@ import {
   UpdateWorkspaceMemberParams,
   UpdateWorkspaceMemberResponse,
   RemoveWorkspaceMemberParams,
+  TransferWorkspaceOwnershipParams,
+  TransferWorkspaceOwnershipResponse,
 } from "@workspace/api-zod";
 import {
   firmAccess,
@@ -227,6 +229,92 @@ router.patch("/workspace/members/:id", async (req, res): Promise<void> => {
   }
   res.json(UpdateWorkspaceMemberResponse.parse(memberResponse(result.member)));
 });
+
+router.post(
+  "/workspace/members/:id/transfer-ownership",
+  async (req, res): Promise<void> => {
+    const access = await firmAccess(req, res);
+    if (!access) return;
+    if (access.role !== "owner") {
+      res.status(403).json({ error: "Only the current firm owner can transfer ownership." });
+      return;
+    }
+
+    const params = TransferWorkspaceOwnershipParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const members = await tx
+        .select()
+        .from(membershipsTable)
+        .where(eq(membershipsTable.workspaceId, access.workspaceId))
+        .orderBy(membershipsTable.id)
+        .for("update");
+      const currentOwner = members.find(
+        (member) =>
+          member.clerkUserId === access.userId && member.role === "owner",
+      );
+      if (!currentOwner) return { kind: "not-owner" as const };
+
+      const newOwner = members.find(
+        (member) => member.id === params.data.id,
+      );
+      if (!newOwner) return { kind: "missing" as const };
+      if (newOwner.clerkUserId === access.userId) {
+        return { kind: "self" as const };
+      }
+
+      await tx
+        .update(membershipsTable)
+        .set({ role: "admin" })
+        .where(
+          and(
+            eq(membershipsTable.workspaceId, access.workspaceId),
+            eq(membershipsTable.role, "owner"),
+          ),
+        );
+      const [updatedOwner] = await tx
+        .update(membershipsTable)
+        .set({ role: "owner" })
+        .where(
+          and(
+            eq(membershipsTable.id, newOwner.id),
+            eq(membershipsTable.workspaceId, access.workspaceId),
+          ),
+        )
+        .returning();
+
+      await tx.insert(activitiesTable).values({
+        workspaceId: access.workspaceId,
+        clerkUserId: access.userId,
+        actor: access.name || access.email || "Firm user",
+        action: `transferred firm ownership from ${currentOwner.displayName || currentOwner.email} to ${newOwner.displayName || newOwner.email}`,
+        entityType: "workspace",
+        entityId: access.workspaceId,
+        entityLabel: access.workspaceName,
+      });
+
+      return { kind: "transferred" as const, member: updatedOwner };
+    });
+
+    if (result.kind === "not-owner") {
+      res.status(403).json({ error: "Only the current firm owner can transfer ownership." });
+      return;
+    }
+    if (result.kind === "missing") {
+      res.status(404).json({ error: "That member could not be found in your firm." });
+      return;
+    }
+    if (result.kind === "self") {
+      res.status(400).json({ error: "Choose another active firm member to receive ownership." });
+      return;
+    }
+    res.json(TransferWorkspaceOwnershipResponse.parse(memberResponse(result.member)));
+  },
+);
 
 router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
