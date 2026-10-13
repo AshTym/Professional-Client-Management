@@ -9,8 +9,8 @@
   },
   "scripts": {
     "preflight:memberships": "node ./scripts/check-duplicate-memberships.mjs",
-    "push": "pnpm run preflight:memberships && drizzle-kit push --config ./drizzle.config.ts",
-    "push-force": "pnpm run preflight:memberships && drizzle-kit push --force --config ./drizzle.config.ts",
+    "push": "node ./scripts/push-with-membership-guard.mjs",
+    "push-force": "node ./scripts/push-with-membership-guard.mjs --force",
     "test:preflight": "node ./scripts/test-duplicate-membership-preflight.mjs"
   },
   "dependencies": {

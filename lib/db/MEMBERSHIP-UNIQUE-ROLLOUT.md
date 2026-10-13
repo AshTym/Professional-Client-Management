@@ -8,14 +8,18 @@ pnpm --filter @workspace/db run preflight:memberships
 
 Exit code `0` means the target schema has no duplicate membership rows (or has no membership table yet). Exit code `1` lists each conflicting Clerk user and the affected firm, membership, and role IDs; stop the rollout. Exit code `2` means the check could not complete; do not proceed until the database or configuration issue is resolved.
 
-Both supported schema commands run the preflight first:
+Both supported schema commands check for existing conflicts and coordinate writes for the entire push:
 
 ```sh
 pnpm --filter @workspace/db run push
 pnpm --filter @workspace/db run push-force
 ```
 
-Use these package scripts rather than invoking `drizzle-kit push` directly; a direct CLI invocation bypasses the preflight.
+Use these package scripts rather than invoking `drizzle-kit push` directly; a direct CLI invocation bypasses both the conflict check and write safeguard.
+
+For an existing membership table without the unique index, the push command takes a table lock while it checks for conflicts and installs a temporary database trigger. Membership writes resume after the check, but the trigger serializes writes for each Clerk identity and rejects a duplicate until Drizzle finishes creating `clientguard_membership_user_unique`. The trigger is removed only after that unique index is confirmed. If the push fails, the trigger stays active so retries remain safe.
+
+The initial schema setup has no membership table to guard; the application cannot create memberships until that table exists. Subsequent upgrades are protected by the unique index or the temporary trigger.
 
 If conflicts are reported:
 

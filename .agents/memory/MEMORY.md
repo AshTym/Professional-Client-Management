@@ -3,6 +3,7 @@
 - [ClientGuard provider OAuth](clientguard-provider-oauth.md) — firm integrations use firm-scoped OAuth grants, encrypted tokens, and reviewed actions rather than a shared provider identity.
 - [ClientGuard storage failure tests](clientguard-storage-failure-tests.md) — simulate stream errors with a stream that emits an error, not an Error object yielded as data.
 - [Invitation uniqueness](clientguard-invitation-uniqueness.md) — serialize create and renewal by firm plus normalized email; expiry-dependent uniqueness cannot be expressed as a safe partial index.
+- [Membership upgrade guard](membership-upgrade-guard.md) — a one-time duplicate check is insufficient; protect membership writes until the unique index is committed.
 - [Membership conflict review](membership-conflict-review.md) — each affected firm's owner/admin decides only on local access; no cross-firm identity details are exposed.
 - [ClientGuard medical-market pause](clientguard-medical-market.md) — current focus is legal and financial; Australia/general practice is deferred unless reopened.
 - [Post-merge database setup](post-merge-database-setup.md) — allow schema pushes a generous timeout after installs; keep the preflight and avoid forced pushes.
