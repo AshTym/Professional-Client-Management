@@ -11,8 +11,11 @@ const mocks = vi.hoisted(() => ({
   useListMatters: vi.fn(),
   useLogMatterExportRequest: vi.fn(),
   useGetIntakeOverview: vi.fn(),
+  useGetClient: vi.fn(),
   useSaveIntakeChecks: vi.fn(),
   useCreateIntake: vi.fn(),
+  useUpdateClient: vi.fn(),
+  useDeleteClient: vi.fn(),
   useReviewIntake: vi.fn(),
   useOpenMatterFromIntake: vi.fn(),
   useListWorkspaceAssignmentMembers: vi.fn(),
@@ -32,8 +35,9 @@ vi.mock('@workspace/api-client-react', () => ({
 vi.mock('./lib/matters-pdf', () => ({
   downloadMattersPdf: mocks.downloadMattersPdf,
 }));
+vi.mock('./PortalInvitation', () => ({ default: () => null }));
 
-import { ClientsPage, Dashboard, MattersPage } from './App';
+import { ClientDetail, ClientsPage, Dashboard, MattersPage } from './App';
 import Intake from './Intake';
 
 const firstMatter = {
@@ -72,6 +76,7 @@ function renderAt(path: string, queryClient = new QueryClient({
         <Switch>
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/clients" component={ClientsPage} />
+          <Route path="/clients/:id" component={ClientDetail} />
           <Route path="/intake" component={Intake} />
           <Route path="/matters" component={MattersPage} />
         </Switch>
@@ -117,6 +122,18 @@ describe('dashboard shortcuts and matter exports', () => {
       isError: false,
       refetch: vi.fn(),
     });
+    mocks.useGetClient.mockReturnValue({
+      data: {
+        id: 5, name: 'Northstar Ltd', clientType: 'business', email: 'northstar@example.test',
+        phone: '555-0105', industry: 'Technology', status: 'active', owner: 'A. Morgan',
+        ownerMemberId: 1, matterCount: 0, lastActivityAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    mocks.useUpdateClient.mockReturnValue({ mutate: vi.fn(), isPending: false, isError: false });
+    mocks.useDeleteClient.mockReturnValue({ mutate: vi.fn(), isPending: false });
     mocks.useSaveIntakeChecks.mockReturnValue({ mutate: vi.fn(), isPending: false });
     mocks.useCreateIntake.mockReturnValue({ mutate: vi.fn(), isPending: false });
     mocks.useReviewIntake.mockReturnValue({ mutate: vi.fn(), isPending: false });
@@ -166,6 +183,76 @@ describe('dashboard shortcuts and matter exports', () => {
 
     expect(screen.getByRole('dialog', { name: 'Start a client intake' })).toBeTruthy();
     expect(screen.getByTestId('button-submit-intake')).toBeTruthy();
+  });
+
+  it('opens a preselected intake directly from the client profile', async () => {
+    mocks.useListClients.mockReturnValue({
+      data: [{
+        id: 5, name: 'Northstar Ltd', clientType: 'business', email: 'northstar@example.test',
+        phone: '555-0105', industry: 'Technology', status: 'active', owner: 'A. Morgan',
+        ownerMemberId: 1, matterCount: 0, lastActivityAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+      }],
+      isLoading: false,
+      isError: false,
+    });
+    renderAt('/clients/5');
+
+    const startMatter = screen.getByTestId('link-client-start-matter') as HTMLAnchorElement;
+    expect(startMatter.getAttribute('href')).toBe('/intake?create=1&clientId=5');
+    fireEvent.click(startMatter);
+
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Start a client intake' })).toBeTruthy());
+    expect((screen.getByTestId('select-intake-client') as HTMLSelectElement).value).toBe('5');
+  });
+
+  it('preselects the client from a client profile link and lets staff change it', async () => {
+    const clientList = [
+      {
+        id: 5, name: 'Northstar Ltd', clientType: 'business', email: 'northstar@example.test',
+        phone: '555-0105', industry: 'Technology', status: 'active', owner: 'A. Morgan',
+        ownerMemberId: 1, matterCount: 0, lastActivityAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: 6, name: 'Harbor Group', clientType: 'business', email: 'harbor@example.test',
+        phone: '555-0106', industry: 'Shipping', status: 'active', owner: 'A. Morgan',
+        ownerMemberId: 1, matterCount: 0, lastActivityAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ];
+    mocks.useListClients.mockReturnValue({ data: clientList, isLoading: false, isError: false });
+
+    renderAt('/intake?create=1&clientId=5');
+
+    const clientSelect = screen.getByTestId('select-intake-client') as HTMLSelectElement;
+    await waitFor(() => {
+      expect(clientSelect.value).toBe('5');
+      expect((screen.getByLabelText('Client / entity name') as HTMLInputElement).value).toBe('Northstar Ltd');
+    });
+    fireEvent.change(clientSelect, { target: { value: '6' } });
+
+    expect(clientSelect.value).toBe('6');
+    expect((screen.getByLabelText('Client / entity name') as HTMLInputElement).value).toBe('Harbor Group');
+    expect((screen.getByLabelText('Email') as HTMLInputElement).value).toBe('harbor@example.test');
+
+    fireEvent.change(clientSelect, { target: { value: '' } });
+    expect((screen.getByLabelText('Client / entity name') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Email') as HTMLInputElement).value).toBe('');
+  });
+
+  it('does not preselect a client on the regular matter intake route', () => {
+    mocks.useListClients.mockReturnValue({
+      data: [{
+        id: 5, name: 'Northstar Ltd', clientType: 'business', email: 'northstar@example.test',
+        phone: '555-0105', industry: 'Technology', status: 'active', owner: 'A. Morgan',
+        ownerMemberId: 1, matterCount: 0, lastActivityAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+      }],
+      isLoading: false,
+      isError: false,
+    });
+
+    renderAt('/intake?create=1');
+
+    expect((screen.getByTestId('select-intake-client') as HTMLSelectElement).value).toBe('');
+    expect((screen.getByLabelText('Client / entity name') as HTMLInputElement).value).toBe('');
   });
 
   it('refreshes client counts and related views after a matter is opened', async () => {
