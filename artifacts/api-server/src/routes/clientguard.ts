@@ -61,6 +61,7 @@ import {
   ResendWorkspaceInvitationParams,
   ResendWorkspaceInvitationResponse,
   WithdrawWorkspaceInvitationParams,
+  WithdrawWorkspaceInvitationResponse,
   ListActivityQueryParams,
   ListActivityResponse,
   ListClientsQueryParams,
@@ -1457,7 +1458,13 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
 function invitationResponse(
   invitation: Pick<
     typeof invitationsTable.$inferSelect,
-    "id" | "email" | "role" | "createdAt" | "expiresAt"
+    | "id"
+    | "email"
+    | "role"
+    | "createdAt"
+    | "expiresAt"
+    | "revokedAt"
+    | "providerRevocationFailed"
   >,
 ) {
   return {
@@ -1467,6 +1474,8 @@ function invitationResponse(
     createdAt: invitation.createdAt,
     expiresAt: invitation.expiresAt,
     expired: invitation.expiresAt <= new Date(),
+    revoked: invitation.revokedAt !== null,
+    providerRevocationFailed: invitation.providerRevocationFailed,
   };
 }
 
@@ -1485,13 +1494,18 @@ router.get("/workspace/invitations", async (req, res): Promise<void> => {
       role: invitationsTable.role,
       createdAt: invitationsTable.createdAt,
       expiresAt: invitationsTable.expiresAt,
+      revokedAt: invitationsTable.revokedAt,
+      providerRevocationFailed: invitationsTable.providerRevocationFailed,
     })
     .from(invitationsTable)
     .where(
       and(
         eq(invitationsTable.workspaceId, access.workspaceId),
         isNull(invitationsTable.acceptedAt),
-        isNull(invitationsTable.revokedAt),
+        or(
+          isNull(invitationsTable.revokedAt),
+          eq(invitationsTable.providerRevocationFailed, true),
+        ),
       ),
     )
     .orderBy(desc(invitationsTable.createdAt));
@@ -1754,6 +1768,7 @@ router.post(
       }
       createdClerkInvitationId = undefined;
 
+      let providerRevocationFailed = result.invitation.providerRevocationFailed;
       if (result.previousClerkInvitationId) {
         try {
           await clerkClient.invitations.revokeInvitation(
@@ -1764,11 +1779,19 @@ router.post(
             { invitationId: params.data.id, error },
             "Could not revoke the superseded Clerk invitation",
           );
+          providerRevocationFailed = true;
+          await db
+            .update(invitationsTable)
+            .set({ providerRevocationFailed: true })
+            .where(eq(invitationsTable.id, result.invitation.id));
         }
       }
       res.json(
         ResendWorkspaceInvitationResponse.parse(
-          invitationResponse(result.invitation),
+          invitationResponse({
+            ...result.invitation,
+            providerRevocationFailed,
+          }),
         ),
       );
     } catch (error) {
@@ -1838,6 +1861,7 @@ router.delete(
       return;
     }
 
+    let providerRevocationFailed = invitation.providerRevocationFailed;
     if (invitation.clerkInvitationId) {
       try {
         await clerkClient.invitations.revokeInvitation(invitation.clerkInvitationId);
@@ -1846,9 +1870,21 @@ router.delete(
           { invitationId: params.data.id, error },
           "Could not revoke the withdrawn Clerk invitation",
         );
+        providerRevocationFailed = true;
+        await db
+          .update(invitationsTable)
+          .set({ providerRevocationFailed: true })
+          .where(eq(invitationsTable.id, invitation.id));
       }
     }
-    res.sendStatus(204);
+    res.json(
+      WithdrawWorkspaceInvitationResponse.parse(
+        invitationResponse({
+          ...invitation,
+          providerRevocationFailed,
+        }),
+      ),
+    );
   },
 );
 

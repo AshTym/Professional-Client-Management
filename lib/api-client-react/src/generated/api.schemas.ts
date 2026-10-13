@@ -83,6 +83,8 @@ export interface WorkspaceInvitation {
   createdAt: string;
   expiresAt: string;
   expired: boolean;
+  revoked: boolean;
+  providerRevocationFailed: boolean;
 }
 
 export interface WorkspaceMember {

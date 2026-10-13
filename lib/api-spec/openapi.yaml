@@ -66,10 +66,10 @@ paths:
     get:
       operationId: listWorkspaceInvitations
       tags: [invitations]
-      summary: List unused invitations for the current firm, including expired invitations
+      summary: List unused invitations and withdrawn invitations needing provider cleanup
       responses:
         "200":
-          description: Unused firm invitations, including expired invitations
+          description: Unused firm invitations, including expired invitations and withdrawn invitations whose provider revocation failed
           content:
             application/json:
               schema:
@@ -359,7 +359,7 @@ paths:
       summary: Send a fresh invitation link to a pending or expired teammate
       responses:
         "200":
-          description: A new invitation email was sent
+          description: A new invitation email was sent; providerRevocationFailed signals incomplete cleanup of the previous provider invitation
           content:
             application/json:
               schema:
@@ -383,8 +383,12 @@ paths:
       tags: [invitations]
       summary: Withdraw a pending invitation
       responses:
-        "204":
-          description: Invitation withdrawn
+        "200":
+          description: Invitation withdrawn; providerRevocationFailed signals incomplete cleanup by the identity provider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceInvitation"
         "403":
           description: Only owners and admins can manage invitations
         "404":
@@ -2058,7 +2062,7 @@ components:
           enum: [law, financial, both]
     WorkspaceInvitation:
       type: object
-      required: [id, email, role, createdAt, expiresAt, expired]
+      required: [id, email, role, createdAt, expiresAt, expired, revoked, providerRevocationFailed]
       properties:
         id: { type: integer }
         email: { type: string, format: email }
@@ -2068,6 +2072,8 @@ components:
         createdAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
         expired: { type: boolean }
+        revoked: { type: boolean }
+        providerRevocationFailed: { type: boolean }
     WorkspaceMember:
       type: object
       required: [id, email, name, role, createdAt]

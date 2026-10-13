@@ -61,7 +61,7 @@ export const CreateWorkspaceResponse = zod.object({
 
 
 /**
- * @summary List unused invitations for the current firm, including expired invitations
+ * @summary List unused invitations and withdrawn invitations needing provider cleanup
  */
 export const ListWorkspaceInvitationsResponseItem = zod.object({
   "id": zod.number().int(),
@@ -69,7 +69,9 @@ export const ListWorkspaceInvitationsResponseItem = zod.object({
   "role": zod.enum(['admin', 'advisor', 'professional', 'assistant']),
   "createdAt": zod.coerce.date(),
   "expiresAt": zod.coerce.date(),
-  "expired": zod.boolean()
+  "expired": zod.boolean(),
+  "revoked": zod.boolean(),
+  "providerRevocationFailed": zod.boolean()
 })
 export const ListWorkspaceInvitationsResponse = zod.array(ListWorkspaceInvitationsResponseItem)
 
@@ -92,7 +94,9 @@ export const CreateWorkspaceInvitationResponse = zod.object({
   "role": zod.enum(['admin', 'advisor', 'professional', 'assistant']),
   "createdAt": zod.coerce.date(),
   "expiresAt": zod.coerce.date(),
-  "expired": zod.boolean()
+  "expired": zod.boolean(),
+  "revoked": zod.boolean(),
+  "providerRevocationFailed": zod.boolean()
 })
 
 
@@ -333,7 +337,9 @@ export const ResendWorkspaceInvitationResponse = zod.object({
   "role": zod.enum(['admin', 'advisor', 'professional', 'assistant']),
   "createdAt": zod.coerce.date(),
   "expiresAt": zod.coerce.date(),
-  "expired": zod.boolean()
+  "expired": zod.boolean(),
+  "revoked": zod.boolean(),
+  "providerRevocationFailed": zod.boolean()
 })
 
 
@@ -347,7 +353,16 @@ export const WithdrawWorkspaceInvitationParams = zod.object({
   "id": zod.coerce.number().int().min(1)
 })
 
-export const WithdrawWorkspaceInvitationResponse = zod.void()
+export const WithdrawWorkspaceInvitationResponse = zod.object({
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "role": zod.enum(['admin', 'advisor', 'professional', 'assistant']),
+  "createdAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date(),
+  "expired": zod.boolean(),
+  "revoked": zod.boolean(),
+  "providerRevocationFailed": zod.boolean()
+})
 
 
 /**

@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   integer,
   pgTable,
@@ -55,6 +56,9 @@ export const invitationsTable = pgTable(
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     acceptedByClerkUserId: text("accepted_by_clerk_user_id"),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    providerRevocationFailed: boolean("provider_revocation_failed")
+      .notNull()
+      .default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

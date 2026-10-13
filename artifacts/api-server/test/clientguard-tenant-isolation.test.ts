@@ -96,6 +96,7 @@ before(async () => {
       accepted_at timestamptz,
       accepted_by_clerk_user_id text,
       revoked_at timestamptz,
+      provider_revocation_failed boolean NOT NULL DEFAULT false,
       created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE "${schemaName}".clientguard_clients (
@@ -2615,6 +2616,8 @@ test("owners can email an invitation with the selected workspace role", async (t
       createdAt: (result.body as { createdAt: string }).createdAt,
       expiresAt: (result.body as { expiresAt: string }).expiresAt,
       expired: false,
+      revoked: false,
+      providerRevocationFailed: false,
     },
   );
   const [stored] = await db
@@ -2783,6 +2786,8 @@ test("firm admins can resend a pending invitation and invalidate its previous li
     createdAt: updated.createdAt.toISOString(),
     expiresAt: updated.expiresAt.toISOString(),
     expired: false,
+    revoked: false,
+    providerRevocationFailed: false,
   });
   assert.equal("tokenHash" in listedInvitation!, false);
   assert.equal("clerkInvitationId" in listedInvitation!, false);
@@ -2793,6 +2798,87 @@ test("firm admins can resend a pending invitation and invalidate its previous li
     body: { token: oldToken },
   });
   assert.equal(oldLink.response.status, 404);
+});
+
+test("a failed superseded Clerk revocation is visible and the old link cannot create membership", async (t) => {
+  const adminId = `revocation-admin-${randomUUID()}`;
+  const joiningUserId = `revocation-target-${randomUUID()}`;
+  await db.insert(membershipsTable).values({
+    workspaceId: firms.primary.workspaceId,
+    clerkUserId: adminId,
+    email: "revocation-admin@example.test",
+    displayName: "Revocation Admin",
+    role: "admin",
+  });
+  const oldToken = randomUUID();
+  const [pending] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email: "revocation-target@example.test",
+      role: "professional",
+      invitedByClerkUserId: firms.primary.ownerId,
+      clerkInvitationId: "unrevoked_superseded_clerk_invitation",
+      tokenHash: createHash("sha256").update(oldToken).digest("hex"),
+      expiresAt: new Date(Date.now() + 60_000),
+    })
+    .returning();
+  let newToken = "";
+  t.mock.method(clerkClient.invitations, "createInvitation", async (params) => {
+    const match = params.redirectUrl?.match(/[?&]token=([^&]+)/);
+    assert(match);
+    newToken = decodeURIComponent(match[1]);
+    return { id: "replacement_clerk_invitation" } as never;
+  });
+  t.mock.method(clerkClient.invitations, "revokeInvitation", async () => {
+    throw new Error("Simulated Clerk outage");
+  });
+
+  const resent = await request(`/workspace/invitations/${pending.id}/resend`, {
+    userId: adminId,
+    method: "POST",
+  });
+  assert.equal(resent.response.status, 200);
+  assert.deepEqual(
+    {
+      email: (resent.body as { email: string }).email,
+      revoked: (resent.body as { revoked: boolean }).revoked,
+      providerRevocationFailed:
+        (resent.body as { providerRevocationFailed: boolean }).providerRevocationFailed,
+    },
+    {
+      email: "revocation-target@example.test",
+      revoked: false,
+      providerRevocationFailed: true,
+    },
+  );
+
+  const listed = await request("/workspace/invitations", { userId: adminId });
+  assert.equal(listed.response.status, 200);
+  const flagged = (listed.body as Array<{
+    id: number;
+    providerRevocationFailed: boolean;
+  }>).find(({ id }) => id === pending.id);
+  assert.equal(flagged?.providerRevocationFailed, true);
+
+  const oldLink = await request("/workspace/invitations/accept", {
+    userId: joiningUserId,
+    method: "POST",
+    body: { token: oldToken },
+  });
+  assert.equal(oldLink.response.status, 404);
+  const oldLinkMembership = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, joiningUserId));
+  assert.equal(oldLinkMembership.length, 0);
+
+  const [updated] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, pending.id));
+  assert.equal(updated.tokenHash, createHash("sha256").update(newToken).digest("hex"));
+  assert.equal(updated.providerRevocationFailed, true);
 });
 
 test("firm admins can renew expired invitations with a new seven-day link", async (t) => {
@@ -3093,7 +3179,7 @@ test("firm owners can withdraw a pending invitation and its link cannot be accep
     userId: firms.primary.ownerId,
     method: "DELETE",
   });
-  assert.equal(withdrawn.response.status, 204);
+  assert.equal(withdrawn.response.status, 200);
   assert.equal(revokeInvitation.mock.callCount(), 1);
 
   const [stored] = await db
@@ -3113,6 +3199,74 @@ test("firm owners can withdraw a pending invitation and its link cannot be accep
     body: { token },
   });
   assert.equal(acceptance.response.status, 410);
+});
+
+test("a failed Clerk revocation leaves a visible withdrawn invitation and the old link cannot create membership", async (t) => {
+  const adminId = `withdraw-revocation-admin-${randomUUID()}`;
+  const joiningUserId = `withdraw-revocation-target-${randomUUID()}`;
+  await db.insert(membershipsTable).values({
+    workspaceId: firms.primary.workspaceId,
+    clerkUserId: adminId,
+    email: "withdraw-revocation-admin@example.test",
+    displayName: "Withdraw Revocation Admin",
+    role: "admin",
+  });
+  const token = randomUUID();
+  const [pending] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email: "withdraw-revocation-target@example.test",
+      role: "assistant",
+      invitedByClerkUserId: firms.primary.ownerId,
+      clerkInvitationId: "unrevoked_withdrawn_clerk_invitation",
+      tokenHash: createHash("sha256").update(token).digest("hex"),
+      expiresAt: new Date(Date.now() + 60_000),
+    })
+    .returning();
+  t.mock.method(clerkClient.invitations, "revokeInvitation", async () => {
+    throw new Error("Simulated Clerk outage");
+  });
+
+  const withdrawn = await request(`/workspace/invitations/${pending.id}`, {
+    userId: adminId,
+    method: "DELETE",
+  });
+  assert.equal(withdrawn.response.status, 200);
+  assert.equal((withdrawn.body as { revoked: boolean }).revoked, true);
+  assert.equal(
+    (withdrawn.body as { providerRevocationFailed: boolean }).providerRevocationFailed,
+    true,
+  );
+
+  const listed = await request("/workspace/invitations", { userId: adminId });
+  assert.equal(listed.response.status, 200);
+  const flagged = (listed.body as Array<{
+    id: number;
+    revoked: boolean;
+    providerRevocationFailed: boolean;
+  }>).find(({ id }) => id === pending.id);
+  assert.equal(flagged?.revoked, true);
+  assert.equal(flagged?.providerRevocationFailed, true);
+
+  const oldLink = await request("/workspace/invitations/accept", {
+    userId: joiningUserId,
+    method: "POST",
+    body: { token },
+  });
+  assert.equal(oldLink.response.status, 410);
+  const oldLinkMembership = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, joiningUserId));
+  assert.equal(oldLinkMembership.length, 0);
+
+  const [stored] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, pending.id));
+  assert(stored.revokedAt);
+  assert.equal(stored.providerRevocationFailed, true);
 });
 
 test("acceptance can finish while a resend email is slow and the new Clerk invitation is revoked", async (t) => {
@@ -3235,7 +3389,7 @@ test("withdrawal can finish while a resend email is slow and the new Clerk invit
 
   const [withdrawn, resent] = await Promise.all([withdrawalPromise, resendPromise]);
   assert.equal(withdrawalBeforeEmailFinishes.completed, true);
-  assert.equal(withdrawn.response.status, 204);
+  assert.equal(withdrawn.response.status, 200);
   assert.equal(resent.response.status, 404);
   assert.equal(revokeInvitation.mock.callCount(), 2);
   assert.deepEqual(
@@ -3370,7 +3524,7 @@ test("a withdrawal racing with acceptance rejects the withdrawn link without cre
     userId: firms.primary.ownerId,
     method: "DELETE",
   });
-  assert.equal(withdrawn.response.status, 204);
+  assert.equal(withdrawn.response.status, 200);
   finishVerification.resolve();
 
   const acceptance = await acceptancePromise;

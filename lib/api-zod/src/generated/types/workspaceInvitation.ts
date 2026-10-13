@@ -14,4 +14,6 @@ export interface WorkspaceInvitation {
   createdAt: Date;
   expiresAt: Date;
   expired: boolean;
+  revoked: boolean;
+  providerRevocationFailed: boolean;
 }

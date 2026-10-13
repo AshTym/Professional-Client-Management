@@ -463,7 +463,7 @@ export const getListWorkspaceInvitationsUrl = () => {
 }
 
 /**
- * @summary List unused invitations for the current firm, including expired invitations
+ * @summary List unused invitations and withdrawn invitations needing provider cleanup
  */
 export const listWorkspaceInvitations = async ( options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceInvitation[]> => {
 
@@ -534,7 +534,7 @@ export function useListWorkspaceInvitations<TData = Awaited<ReturnType<typeof li
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary List unused invitations for the current firm, including expired invitations
+ * @summary List unused invitations and withdrawn invitations needing provider cleanup
  */
 
 export function useListWorkspaceInvitations<TData = Awaited<ReturnType<typeof listWorkspaceInvitations>>, TError = ErrorType<void>>(
@@ -1751,9 +1751,9 @@ export const getWithdrawWorkspaceInvitationUrl = (id: number,) => {
 /**
  * @summary Withdraw a pending invitation
  */
-export const withdrawWorkspaceInvitation = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+export const withdrawWorkspaceInvitation = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceInvitation> => {
 
-  return customFetch<void>(getWithdrawWorkspaceInvitationUrl(id),
+  return customFetch<WorkspaceInvitation>(getWithdrawWorkspaceInvitationUrl(id),
   {
     ...options,
     method: 'DELETE'
