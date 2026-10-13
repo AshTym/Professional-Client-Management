@@ -35,11 +35,7 @@ export const membershipsTable = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("clientguard_membership_workspace_user").on(
-      table.workspaceId,
-      table.clerkUserId,
-    ),
-    index("clientguard_membership_user_idx").on(table.clerkUserId),
+    uniqueIndex("clientguard_membership_user_unique").on(table.clerkUserId),
   ],
 );
 

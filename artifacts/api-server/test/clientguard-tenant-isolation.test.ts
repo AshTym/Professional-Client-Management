@@ -78,6 +78,8 @@ before(async () => {
       role text NOT NULL DEFAULT 'professional',
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE UNIQUE INDEX clientguard_membership_user_unique
+      ON "${schemaName}".clientguard_memberships (clerk_user_id);
     CREATE TABLE "${schemaName}".clientguard_invitations (
       id serial PRIMARY KEY,
       workspace_id integer NOT NULL REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,
@@ -552,6 +554,43 @@ async function request(
     body: response.status === 204 ? undefined : await response.json(),
   };
 }
+
+test("database rejects a second firm membership for the same signed-in identity", async () => {
+  const [existingMembership] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, firms.primary.ownerId));
+
+  assert.ok(existingMembership);
+  await assert.rejects(
+    db.insert(membershipsTable).values({
+      workspaceId: firms.other.workspaceId,
+      clerkUserId: firms.primary.ownerId,
+      email: "duplicate-owner@example.test",
+      displayName: "Duplicate Owner",
+      role: "owner",
+    }),
+    (error: unknown) => {
+      const databaseError = error as {
+        code?: string;
+        cause?: { code?: string };
+      };
+      assert.equal(
+        databaseError.cause?.code ?? databaseError.code,
+        "23505",
+        "duplicate identity membership should fail with a unique-violation error",
+      );
+      return true;
+    },
+  );
+
+  const memberships = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, firms.primary.ownerId));
+  assert.deepEqual(memberships, [existingMembership]);
+  assert.equal(existingMembership.workspaceId, firms.primary.workspaceId);
+});
 
 test("concurrent workspace setup requests create one firm for the signed-in owner", async () => {
   const userId = `workspace-setup-${randomUUID()}`;
