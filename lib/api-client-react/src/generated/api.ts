@@ -57,6 +57,7 @@ import type {
   DocumentUploadInput,
   EngagementLetter,
   EngagementLetterInput,
+  ExportActivityParams,
   GetOperationsReportParams,
   GetPortalRequestsParams,
   GetTrustAccountStatementParams,
@@ -2192,6 +2193,114 @@ export function useListActivity<TData = Awaited<ReturnType<typeof listActivity>>
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getListActivityQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getExportActivityUrl = (params?: ExportActivityParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/activity/export.csv?${stringifiedParams}` : `/api/activity/export.csv`
+}
+
+/**
+ * @summary Export the current firm's activity history
+ */
+export const exportActivity = async (params?: ExportActivityParams, options?: Parameters<typeof customFetch>[1]): Promise<string> => {
+
+  return customFetch<string>(getExportActivityUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportActivityQueryKey = (params?: ExportActivityParams,) => {
+    return [
+    `/api/activity/export.csv`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportActivityQueryOptions = <TData = Awaited<ReturnType<typeof exportActivity>>, TError = ErrorType<void>>(params?: ExportActivityParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof exportActivity>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportActivityQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportActivity>>> = ({ signal }) => exportActivity(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportActivity>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ExportActivityQueryResult = NonNullable<Awaited<ReturnType<typeof exportActivity>>>
+export type ExportActivityQueryError = ErrorType<void>
+
+
+export function useExportActivity<TData = Awaited<ReturnType<typeof exportActivity>>, TError = ErrorType<void>>(
+ params: undefined |  ExportActivityParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof exportActivity>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof exportActivity>>,
+          TError,
+          Awaited<ReturnType<typeof exportActivity>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useExportActivity<TData = Awaited<ReturnType<typeof exportActivity>>, TError = ErrorType<void>>(
+ params?: ExportActivityParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof exportActivity>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof exportActivity>>,
+          TError,
+          Awaited<ReturnType<typeof exportActivity>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useExportActivity<TData = Awaited<ReturnType<typeof exportActivity>>, TError = ErrorType<void>>(
+ params?: ExportActivityParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof exportActivity>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Export the current firm's activity history
+ */
+
+export function useExportActivity<TData = Awaited<ReturnType<typeof exportActivity>>, TError = ErrorType<void>>(
+ params?: ExportActivityParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof exportActivity>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getExportActivityQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

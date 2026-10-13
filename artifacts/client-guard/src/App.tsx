@@ -6,6 +6,7 @@ import { shadcn } from '@clerk/themes';
 import { Route, Switch, Router as WouterRouter, Link, Redirect, useLocation, useRoute } from 'wouter';
 import {
   useHealthCheck, useGetWorkspace, useCreateWorkspace, useGetDashboard, useListActivity,
+  exportActivity,
   useListWorkspaceInvitations, useCreateWorkspaceInvitation, useResendWorkspaceInvitation,
   useWithdrawWorkspaceInvitation, useAcceptWorkspaceInvitation, useListWorkspaceMembers,
   useUpdateWorkspaceMember, useRemoveWorkspaceMember, useTransferWorkspaceOwnership,
@@ -519,14 +520,17 @@ export function MatterDetail() {
 
 export function ActivityPage() {
  const [limit,setLimit]=useState(40);const [page,setPage]=useState(0);const [actorMemberId,setActorMemberId]=useState('');const [recordFilter,setRecordFilter]=useState('');
+ const [exporting,setExporting]=useState(false);const [exportMessage,setExportMessage]=useState('');const [exportError,setExportError]=useState('');
  const members=useListWorkspaceAssignmentMembers();const clients=useListClients();const matters=useListMatters();
  const [entityType,entityIdValue]=recordFilter ? recordFilter.split(':') : [];
  const result=useListActivity({limit:limit+1,offset:page*limit,actorMemberId:actorMemberId?Number(actorMemberId):undefined,entityType:entityType as 'client'|'matter'|undefined,entityId:entityIdValue?Number(entityIdValue):undefined});
  const items=result.data?.slice(0,limit)??[];const hasNextPage=(result.data?.length??0)>limit;
  const firstEvent=page*limit+1;const lastEvent=firstEvent+items.length-1;
  const hasFilters=Boolean(actorMemberId||recordFilter);
+ async function downloadActivity(){setExporting(true);setExportMessage('');setExportError('');try{const csv=await exportActivity({actorMemberId:actorMemberId?Number(actorMemberId):undefined,entityType:entityType as 'client'|'matter'|'workspace'|undefined,entityId:entityIdValue?Number(entityIdValue):undefined});const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download=`clientguard-activity-${new Date().toISOString().slice(0,10)}.csv`;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),0);setExportMessage('Activity history downloaded.');}catch{setExportError('Activity history could not be exported. Please try again.');}finally{setExporting(false);}}
  function clearFilters(){setActorMemberId('');setRecordFilter('');setPage(0);}
- return <><PageHeader eyebrow="Audit trail" title="Activity" subtitle="A chronological record of changes across your workspace." action={<select value={limit} onChange={e=>{setLimit(Number(e.target.value));setPage(0);}} className="h-10 rounded-md border border-[#d9d4c8] bg-[#fbfaf5] px-3 text-sm" data-testid="select-activity-limit"><option value="20">20 per page</option><option value="40">40 per page</option><option value="80">80 per page</option></select>} />
+ return <><PageHeader eyebrow="Audit trail" title="Activity" subtitle="A chronological record of changes across your workspace." action={<div className="flex flex-wrap items-center gap-2"><select value={limit} onChange={e=>{setLimit(Number(e.target.value));setPage(0);}} className="h-10 rounded-md border border-[#d9d4c8] bg-[#fbfaf5] px-3 text-sm" data-testid="select-activity-limit" aria-label="Events per page"><option value="20">20 per page</option><option value="40">40 per page</option><option value="80">80 per page</option></select><button type="button" onClick={downloadActivity} disabled={exporting} className="inline-flex h-10 items-center gap-2 rounded-md bg-[#294651] px-3.5 text-xs font-bold text-white transition hover:bg-[#1e3942] disabled:cursor-not-allowed disabled:opacity-50" data-testid="button-export-activity"><Download className="h-4 w-4"/>{exporting?'Preparing…':'Export CSV'}</button></div>} />
+  {(exportMessage||exportError)&&<p className={`mb-4 text-xs ${exportError?'text-[#9a554d]':'text-[#52735e]'}`} role={exportError?'alert':'status'} data-testid="status-activity-export">{exportError||exportMessage}</p>}
  <section className="mb-5 rounded-md border border-[#e0dace] bg-[#fbfaf5] p-4" aria-label="Filter activity">
   <div className="grid gap-4 sm:grid-cols-2">
    <label className="block text-xs font-semibold text-[#53625f]">Teammate

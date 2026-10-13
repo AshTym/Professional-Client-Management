@@ -70,6 +70,8 @@ export * from './engagementLetter';
 export * from './engagementLetterInput';
 export * from './engagementLetterProvider';
 export * from './engagementLetterStatus';
+export * from './exportActivityEntityType';
+export * from './exportActivityParams';
 export * from './getOperationsReportParams';
 export * from './getPortalRequestsParams';
 export * from './getPortalRequestsView';

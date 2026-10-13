@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Router } from 'wouter';
@@ -8,7 +8,10 @@ const apiMocks = vi.hoisted(() => ({
   useListWorkspaceAssignmentMembers: vi.fn(),
   useListClients: vi.fn(),
   useListMatters: vi.fn(),
+  exportActivity: vi.fn(),
 }));
+const originalCreateObjectURL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+const originalRevokeObjectURL = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL');
 
 vi.mock('@workspace/api-client-react', () => ({
   ...apiMocks,
@@ -45,6 +48,7 @@ function renderActivityPage() {
 
 describe('activity pagination', () => {
   beforeEach(() => {
+    apiMocks.exportActivity.mockReset().mockResolvedValue('');
     apiMocks.useListActivity.mockImplementation(({ limit, offset }) => ({
       data: Array.from({ length: offset === 0 ? limit : 1 }, (_, index) =>
         event(offset + index + 1),
@@ -70,7 +74,53 @@ describe('activity pagination', () => {
     });
   });
 
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    if (originalCreateObjectURL) Object.defineProperty(URL, 'createObjectURL', originalCreateObjectURL);
+    else Reflect.deleteProperty(URL, 'createObjectURL');
+    if (originalRevokeObjectURL) Object.defineProperty(URL, 'revokeObjectURL', originalRevokeObjectURL);
+    else Reflect.deleteProperty(URL, 'revokeObjectURL');
+  });
+
+  it('exports the complete history with the active filters', async () => {
+    const csv = '"id","actor","action"\r\n"1","A. Morgan","updated"\r\n';
+    apiMocks.exportActivity.mockResolvedValue(csv);
+    const createObjectURL = vi.fn(() => 'blob:activity-export');
+    const revokeObjectURL = vi.fn();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL });
+
+    renderActivityPage();
+    fireEvent.change(screen.getByTestId('select-activity-actor'), {
+      target: { value: '5' },
+    });
+    fireEvent.change(screen.getByTestId('select-activity-record'), {
+      target: { value: 'client:10' },
+    });
+    fireEvent.click(screen.getByTestId('button-export-activity'));
+
+    await waitFor(() => expect(apiMocks.exportActivity).toHaveBeenCalledWith({
+      actorMemberId: 5,
+      entityType: 'client',
+      entityId: 10,
+    }));
+    await screen.findByText('Activity history downloaded.');
+    expect(click).toHaveBeenCalledOnce();
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:activity-export');
+  });
+
+  it('shows a retry message when the activity export fails', async () => {
+    apiMocks.exportActivity.mockRejectedValue(new Error('request failed'));
+    renderActivityPage();
+    fireEvent.click(screen.getByTestId('button-export-activity'));
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Activity history could not be exported. Please try again.',
+    );
+  });
 
   it('requests the next offset, returns to the prior page, and shows the end of history', () => {
     renderActivityPage();

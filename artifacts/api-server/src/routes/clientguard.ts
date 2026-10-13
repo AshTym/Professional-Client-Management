@@ -68,6 +68,7 @@ import {
   WithdrawWorkspaceInvitationResponse,
   ListActivityQueryParams,
   ListActivityResponse,
+  ExportActivityQueryParams,
   ListClientsQueryParams,
   ListClientsResponse,
   ListMattersQueryParams,
@@ -2383,6 +2384,83 @@ router.get("/activity", async (req, res): Promise<void> => {
     .limit(parsed.data.limit)
     .offset(parsed.data.offset);
   res.json(ListActivityResponse.parse(activity));
+});
+
+router.get("/activity/export.csv", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+  const parsed = ExportActivityQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const filters = [eq(activitiesTable.workspaceId, access.workspaceId)];
+  if (parsed.data.actorMemberId !== undefined) {
+    const [actorMember] = await db
+      .select({ clerkUserId: membershipsTable.clerkUserId })
+      .from(membershipsTable)
+      .where(
+        and(
+          eq(membershipsTable.id, parsed.data.actorMemberId),
+          eq(membershipsTable.workspaceId, access.workspaceId),
+        ),
+      )
+      .limit(1);
+    if (!actorMember) {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="clientguard-activity.csv"',
+      );
+      res.send(
+        [
+          "id,actor,action,entityType,entityId,entityLabel,occurredAt",
+          "",
+        ].join("\r\n"),
+      );
+      return;
+    }
+    filters.push(eq(activitiesTable.clerkUserId, actorMember.clerkUserId));
+  }
+  if (parsed.data.entityType !== undefined) {
+    filters.push(eq(activitiesTable.entityType, parsed.data.entityType));
+  }
+  if (parsed.data.entityId !== undefined) {
+    filters.push(eq(activitiesTable.entityId, parsed.data.entityId));
+  }
+
+  const activity = await db
+    .select()
+    .from(activitiesTable)
+    .where(and(...filters))
+    .orderBy(desc(activitiesTable.occurredAt), desc(activitiesTable.id));
+  const csvCell = (value: string | number | Date): string => {
+    const raw = value instanceof Date ? value.toISOString() : String(value);
+    const safe = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+    return `"${safe.replaceAll('"', '""')}"`;
+  };
+  const csv = [
+    ["id", "actor", "action", "entityType", "entityId", "entityLabel", "occurredAt"],
+    ...activity.map((event) => [
+      event.id,
+      event.actor,
+      event.action,
+      event.entityType,
+      event.entityId,
+      event.entityLabel,
+      event.occurredAt,
+    ]),
+  ]
+    .map((row) => row.map(csvCell).join(","))
+    .join("\r\n");
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    'attachment; filename="clientguard-activity.csv"',
+  );
+  res.send(`${csv}\r\n`);
 });
 
 router.get("/activity/:id", async (req, res): Promise<void> => {

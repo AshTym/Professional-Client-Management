@@ -523,6 +523,46 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Activity"
+  /activity/export.csv:
+    get:
+      operationId: exportActivity
+      tags: [activity]
+      summary: Export the current firm's activity history
+      parameters:
+        - name: actorMemberId
+          in: query
+          required: false
+          description: Restrict results to activity by a current member of this firm.
+          schema:
+            type: integer
+            minimum: 1
+        - name: entityType
+          in: query
+          required: false
+          description: Restrict results to a related client, matter, or workspace record.
+          schema:
+            type: string
+            enum: [client, matter, workspace]
+        - name: entityId
+          in: query
+          required: false
+          description: ID of the related record to include.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Firm activity history in CSV format, newest events first
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: Invalid export filters
   /activity/{id}:
     get:
       operationId: getActivity

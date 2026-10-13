@@ -1420,6 +1420,69 @@ test("clients, matters, and activity lists and details stay inside the signed-in
   assert.equal(otherActivityDetail.response.status, 404);
 });
 
+test("activity CSV exports all events newest-first and stays inside the signed-in firm", async () => {
+  const insertedIds: number[] = [];
+  const actions = Array.from(
+    { length: 105 },
+    (_, index) => `activity export event ${index}`,
+  );
+  const baseTime = new Date("2099-02-01T00:00:00.000Z");
+
+  try {
+    const inserted = await db
+      .insert(activitiesTable)
+      .values([
+        ...actions.map((action, index) => ({
+          workspaceId: firms.primary.workspaceId,
+          clerkUserId: firms.primary.ownerId,
+          actor: "Primary Owner",
+          action,
+          entityType: "client",
+          entityId: firms.primary.clientId,
+          entityLabel: "Primary test client",
+          occurredAt: new Date(baseTime.getTime() + index * 60_000),
+        })),
+        {
+          workspaceId: firms.other.workspaceId,
+          clerkUserId: firms.other.ownerId,
+          actor: "Other Firm Owner",
+          action: "other firm export event",
+          entityType: "client",
+          entityId: firms.other.clientId,
+          entityLabel: "Other test client",
+          occurredAt: new Date(baseTime.getTime() + 106 * 60_000),
+        },
+      ])
+      .returning({ id: activitiesTable.id });
+    insertedIds.push(...inserted.map(({ id }) => id));
+
+    const response = await fetch(`${baseUrl}/activity/export.csv`, {
+      headers: { "x-test-user-id": firms.primary.ownerId },
+    });
+    const csv = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /^text\/csv/);
+    assert.match(
+      response.headers.get("content-disposition") ?? "",
+      /attachment; filename="clientguard-activity\.csv"/,
+    );
+    const lines = csv.trimEnd().split("\r\n");
+    assert.equal(lines[0], '"id","actor","action","entityType","entityId","entityLabel","occurredAt"');
+    assert.equal(lines.length, actions.length + 2);
+    assert.match(lines[1], /"activity export event 104"/);
+    assert.match(lines[actions.length], /"activity export event 0"/);
+    assert.match(lines.at(-1) ?? "", /"primary-only activity"/);
+    assert(!csv.includes("other firm export event"));
+  } finally {
+    if (insertedIds.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, insertedIds));
+    }
+  }
+});
+
 test("successful matter exports are recorded in the activity feed for only the exporting firm", async () => {
   const [additionalMatter] = await db
     .insert(mattersTable)
@@ -4296,6 +4359,7 @@ test("unauthenticated requests to client, matter, and activity routes remain rej
     request("/matters"),
     request(`/matters/${firms.primary.matterId}`),
     request("/activity"),
+    request("/activity/export.csv"),
     request(`/activity/${firms.primary.activityId}`),
     request("/clients", {
       method: "POST",
@@ -4314,8 +4378,12 @@ test("unauthenticated requests to client, matter, and activity routes remain rej
   const results = await Promise.all(attempts);
   assert.deepEqual(
     results.map(({ response }) => response.status),
-    [401, 401, 401, 401, 401, 401, 401, 401],
+    [401, 401, 401, 401, 401, 401, 401, 401, 401],
   );
+  const noFirm = await request("/activity/export.csv", {
+    userId: `activity-export-no-firm-${randomUUID()}`,
+  });
+  assert.equal(noFirm.response.status, 403);
 });
 
 test("workflow endpoints require firm membership before exposing or changing records", async () => {

@@ -478,6 +478,22 @@ export const ListActivityResponse = zod.array(ListActivityResponseItem)
 
 
 /**
+ * @summary Export the current firm's activity history
+ */
+
+
+
+
+export const ExportActivityQueryParams = zod.object({
+  "actorMemberId": zod.coerce.number().int().min(1).optional().describe('Restrict results to activity by a current member of this firm.'),
+  "entityType": zod.enum(['client', 'matter', 'workspace']).optional().describe('Restrict results to a related client, matter, or workspace record.'),
+  "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.')
+})
+
+export const ExportActivityResponse = zod.unknown()
+
+
+/**
  * @summary Get a firm audit event
  */
 

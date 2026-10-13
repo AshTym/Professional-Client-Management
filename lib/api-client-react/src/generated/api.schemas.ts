@@ -2113,6 +2113,32 @@ export const ListActivityEntityType = {
   workspace: 'workspace',
 } as const;
 
+export type ExportActivityParams = {
+/**
+ * Restrict results to activity by a current member of this firm.
+ * @minimum 1
+ */
+actorMemberId?: number;
+/**
+ * Restrict results to a related client, matter, or workspace record.
+ */
+entityType?: ExportActivityEntityType;
+/**
+ * ID of the related record to include.
+ * @minimum 1
+ */
+entityId?: number;
+};
+
+export type ExportActivityEntityType = typeof ExportActivityEntityType[keyof typeof ExportActivityEntityType];
+
+
+export const ExportActivityEntityType = {
+  client: 'client',
+  matter: 'matter',
+  workspace: 'workspace',
+} as const;
+
 export type ListClientsParams = {
 search?: string;
 status?: ListClientsStatus;
