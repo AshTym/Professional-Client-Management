@@ -1218,16 +1218,43 @@ router.post("/portal/documents/:id/complete", async (req, res): Promise<void> =>
       const file = await objectStorage.getObjectEntityFile(document.objectPath);
       const [metadata] = await file.getMetadata();
       if (Number(metadata.size ?? 0) !== document.sizeBytes) {
+        await appendAudit(
+          session.grant.workspaceId,
+          session.identity,
+          "client_portal_document_upload_failed",
+          "matter",
+          matter.id,
+          matter.title,
+          { documentId: id, failureReason: "size_mismatch" },
+        );
         res.status(400).json({ error: "The uploaded file size does not match." });
         return;
       }
       const storedType = metadata.contentType?.split(";")[0].trim().toLowerCase();
       if (storedType && storedType !== document.contentType) {
+        await appendAudit(
+          session.grant.workspaceId,
+          session.identity,
+          "client_portal_document_upload_failed",
+          "matter",
+          matter.id,
+          matter.title,
+          { documentId: id, failureReason: "content_type_mismatch" },
+        );
         res.status(400).json({ error: "The uploaded file type does not match." });
         return;
       }
     } catch (error) {
       req.log.warn({ err: error, documentId: id }, "Portal upload was not found in private storage");
+      await appendAudit(
+        session.grant.workspaceId,
+        session.identity,
+        "client_portal_document_upload_failed",
+        "matter",
+        matter.id,
+        matter.title,
+        { documentId: id, failureReason: "stored_object_unavailable" },
+      );
       res.status(404).json({ error: "The uploaded file was not found in private storage." });
       return;
     }
@@ -1278,7 +1305,6 @@ router.get("/portal/documents/:id/file", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Shared document not found." });
     return;
   }
-  await appendAudit(session.grant.workspaceId, session.identity, "client_portal_document_downloaded", "matter", row.document.matterId, row.matterTitle, { documentId: id });
   try {
     const file = await objectStorage.getObjectEntityFile(row.document.objectPath);
     const [metadata] = await file.getMetadata();
@@ -1290,8 +1316,19 @@ router.get("/portal/documents/:id/file", async (req, res): Promise<void> => {
     await pipeline(file.createReadStream(), res);
   } catch (error) {
     req.log.warn({ err: error, documentId: id }, "Client-visible document could not be streamed");
+    await appendAudit(
+      session.grant.workspaceId,
+      session.identity,
+      "client_portal_document_download_failed",
+      "matter",
+      row.document.matterId,
+      row.matterTitle,
+      { documentId: id, failureReason: "stored_object_unavailable" },
+    );
     if (!res.headersSent) res.status(404).json({ error: "Document not found." });
+    return;
   }
+  await appendAudit(session.grant.workspaceId, session.identity, "client_portal_document_downloaded", "matter", row.document.matterId, row.matterTitle, { documentId: id });
 });
 
 router.patch("/documents/:id/client-visibility", async (req, res): Promise<void> => {

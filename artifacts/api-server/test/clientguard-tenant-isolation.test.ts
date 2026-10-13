@@ -200,6 +200,7 @@ before(async () => {
       status text NOT NULL DEFAULT 'uploading',
       client_visible boolean NOT NULL DEFAULT false,
       uploaded_from_portal boolean NOT NULL DEFAULT false,
+      reviewed_at timestamptz,
       last_analysis_error text,
       created_at timestamptz NOT NULL DEFAULT now()
     );
@@ -5816,13 +5817,50 @@ test("client portal documents stay private across clients and audit upload, down
       clientVisible: true,
     })
     .returning();
-
-  const storedFile = (objectPath: string) => ({
-    getMetadata: async () => [{
-      size: objectPath.endsWith("portal-upload-test") ? "5" : "23",
+  const failedDownloadPath = `/objects/uploads/stream-failure-${suffix}`;
+  const [failedDownloadDocument] = await db
+    .insert(documentsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      matterId: firms.primary.matterId,
+      uploadedByClerkUserId: firms.primary.ownerId,
+      objectPath: failedDownloadPath,
+      originalName: `Stream Failure ${suffix}.txt`,
       contentType: "text/plain",
-    }],
-    createReadStream: () => Readable.from(["shared private document"]),
+      sizeBytes: 23,
+      status: "ready",
+      clientVisible: true,
+    })
+    .returning();
+
+  let uploadObjectPath = "/objects/uploads/portal-upload-test";
+  const storedObjectModes = new Map<
+    string,
+    "missing" | "size_mismatch" | "content_type_mismatch" | "stream_failure"
+  >();
+  const storedFile = (objectPath: string) => ({
+    getMetadata: async () => {
+      const mode = storedObjectModes.get(objectPath);
+      return [{
+        size: mode === "size_mismatch"
+          ? "999"
+          : objectPath.endsWith("portal-upload-test") || mode === "content_type_mismatch"
+            ? "5"
+            : "23",
+        contentType: mode === "content_type_mismatch" ? "application/pdf" : "text/plain",
+      }];
+    },
+    createReadStream: () => {
+      if (storedObjectModes.get(objectPath) === "stream_failure") {
+        return new Readable({
+          read() {
+            this.push("partial document");
+            this.destroy(new Error("simulated stream failure"));
+          },
+        });
+      }
+      return Readable.from(["shared private document"]);
+    },
   });
   t.mock.method(
     ObjectStorageServiceClass.prototype,
@@ -5832,12 +5870,17 @@ test("client portal documents stay private across clients and audit upload, down
   t.mock.method(
     ObjectStorageServiceClass.prototype,
     "normalizeObjectEntityPath",
-    () => "/objects/uploads/portal-upload-test",
+    () => uploadObjectPath,
   );
   t.mock.method(
     ObjectStorageServiceClass.prototype,
     "getObjectEntityFile",
-    async (objectPath: string) => storedFile(objectPath) as never,
+    async (objectPath: string) => {
+      if (storedObjectModes.get(objectPath) === "missing") {
+        throw new Error("simulated missing object");
+      }
+      return storedFile(objectPath) as never;
+    },
   );
 
   const context = await request("/portal/context", { userId: portalUserId });
@@ -5847,7 +5890,7 @@ test("client portal documents stay private across clients and audit upload, down
   ).documents;
   assert.deepEqual(
     listedDocuments.map(({ id }) => id),
-    [sharedDocument.id],
+    [sharedDocument.id, failedDownloadDocument.id],
   );
   assert.equal(listedDocuments[0]?.matterId, firms.primary.matterId);
 
@@ -5858,6 +5901,20 @@ test("client portal documents stay private across clients and audit upload, down
   assert.equal(downloaded.status, 200);
   assert.equal(await downloaded.text(), "shared private document");
   assert.equal(downloaded.headers.get("cache-control"), "private, no-store");
+
+  storedObjectModes.set(failedDownloadPath, "stream_failure");
+  let failedDownloadResponse: Response | undefined;
+  try {
+    failedDownloadResponse = await fetch(
+      `${baseUrl}/portal/documents/${failedDownloadDocument.id}/file`,
+      { headers: { "x-test-user-id": portalUserId } },
+    );
+  } catch {
+    // A failed stream may close the response before fetch receives headers.
+  }
+  if (failedDownloadResponse) {
+    await assert.rejects(failedDownloadResponse.arrayBuffer());
+  }
 
   for (const documentId of [
     internalDocument.id,
@@ -5918,6 +5975,39 @@ test("client portal documents stay private across clients and audit upload, down
   assert.equal((completedUpload.body as { uploadedFromPortal: boolean }).uploadedFromPortal, true);
   assert.equal((completedUpload.body as { clientVisible: boolean }).clientVisible, false);
 
+  const failedUploads: Array<{
+    mode: "missing" | "size_mismatch" | "content_type_mismatch";
+    failureReason: string;
+    status: number;
+  }> = [
+    { mode: "missing", failureReason: "stored_object_unavailable", status: 404 },
+    { mode: "size_mismatch", failureReason: "size_mismatch", status: 400 },
+    { mode: "content_type_mismatch", failureReason: "content_type_mismatch", status: 400 },
+  ];
+  const failedUploadIds: number[] = [];
+  for (const [index, failure] of failedUploads.entries()) {
+    uploadObjectPath = `/objects/uploads/${failure.mode}-${suffix}`;
+    storedObjectModes.set(uploadObjectPath, failure.mode);
+    const failedUpload = await request("/portal/documents/upload-url", {
+      userId: portalUserId,
+      method: "POST",
+      body: {
+        matterId: firms.primary.matterId,
+        name: `failed-upload-${index}.txt`,
+        size: 5,
+        contentType: "text/plain",
+      },
+    });
+    assert.equal(failedUpload.response.status, 200);
+    const failedUploadId = (failedUpload.body as { id: number }).id;
+    failedUploadIds.push(failedUploadId);
+    const failedCompletion = await request(
+      `/portal/documents/${failedUploadId}/complete`,
+      { userId: portalUserId, method: "POST", body: {} },
+    );
+    assert.equal(failedCompletion.response.status, failure.status);
+  }
+
   const staffDocuments = await request("/documents", {
     userId: firms.primary.ownerId,
   });
@@ -5972,14 +6062,56 @@ test("client portal documents stay private across clients and audit upload, down
     event.entityId === firms.primary.matterId &&
     event.details.documentId === uploadId,
   ));
+  for (const [index, failure] of failedUploads.entries()) {
+    const event = events.find((candidate) =>
+      candidate.action === "client_portal_document_upload_failed" &&
+      candidate.details.documentId === failedUploadIds[index],
+    );
+    assert.ok(event);
+    assert.equal(event.entityType, "matter");
+    assert.equal(event.entityId, firms.primary.matterId);
+    assert.equal(event.details.failureReason, failure.failureReason);
+    assert.deepEqual(Object.keys(event.details).sort(), ["documentId", "failureReason"]);
+  }
+  const failedDownloadEvent = events.find((event) =>
+    event.action === "client_portal_document_download_failed" &&
+    event.details.documentId === failedDownloadDocument.id,
+  );
+  assert.ok(
+    failedDownloadEvent,
+    `Failed download events: ${JSON.stringify(events.filter((event) => event.details.documentId === failedDownloadDocument.id).map(({ action, details }) => ({ action, details })))}`,
+  );
+  assert.equal(failedDownloadEvent.entityId, firms.primary.matterId);
+  assert.equal(failedDownloadEvent.details.failureReason, "stored_object_unavailable");
+  assert.ok(!events.some((event) =>
+    event.action === "client_portal_document_downloaded" &&
+    event.details.documentId === failedDownloadDocument.id,
+  ));
+
+  const relatedTransferEvents = await db
+    .select()
+    .from(auditEventsTable)
+    .where(and(
+      inArray(auditEventsTable.workspaceId, [firms.primary.workspaceId, firms.other.workspaceId]),
+      eq(auditEventsTable.clerkUserId, portalUserId),
+    ));
+  const failedTransferIds = new Set([
+    ...failedUploadIds,
+    failedDownloadDocument.id,
+  ]);
+  const scopedFailureEvents = relatedTransferEvents.filter((event) =>
+    ["client_portal_document_upload_failed", "client_portal_document_download_failed"].includes(event.action) &&
+    failedTransferIds.has(Number(event.details.documentId)),
+  );
+  assert.equal(scopedFailureEvents.length, failedTransferIds.size);
+  assert.ok(scopedFailureEvents.every((event) => event.workspaceId === firms.primary.workspaceId));
 
   const deniedEvents = events.filter((event) =>
     event.action === "client_portal_document_access_denied",
   );
-  assert.equal(deniedEvents.length, 5);
   assert.deepEqual(
     deniedEvents.map((event) => event.details.operation).sort(),
-    ["download", "download", "download", "upload", "upload_complete"],
+    ["download", "download", "download", "download", "upload", "upload_complete"],
   );
   assert.ok(deniedEvents.every((event) =>
     event.entityLabel === "Unavailable document" ||
