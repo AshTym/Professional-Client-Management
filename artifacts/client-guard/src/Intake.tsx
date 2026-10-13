@@ -68,15 +68,18 @@ export default function Intake() {
   });
   const [editingChecks, setEditingChecks] = useState(false);
   const [checks, setChecks] = useState<IntakeRule[]>([]);
+  const searchParams = new URLSearchParams(window.location.search);
   const initialClientId = (() => {
-    const raw = new URLSearchParams(window.location.search).get('clientId');
+    const raw = searchParams.get('clientId');
     const id = Number(raw);
     return raw && Number.isSafeInteger(id) && id > 0 ? id : null;
   })();
+  const isFirstMatterShortcut = searchParams.get('firstMatter') === '1';
   const [selectedClientId, setSelectedClientId] = useState<number | null>(initialClientId);
-  const [formOpen, setFormOpen] = useState(new URLSearchParams(window.location.search).get('create') === '1');
+  const [formOpen, setFormOpen] = useState(searchParams.get('create') === '1');
   const intakeFormRef = useRef<HTMLFormElement>(null);
   const prefilledClientIdRef = useRef<number | null>(null);
+  const firstMatterClientPrefillAttemptedRef = useRef(false);
   const [selected, setSelected] = useState<IntakeCase | null>(null);
   const [activeDraft, setActiveDraft] = useState<IntakeDraft | null>(null);
   const [notice, setNotice] = useState('');
@@ -92,6 +95,12 @@ export default function Intake() {
   const rules = overview.data?.checks || starterChecks;
   const refresh = () => qc.invalidateQueries({ queryKey: getGetIntakeOverviewQueryKey() });
   const refreshDrafts = () => qc.invalidateQueries({ queryKey: getGetIntakeDraftsQueryKey() });
+
+  useEffect(() => {
+    if (!isFirstMatterShortcut || initialClientId !== null || firstMatterClientPrefillAttemptedRef.current || !clients.data) return;
+    firstMatterClientPrefillAttemptedRef.current = true;
+    if (clients.data.length === 1) setSelectedClientId(clients.data[0].id);
+  }, [clients.data, initialClientId, isFirstMatterShortcut]);
 
   useEffect(() => {
     if (!formOpen || activeDraft || selectedClientId === null || !clients.data) return;

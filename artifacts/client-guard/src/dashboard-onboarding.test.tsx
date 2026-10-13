@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route, Router, Switch } from 'wouter';
@@ -151,17 +151,77 @@ describe('new-firm dashboard onboarding', () => {
       isError: false,
       refetch: vi.fn(),
     });
+    apiMocks.useListClients.mockReturnValue({
+      data: [{
+        id: 5,
+        name: 'Northstar Ltd',
+        clientType: 'business',
+        email: 'northstar@example.test',
+        phone: '555-0105',
+        industry: 'Technology',
+        status: 'active',
+        owner: 'A. Morgan',
+        ownerMemberId: 1,
+        matterCount: 0,
+        lastActivityAt: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }],
+      isLoading: false,
+      isError: false,
+    });
 
     renderDashboard();
 
     expect(screen.getByTestId('dashboard-first-matter-onboarding')).toBeTruthy();
     const firstMatterLink = screen.getByTestId('link-create-first-matter');
-    expect(firstMatterLink.getAttribute('href')).toBe('/intake?create=1');
+    expect(firstMatterLink.getAttribute('href')).toBe('/intake?create=1&firstMatter=1');
 
     fireEvent.click(firstMatterLink);
 
     expect(await screen.findByRole('dialog', { name: 'Start a client intake' })).toBeTruthy();
     expect(screen.getByTestId('button-submit-intake')).toBeTruthy();
+    const clientSelect = screen.getByTestId('select-intake-client') as HTMLSelectElement;
+    await waitFor(() => {
+      expect(clientSelect.value).toBe('5');
+      expect((screen.getByLabelText('Client / entity name') as HTMLInputElement).value).toBe('Northstar Ltd');
+    });
+
+    fireEvent.change(clientSelect, { target: { value: '' } });
+    expect(clientSelect.value).toBe('');
+    expect((screen.getByLabelText('Client / entity name') as HTMLInputElement).value).toBe('');
+  });
+
+  it('leaves the client choice blank from the first-matter prompt when a firm has multiple clients', async () => {
+    apiMocks.useGetDashboard.mockReturnValue({
+      data: {
+        clientCount: 2,
+        matterCount: 0,
+        activeClientCount: 2,
+        openMatterCount: 0,
+        overdueMatterCount: 0,
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    apiMocks.useListClients.mockReturnValue({
+      data: [
+        { id: 5, name: 'Northstar Ltd', clientType: 'business', email: 'northstar@example.test' },
+        { id: 6, name: 'Harbor Group', clientType: 'business', email: 'harbor@example.test' },
+      ],
+      isLoading: false,
+      isError: false,
+    });
+
+    renderDashboard();
+    fireEvent.click(screen.getByTestId('link-create-first-matter'));
+
+    expect(await screen.findByRole('dialog', { name: 'Start a client intake' })).toBeTruthy();
+    const clientSelect = screen.getByTestId('select-intake-client') as HTMLSelectElement;
+    await waitFor(() => expect(clientSelect.value).toBe(''));
+    expect(clientSelect.options).toHaveLength(3);
+    fireEvent.change(clientSelect, { target: { value: '6' } });
+    expect(clientSelect.value).toBe('6');
   });
 
   it('keeps the regular dashboard layout for firms that already have records', () => {
