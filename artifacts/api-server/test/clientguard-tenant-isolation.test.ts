@@ -2143,6 +2143,47 @@ test("simultaneous ownership transfers leave one owner and one matching audit ev
   }
 });
 
+test("firm admins can create invitations for their firm", async (t) => {
+  const adminId = `invitation-admin-${randomUUID()}`;
+  const email = `admin-invite-${randomUUID()}@example.test`;
+  await db.insert(membershipsTable).values({
+    workspaceId: firms.primary.workspaceId,
+    clerkUserId: adminId,
+    email: `${adminId}@example.test`,
+    displayName: "Invitation Admin",
+    role: "admin",
+  });
+  const createInvitation = t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async (params) => {
+      assert.equal(params.emailAddress, email);
+      return { id: "admin_created_clerk_invitation" } as never;
+    },
+  );
+
+  const created = await request("/workspace/invitations", {
+    userId: adminId,
+    method: "POST",
+    body: { email, role: "assistant" },
+  });
+
+  assert.equal(created.response.status, 201);
+  assert.equal((created.body as { email: string }).email, email);
+  assert.equal((created.body as { role: string }).role, "assistant");
+  assert.equal(createInvitation.mock.callCount(), 1);
+
+  const [invitation] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.email, email));
+  assert.ok(invitation);
+  assert.equal(invitation.workspaceId, firms.primary.workspaceId);
+  assert.equal(invitation.invitedByClerkUserId, adminId);
+  assert.equal(invitation.role, "assistant");
+  assert.equal(invitation.clerkInvitationId, "admin_created_clerk_invitation");
+});
+
 test("signed-in users without a firm cannot list or create invitations", async (t) => {
   const userId = `no-firm-invitations-${randomUUID()}`;
   const email = `no-firm-invite-${randomUUID()}@example.test`;
