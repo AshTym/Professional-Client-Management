@@ -124,7 +124,6 @@ import type {
   TrustOverview,
   TrustStatement,
   TrustStatementInput,
-  TrustStatementLine,
   TrustStatementMatchInput,
   WorkspaceAssignmentIssues,
   WorkspaceAssignmentMember,
@@ -9460,7 +9459,7 @@ export const getMatchTrustStatementLineUrl = (statementId: number,
  */
 export const matchTrustStatementLine = async (statementId: number,
     lineId: number,
-    trustStatementMatchInput: TrustStatementMatchInput, options?: Parameters<typeof customFetch>[1]): Promise<TrustStatementLine> => {
+    trustStatementMatchInput: TrustStatementMatchInput, options?: Parameters<typeof customFetch>[1]): Promise<TrustStatement> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -9476,7 +9475,7 @@ export const matchTrustStatementLine = async (statementId: number,
     }
     return headers;
   };
-return customFetch<TrustStatementLine>(getMatchTrustStatementLineUrl(statementId,lineId),
+return customFetch<TrustStatement>(getMatchTrustStatementLineUrl(statementId,lineId),
   {
     ...options,
     method: 'PATCH',

@@ -2939,6 +2939,21 @@ export const MatchTrustStatementLineBody = zod.object({
 
 export const MatchTrustStatementLineResponse = zod.object({
   "id": zod.number().int(),
+  "accountId": zod.number().int(),
+  "sourceType": zod.enum(['manual', 'csv']),
+  "sourceName": zod.string(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
+  "openingBalanceCents": zod.number().int(),
+  "closingBalanceCents": zod.number().int(),
+  "status": zod.enum(['open', 'reconciled']),
+  "lineCount": zod.number().int(),
+  "matchedLines": zod.number().int(),
+  "unmatchedLineCount": zod.number().int(),
+  "movementDifferenceCents": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "lines": zod.array(zod.object({
+  "id": zod.number().int(),
   "statementId": zod.number().int(),
   "lineDate": zod.coerce.date(),
   "description": zod.string(),
@@ -2946,6 +2961,7 @@ export const MatchTrustStatementLineResponse = zod.object({
   "amountCents": zod.number().int(),
   "matchedEntryId": zod.number().int().nullable(),
   "status": zod.enum(['unmatched', 'matched'])
+})).optional()
 })
 
 

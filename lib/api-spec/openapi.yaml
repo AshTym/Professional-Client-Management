@@ -2098,7 +2098,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TrustStatementLine"
+                $ref: "#/components/schemas/TrustStatement"
   /matters/{id}/closeout:
     parameters:
       - name: id

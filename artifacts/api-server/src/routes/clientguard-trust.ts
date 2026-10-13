@@ -2,6 +2,7 @@ import { and, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import * as api from "@workspace/api-zod";
 import {
+  auditEventsTable,
   clientsTable,
   mattersTable,
   practiceSettingsTable,
@@ -249,7 +250,11 @@ router.get("/trust/overview", async (req, res): Promise<void> => {
 router.get("/trust/statement", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
   if (!access) return;
-  const parsed = api.GetTrustAccountStatementQueryParams.safeParse(req.query);
+  const parsed = api.GetTrustAccountStatementQueryParams.safeParse({
+    ...req.query,
+    from: new Date(String(req.query.from ?? "")),
+    to: new Date(String(req.query.to ?? "")),
+  });
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
@@ -362,19 +367,31 @@ router.post("/trust/accounts", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Enter a valid three-letter currency code." });
     return;
   }
-  const [account] = await db.insert(trustAccountsTable).values({
-    workspaceId: access.workspaceId,
-    name: parsed.data.name.trim(),
-    jurisdiction: parsed.data.jurisdiction,
-    currency,
-    accountReference: parsed.data.accountReference?.trim() || null,
-    requireSecondApproval: parsed.data.requireSecondApproval,
-    createdByClerkUserId: access.userId,
-  }).returning();
-  await logAuditEvent(access, "trust_account_created", "trust_account", account.id, account.name, {
-    jurisdiction: account.jurisdiction,
-    currency: account.currency,
-    secondApprovalRequired: account.requireSecondApproval,
+  const account = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(trustAccountsTable).values({
+      workspaceId: access.workspaceId,
+      name: parsed.data.name.trim(),
+      jurisdiction: parsed.data.jurisdiction,
+      currency,
+      accountReference: parsed.data.accountReference?.trim() || null,
+      requireSecondApproval: parsed.data.requireSecondApproval,
+      createdByClerkUserId: access.userId,
+    }).returning();
+    await tx.insert(auditEventsTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action: "trust_account_created",
+      entityType: "trust_account",
+      entityId: created.id,
+      entityLabel: created.name,
+      details: {
+        jurisdiction: created.jurisdiction,
+        currency: created.currency,
+        secondApprovalRequired: created.requireSecondApproval,
+      },
+    });
+    return created;
   });
   res.status(201).json(api.CreateTrustAccountResponse.parse({
     ...account,
@@ -415,25 +432,37 @@ router.post("/trust/entries", async (req, res): Promise<void> => {
     res.status(409).json({ error: "A closed matter cannot receive a new trust ledger entry." });
     return;
   }
-  const [entry] = await db.insert(trustLedgerEntriesTable).values({
-    workspaceId: access.workspaceId,
-    accountId: account.id,
-    matterId: matter.matter.id,
-    entryType: parsed.data.entryType,
-    amountCents: parsed.data.amountCents,
-    entryDate: parsed.data.entryDate instanceof Date
-      ? parsed.data.entryDate.toISOString().slice(0, 10)
-      : parsed.data.entryDate,
-    description: parsed.data.description.trim(),
-    reference: parsed.data.reference?.trim() || null,
-    status: "pending_approval",
-    createdByClerkUserId: access.userId,
-  }).returning();
-  await logAuditEvent(access, "trust_ledger_entry_created", "trust_ledger_entry", entry.id, entry.description, {
-    accountId: account.id,
-    matterId: matter.matter.id,
-    entryType: entry.entryType,
-    amountCents: entry.amountCents,
+  const entry = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(trustLedgerEntriesTable).values({
+      workspaceId: access.workspaceId,
+      accountId: account.id,
+      matterId: matter.matter.id,
+      entryType: parsed.data.entryType,
+      amountCents: parsed.data.amountCents,
+      entryDate: parsed.data.entryDate instanceof Date
+        ? parsed.data.entryDate.toISOString().slice(0, 10)
+        : parsed.data.entryDate,
+      description: parsed.data.description.trim(),
+      reference: parsed.data.reference?.trim() || null,
+      status: "pending_approval",
+      createdByClerkUserId: access.userId,
+    }).returning();
+    await tx.insert(auditEventsTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action: "trust_ledger_entry_created",
+      entityType: "trust_ledger_entry",
+      entityId: created.id,
+      entityLabel: created.description,
+      details: {
+        accountId: account.id,
+        matterId: matter.matter.id,
+        entryType: created.entryType,
+        amountCents: created.amountCents,
+      },
+    });
+    return created;
   });
   res.status(201).json(api.CreateTrustEntryResponse.parse({
     id: entry.id,
@@ -496,7 +525,22 @@ router.patch("/trust/entries/:id/decision", async (req, res): Promise<void> => {
       eq(trustLedgerEntriesTable.id, entry.id),
       eq(trustLedgerEntriesTable.status, "pending_approval"),
     )).returning();
-    return updated ? { kind: "decided" as const, entry: updated, account } : { kind: "already-decided" as const };
+    if (!updated) return { kind: "already-decided" as const };
+    await tx.insert(auditEventsTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action: `trust_ledger_entry_${updated.status}`,
+      entityType: "trust_ledger_entry",
+      entityId: updated.id,
+      entityLabel: updated.description,
+      details: {
+        accountId: account.id,
+        matterId: updated.matterId,
+        note: body.data.note.trim(),
+      },
+    });
+    return { kind: "decided" as const, entry: updated, account };
   });
   if (outcome.kind === "missing" || outcome.kind === "missing-account") {
     res.status(404).json({ error: "Trust ledger entry not found." });
@@ -520,12 +564,6 @@ router.patch("/trust/entries/:id/decision", async (req, res): Promise<void> => {
     eq(mattersTable.id, outcome.entry.matterId),
     eq(mattersTable.workspaceId, access.workspaceId),
   )).limit(1);
-  const decisionStatus = body.data.decision === "approve" ? "approved" : "rejected";
-  await logAuditEvent(access, `trust_ledger_entry_${decisionStatus}`, "trust_ledger_entry", outcome.entry.id, outcome.entry.description, {
-    accountId: outcome.account.id,
-    matterId: outcome.entry.matterId,
-    note: body.data.note.trim(),
-  });
   res.json(api.DecideTrustEntryResponse.parse({
     id: outcome.entry.id,
     accountId: outcome.account.id,
@@ -579,7 +617,7 @@ router.post("/trust/statements", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Active trust account not found." });
     return;
   }
-  const [statement] = await db.transaction(async (tx) => {
+  const { statement, lines, movementDifferenceCents } = await db.transaction(async (tx) => {
     const [created] = await tx.insert(trustStatementsTable).values({
       workspaceId: access.workspaceId,
       accountId: account.id,
@@ -601,48 +639,54 @@ router.post("/trust/statements", async (req, res): Promise<void> => {
       reference: line.reference?.trim() || null,
       amountCents: line.amountCents,
     })));
-    return [created];
-  });
-  const [lines] = await Promise.all([
-    db.select().from(trustStatementLinesTable).where(and(
-      eq(trustStatementLinesTable.statementId, statement.id),
+    const lines = await tx.select().from(trustStatementLinesTable).where(and(
+      eq(trustStatementLinesTable.statementId, created.id),
       eq(trustStatementLinesTable.workspaceId, access.workspaceId),
-    )),
-  ]);
-  const ledgerRows = await db.select({
-    entryType: trustLedgerEntriesTable.entryType,
-    amountCents: trustLedgerEntriesTable.amountCents,
-  }).from(trustLedgerEntriesTable).where(and(
-    eq(trustLedgerEntriesTable.workspaceId, access.workspaceId),
-    eq(trustLedgerEntriesTable.accountId, account.id),
-    eq(trustLedgerEntriesTable.status, "approved"),
-    gte(trustLedgerEntriesTable.entryDate, statement.periodStart),
-    lte(trustLedgerEntriesTable.entryDate, statement.periodEnd),
-  ));
-  const ledgerMovement = ledgerRows.reduce((sum, entry) =>
-    sum + signedAmount(entry.entryType, entry.amountCents), 0);
-  const movementDifferenceCents = statement.closingBalanceCents - statement.openingBalanceCents - ledgerMovement;
-  const result = statement;
-  await logAuditEvent(access, "trust_statement_imported", "trust_statement", statement.id, statement.sourceName, {
-    accountId: account.id,
-    lineCount: lines.length,
-    movementDifferenceCents,
+    ));
+    const ledgerRows = await tx.select({
+      entryType: trustLedgerEntriesTable.entryType,
+      amountCents: trustLedgerEntriesTable.amountCents,
+    }).from(trustLedgerEntriesTable).where(and(
+      eq(trustLedgerEntriesTable.workspaceId, access.workspaceId),
+      eq(trustLedgerEntriesTable.accountId, account.id),
+      eq(trustLedgerEntriesTable.status, "approved"),
+      gte(trustLedgerEntriesTable.entryDate, created.periodStart),
+      lte(trustLedgerEntriesTable.entryDate, created.periodEnd),
+    ));
+    const ledgerMovement = ledgerRows.reduce((sum, entry) =>
+      sum + signedAmount(entry.entryType, entry.amountCents), 0);
+    const movementDifferenceCents = created.closingBalanceCents - created.openingBalanceCents - ledgerMovement;
+    await tx.insert(auditEventsTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action: "trust_statement_imported",
+      entityType: "trust_statement",
+      entityId: created.id,
+      entityLabel: created.sourceName,
+      details: {
+        accountId: account.id,
+        lineCount: lines.length,
+        movementDifferenceCents,
+      },
+    });
+    return { statement: created, lines, movementDifferenceCents };
   });
   res.status(201).json(api.ImportTrustStatementResponse.parse({
-    id: result.id,
-    accountId: result.accountId,
-    sourceType: result.sourceType,
-    sourceName: result.sourceName,
-    periodStart: result.periodStart,
-    periodEnd: result.periodEnd,
-    openingBalanceCents: result.openingBalanceCents,
-    closingBalanceCents: result.closingBalanceCents,
-    status: result.status,
+    id: statement.id,
+    accountId: statement.accountId,
+    sourceType: statement.sourceType,
+    sourceName: statement.sourceName,
+    periodStart: statement.periodStart,
+    periodEnd: statement.periodEnd,
+    openingBalanceCents: statement.openingBalanceCents,
+    closingBalanceCents: statement.closingBalanceCents,
+    status: statement.status,
     lineCount: lines.length,
     matchedLines: 0,
     unmatchedLineCount: lines.length,
     movementDifferenceCents,
-    createdAt: result.createdAt,
+    createdAt: statement.createdAt,
     lines: lines.map((line) => ({
       id: line.id,
       statementId: line.statementId,
@@ -690,6 +734,16 @@ router.patch("/trust/statements/:statementId/lines/:lineId", async (req, res): P
         matchedEntryId: null,
         status: "unmatched",
       }).where(eq(trustStatementLinesTable.id, line.id));
+      await tx.insert(auditEventsTable).values({
+        workspaceId: access.workspaceId,
+        clerkUserId: access.userId,
+        actor: access.name || access.email || "Firm user",
+        action: "trust_statement_line_reconciled",
+        entityType: "trust_statement",
+        entityId: statement.id,
+        entityLabel: "Statement line",
+        details: { lineId: line.id, matchedEntryId: null },
+      });
       return { kind: "updated" as const, statementId: statement.id };
     }
     const [entry] = await tx.select().from(trustLedgerEntriesTable).where(and(
@@ -716,6 +770,16 @@ router.patch("/trust/statements/:statementId/lines/:lineId", async (req, res): P
       matchedEntryId: entry.id,
       status: "matched",
     }).where(eq(trustStatementLinesTable.id, line.id));
+    await tx.insert(auditEventsTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action: "trust_statement_line_reconciled",
+      entityType: "trust_statement",
+      entityId: statement.id,
+      entityLabel: "Statement line",
+      details: { lineId: line.id, matchedEntryId: entry.id },
+    });
     const openLines = await tx.select({ id: trustStatementLinesTable.id }).from(trustStatementLinesTable).where(and(
       eq(trustStatementLinesTable.workspaceId, access.workspaceId),
       eq(trustStatementLinesTable.statementId, statement.id),
@@ -763,10 +827,6 @@ router.patch("/trust/statements/:statementId/lines/:lineId", async (req, res): P
     res.status(409).json({ error: "That ledger entry is already matched to another statement line." });
     return;
   }
-  await logAuditEvent(access, "trust_statement_line_reconciled", "trust_statement", outcome.statementId, "Statement line", {
-    lineId: params.data.lineId,
-    matchedEntryId: body.data.matchedEntryId,
-  });
   const [statement] = await db.select({
     statement: trustStatementsTable,
   }).from(trustStatementsTable).where(and(
