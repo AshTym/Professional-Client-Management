@@ -313,8 +313,39 @@ describe('dashboard shortcuts and matter exports', () => {
       expect(mocks.downloadMattersPdf).toHaveBeenCalledWith([secondMatter], 'selected');
     });
     expect(mocks.useLogMatterExportRequest.mock.results[0].value.mutateAsync).toHaveBeenCalledWith({
-      data: { scope: 'selected', matterIds: [12] },
+      data: expect.objectContaining({ scope: 'selected', matterIds: [12] }),
     });
+  });
+
+  it('shows a PDF creation error and allows retrying with the same selected matters', async () => {
+    mocks.downloadMattersPdf.mockImplementationOnce(() => {
+      throw new Error('PDF creation failed');
+    });
+    renderAt('/matters');
+    fireEvent.click(screen.getByTestId('checkbox-matter-12'));
+
+    const exportButton = screen.getByTestId('button-download-selected-matters') as HTMLButtonElement;
+    fireEvent.click(exportButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status-matter-pdf-error').textContent).toContain(
+        'The PDF could not be created. Please try again.',
+      );
+      expect(exportButton.disabled).toBe(false);
+    });
+    expect(screen.getByTestId('text-selected-matters').textContent).toBe('1 selected');
+    expect((screen.getByTestId('checkbox-matter-12') as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(exportButton);
+
+    await waitFor(() => {
+      expect(mocks.downloadMattersPdf).toHaveBeenCalledTimes(2);
+      expect(mocks.downloadMattersPdf).toHaveBeenLastCalledWith([secondMatter], 'selected');
+    });
+    expect(mocks.useLogMatterExportRequest.mock.results[0].value.mutateAsync).toHaveBeenCalledWith({
+      data: expect.objectContaining({ scope: 'selected', matterIds: [12] }),
+    });
+    expect(mocks.useLogMatterExportRequest.mock.results[0].value.mutateAsync).toHaveBeenCalledTimes(1);
   });
 
   it('does not create a PDF or audit event when all-matters export is cancelled', () => {
@@ -344,7 +375,7 @@ describe('dashboard shortcuts and matter exports', () => {
       expect(mocks.downloadMattersPdf).toHaveBeenCalledWith([firstMatter, secondMatter], 'all');
     });
     expect(mocks.useLogMatterExportRequest.mock.results[0].value.mutateAsync).toHaveBeenCalledWith({
-      data: { scope: 'all', matterIds: [11, 12] },
+      data: expect.objectContaining({ scope: 'all', matterIds: [11, 12] }),
     });
   });
 });
