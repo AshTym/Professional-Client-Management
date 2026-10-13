@@ -1340,7 +1340,7 @@ test("dashboard orders equally timed events by id independently for each firm", 
         }
       ).recentActivity;
       const tiedEvents = recentActivity.filter(({ action }) =>
-        action.startsWith(`${firmName} tied dashboard event `),
+        action.includes("tied dashboard event"),
       );
       const expectedIds = insertedEvents
         .filter(({ workspaceId }) => workspaceId === firms[firmName].workspaceId)
