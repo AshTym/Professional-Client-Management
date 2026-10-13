@@ -35,14 +35,17 @@ function configFor(provider: Provider): ProviderConfig | null {
   }[provider];
   const clientId = process.env[`${prefix}_OAUTH_CLIENT_ID`];
   const clientSecret = process.env[`${prefix}_OAUTH_CLIENT_SECRET`];
-  return clientId && clientSecret ? { clientId, clientSecret } : null;
+  return clientId?.trim() && clientSecret?.trim()
+    ? { clientId, clientSecret }
+    : null;
+}
+
+function hasEncryptionKey(): boolean {
+  return (process.env.CLIENTGUARD_OAUTH_TOKEN_ENCRYPTION_KEY?.trim().length ?? 0) >= 32;
 }
 
 export function providerReady(provider: Provider): boolean {
-  return Boolean(
-    configFor(provider) &&
-      process.env.CLIENTGUARD_OAUTH_TOKEN_ENCRYPTION_KEY?.length,
-  );
+  return Boolean(configFor(provider) && hasEncryptionKey());
 }
 
 function originFor(req: Request): string {
@@ -85,7 +88,7 @@ export function authorizationUrl(
   state: string,
 ) {
   const config = configFor(provider);
-  if (!config || !process.env.CLIENTGUARD_OAUTH_TOKEN_ENCRYPTION_KEY) {
+  if (!config || !hasEncryptionKey()) {
     throw new Error("Provider OAuth credentials and the token encryption secret must be configured.");
   }
   const url = {
@@ -204,7 +207,7 @@ export async function refreshProviderToken(
 
 function encryptionKey() {
   const secret = process.env.CLIENTGUARD_OAUTH_TOKEN_ENCRYPTION_KEY;
-  if (!secret || secret.length < 32) {
+  if (!secret || secret.trim().length < 32) {
     throw new Error("The OAuth token encryption secret must contain at least 32 characters.");
   }
   return createHash("sha256").update(secret, "utf8").digest();
