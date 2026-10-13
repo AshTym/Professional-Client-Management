@@ -3115,6 +3115,142 @@ test("firm owners can withdraw a pending invitation and its link cannot be accep
   assert.equal(acceptance.response.status, 410);
 });
 
+test("acceptance can finish while a resend email is slow and the new Clerk invitation is revoked", async (t) => {
+  const token = randomUUID();
+  const email = `slow-resend-accept-${randomUUID()}@example.test`;
+  const userId = `slow-resend-accept-${randomUUID()}`;
+  const [pending] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email,
+      role: "assistant",
+      invitedByClerkUserId: firms.primary.ownerId,
+      tokenHash: createHash("sha256").update(token).digest("hex"),
+      expiresAt: new Date(Date.now() + 60_000),
+    })
+    .returning();
+  t.mock.method(clerkClient.users, "getUser", async () => ({
+    id: userId,
+    firstName: "Slow",
+    lastName: "Resend",
+    primaryEmailAddress: { emailAddress: email },
+    emailAddresses: [{ emailAddress: email, verification: { status: "verified" } }],
+  }) as never);
+  const emailCreationStarted = deferred<void>();
+  const finishEmailCreation = deferred<void>();
+  t.mock.method(clerkClient.invitations, "createInvitation", async () => {
+    emailCreationStarted.resolve();
+    await finishEmailCreation.promise;
+    return { id: "slow_resend_lost_to_acceptance" } as never;
+  });
+  const revokeInvitation = t.mock.method(
+    clerkClient.invitations,
+    "revokeInvitation",
+    async () => ({ id: "slow_resend_lost_to_acceptance" }) as never,
+  );
+
+  const resendPromise = request(`/workspace/invitations/${pending.id}/resend`, {
+    userId: firms.primary.ownerId,
+    method: "POST",
+  });
+  await emailCreationStarted.promise;
+  const acceptancePromise = request("/workspace/invitations/accept", {
+    userId,
+    method: "POST",
+    body: { token },
+  });
+  const acceptanceBeforeEmailFinishes = await Promise.race([
+    acceptancePromise.then((result) => ({ completed: true as const, result })),
+    new Promise<{ completed: false }>((resolve) =>
+      setTimeout(() => resolve({ completed: false }), 2_000),
+    ),
+  ]);
+  finishEmailCreation.resolve();
+
+  const [acceptance, resent] = await Promise.all([acceptancePromise, resendPromise]);
+  assert.equal(acceptanceBeforeEmailFinishes.completed, true);
+  assert.equal(acceptance.response.status, 200);
+  assert.equal(resent.response.status, 404);
+  assert.equal(revokeInvitation.mock.callCount(), 1);
+  assert.equal(revokeInvitation.mock.calls[0].arguments[0], "slow_resend_lost_to_acceptance");
+  const [stored] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, pending.id));
+  assert.equal(stored.tokenHash, createHash("sha256").update(token).digest("hex"));
+  assert(stored.acceptedAt);
+  assert.equal(stored.revokedAt, null);
+  const [membership] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, userId));
+  assert.ok(membership);
+});
+
+test("withdrawal can finish while a resend email is slow and the new Clerk invitation is revoked", async (t) => {
+  const token = randomUUID();
+  const email = `slow-resend-withdraw-${randomUUID()}@example.test`;
+  const [pending] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email,
+      role: "assistant",
+      invitedByClerkUserId: firms.primary.ownerId,
+      clerkInvitationId: "slow_resend_old_clerk_invitation",
+      tokenHash: createHash("sha256").update(token).digest("hex"),
+      expiresAt: new Date(Date.now() + 60_000),
+    })
+    .returning();
+  const emailCreationStarted = deferred<void>();
+  const finishEmailCreation = deferred<void>();
+  t.mock.method(clerkClient.invitations, "createInvitation", async () => {
+    emailCreationStarted.resolve();
+    await finishEmailCreation.promise;
+    return { id: "slow_resend_lost_to_withdrawal" } as never;
+  });
+  const revokeInvitation = t.mock.method(
+    clerkClient.invitations,
+    "revokeInvitation",
+    async () => ({ id: "revoked_invitation" }) as never,
+  );
+
+  const resendPromise = request(`/workspace/invitations/${pending.id}/resend`, {
+    userId: firms.primary.ownerId,
+    method: "POST",
+  });
+  await emailCreationStarted.promise;
+  const withdrawalPromise = request(`/workspace/invitations/${pending.id}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+  });
+  const withdrawalBeforeEmailFinishes = await Promise.race([
+    withdrawalPromise.then((result) => ({ completed: true as const, result })),
+    new Promise<{ completed: false }>((resolve) =>
+      setTimeout(() => resolve({ completed: false }), 2_000),
+    ),
+  ]);
+  finishEmailCreation.resolve();
+
+  const [withdrawn, resent] = await Promise.all([withdrawalPromise, resendPromise]);
+  assert.equal(withdrawalBeforeEmailFinishes.completed, true);
+  assert.equal(withdrawn.response.status, 204);
+  assert.equal(resent.response.status, 404);
+  assert.equal(revokeInvitation.mock.callCount(), 2);
+  assert.deepEqual(
+    revokeInvitation.mock.calls.map((call) => call.arguments[0]).sort(),
+    ["slow_resend_old_clerk_invitation", "slow_resend_lost_to_withdrawal"].sort(),
+  );
+  const [stored] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, pending.id));
+  assert(stored.revokedAt);
+  assert.equal(stored.acceptedAt, null);
+  assert.equal(stored.tokenHash, createHash("sha256").update(token).digest("hex"));
+});
+
 test("a resend racing with acceptance rejects the superseded link without creating membership", async (t) => {
   const token = randomUUID();
   const email = `resend-race-${randomUUID()}@example.test`;

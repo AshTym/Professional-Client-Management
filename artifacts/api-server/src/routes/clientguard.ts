@@ -1618,7 +1618,7 @@ router.post(
     let createdClerkInvitationId: string | undefined;
 
     try {
-      const result = await db.transaction(async (tx) => {
+      const initialCheck = await db.transaction(async (tx) => {
         const [pending] = await tx
           .select()
           .from(invitationsTable)
@@ -1630,9 +1630,8 @@ router.post(
               isNull(invitationsTable.revokedAt),
             ),
           )
-          .limit(1)
-          .for("update");
-        if (!pending) return null;
+          .limit(1);
+        if (!pending) return { kind: "missing" as const };
 
         const email = pending.email.trim().toLowerCase();
         await tx.execute(
@@ -1652,16 +1651,70 @@ router.post(
             ),
           )
           .limit(1);
-        if (otherPending) return { conflict: true as const };
+        if (otherPending) return { kind: "conflict" as const };
 
-        const clerkInvitation = await clerkClient.invitations.createInvitation({
-          emailAddress: pending.email,
-          expiresInDays: 7,
-          ignoreExisting: true,
-          notify: true,
-          redirectUrl: `/invite?token=${encodeURIComponent(token)}`,
+        return { kind: "ready" as const, pending, email };
+      });
+
+      if (initialCheck.kind === "missing") {
+        res.status(404).json({ error: "This invitation is no longer pending in your firm." });
+        return;
+      }
+      if (initialCheck.kind === "conflict") {
+        res.status(409).json({
+          error: "A pending invitation already exists for that email address.",
         });
-        createdClerkInvitationId = clerkInvitation.id;
+        return;
+      }
+
+      const clerkInvitation = await clerkClient.invitations.createInvitation({
+        emailAddress: initialCheck.pending.email,
+        expiresInDays: 7,
+        ignoreExisting: true,
+        notify: true,
+        redirectUrl: `/invite?token=${encodeURIComponent(token)}`,
+      });
+      createdClerkInvitationId = clerkInvitation.id;
+
+      const result = await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${`clientguard:invitation:${access.workspaceId}:${initialCheck.email}`}))`,
+        );
+        const [current] = await tx
+          .select()
+          .from(invitationsTable)
+          .where(
+            and(
+              eq(invitationsTable.id, initialCheck.pending.id),
+              eq(invitationsTable.workspaceId, access.workspaceId),
+            ),
+          )
+          .limit(1)
+          .for("update");
+        if (
+          !current ||
+          current.acceptedAt ||
+          current.revokedAt ||
+          current.tokenHash !== initialCheck.pending.tokenHash
+        ) {
+          return { kind: "stale" as const };
+        }
+
+        const [otherPending] = await tx
+          .select({ id: invitationsTable.id })
+          .from(invitationsTable)
+          .where(
+            and(
+              eq(invitationsTable.workspaceId, access.workspaceId),
+              sql`lower(${invitationsTable.email}) = ${initialCheck.email}`,
+              sql`${invitationsTable.id} <> ${current.id}`,
+              isNull(invitationsTable.acceptedAt),
+              isNull(invitationsTable.revokedAt),
+              gt(invitationsTable.expiresAt, now),
+            ),
+          )
+          .limit(1);
+        if (otherPending) return { kind: "conflict" as const };
 
         const [updated] = await tx
           .update(invitationsTable)
@@ -1671,25 +1724,35 @@ router.post(
             createdAt: now,
             expiresAt: new Date(now.getTime() + invitationLifetimeMs),
           })
-          .where(eq(invitationsTable.id, pending.id))
+          .where(eq(invitationsTable.id, current.id))
           .returning();
         return {
-          conflict: false as const,
+          kind: "updated" as const,
           invitation: updated,
-          previousClerkInvitationId: pending.clerkInvitationId,
+          previousClerkInvitationId: current.clerkInvitationId,
         };
       });
 
-      if (!result) {
+      if (result.kind !== "updated") {
+        try {
+          await clerkClient.invitations.revokeInvitation(createdClerkInvitationId);
+        } catch (error) {
+          req.log.warn(
+            { invitationId: params.data.id, error },
+            "Could not revoke a Clerk invitation created for a resend that lost its state check",
+          );
+        }
+        createdClerkInvitationId = undefined;
+        if (result.kind === "conflict") {
+          res.status(409).json({
+            error: "A pending invitation already exists for that email address.",
+          });
+          return;
+        }
         res.status(404).json({ error: "This invitation is no longer pending in your firm." });
         return;
       }
-      if (result.conflict) {
-        res.status(409).json({
-          error: "A pending invitation already exists for that email address.",
-        });
-        return;
-      }
+      createdClerkInvitationId = undefined;
 
       if (result.previousClerkInvitationId) {
         try {
