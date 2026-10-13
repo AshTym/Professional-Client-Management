@@ -89,6 +89,7 @@ function providerLabel(provider: Provider) {
     microsoft: "Microsoft Outlook",
     xero: "Xero",
     quickbooks: "QuickBooks Online",
+    docusign: "DocuSign",
   }[provider];
 }
 
@@ -185,6 +186,7 @@ router.get("/integrations/:provider/callback", async (req, res): Promise<void> =
       provider,
       accountLabel: profile.label,
       remoteAccountId: profile.remoteAccountId || null,
+      remoteBaseUri: profile.remoteBaseUri ?? existing?.remoteBaseUri ?? null,
       accessTokenCiphertext: encryptToken(token.access_token),
       refreshTokenCiphertext: refreshToken,
       tokenExpiresAt: tokenExpiry(token),

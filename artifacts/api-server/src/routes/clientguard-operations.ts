@@ -17,6 +17,7 @@ import {
   portalAccessTable,
   portalMessagesTable,
   portalRequestsTable,
+  practiceSettingsTable,
   portalUpdatesTable,
   plannerItemsTable,
   retentionSettingsTable,
@@ -449,6 +450,13 @@ router.post("/intakes/:id/open-matter", async (req, res): Promise<void> => {
       .limit(1);
     if (!intake) return { kind: "missing" as const };
     if (intake.status !== "cleared" || intake.openedMatterId) return { kind: "not-cleared" as const };
+    const [practiceSettings] = await tx.select({
+      requireEngagementSignature: practiceSettingsTable.requireEngagementSignature,
+    }).from(practiceSettingsTable).where(eq(
+      practiceSettingsTable.workspaceId,
+      firm.workspaceId,
+    )).limit(1);
+    const requiresSignature = practiceSettings?.requireEngagementSignature ?? false;
 
     let clientId = intake.clientId;
     const responsibleMember = members.find(
@@ -502,6 +510,7 @@ router.post("/intakes/:id/open-matter", async (req, res): Promise<void> => {
         responsible: responsibleLabel,
         responsibleMemberId: resolvedMember?.id ?? null,
         dueAt: intake.dueAt,
+        status: requiresSignature ? "on_hold" : "open",
       })
       .returning();
     await tx
@@ -523,8 +532,19 @@ router.post("/intakes/:id/open-matter", async (req, res): Promise<void> => {
     res.status(409).json({ error: result.kind === "not-cleared" ? "Only a cleared intake can open a matter, and each intake can open one matter." : "The client record is unavailable in this firm." });
     return;
   }
-  await logActivity(firm, "matter", result.matter.id, result.title, "opened matter after intake review");
-  await appendAudit(firm.workspaceId, firm, "matter_opened_after_intake", "matter", result.matter.id, result.title, { intakeId: id });
+  await logActivity(
+    firm,
+    "matter",
+    result.matter.id,
+    result.title,
+    result.matter.status === "on_hold"
+      ? "created matter pending engagement signature"
+      : "opened matter after intake review",
+  );
+  await appendAudit(firm.workspaceId, firm, "matter_opened_after_intake", "matter", result.matter.id, result.title, {
+    intakeId: id,
+    status: result.matter.status,
+  });
   res.status(201).json(api.OpenMatterFromIntakeResponse.parse(result.matter));
 });
 

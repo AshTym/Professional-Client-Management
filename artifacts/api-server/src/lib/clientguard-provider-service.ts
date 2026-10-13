@@ -1,9 +1,9 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import type { Request } from "express";
 
-export type Provider = "google" | "microsoft" | "xero" | "quickbooks";
+export type Provider = "google" | "microsoft" | "xero" | "quickbooks" | "docusign";
 
-export const providers: Provider[] = ["google", "microsoft", "xero", "quickbooks"];
+export const providers: Provider[] = ["google", "microsoft", "xero", "quickbooks", "docusign"];
 
 type ProviderConfig = {
   clientId: string;
@@ -32,6 +32,7 @@ function configFor(provider: Provider): ProviderConfig | null {
     microsoft: "MICROSOFT",
     xero: "XERO",
     quickbooks: "QUICKBOOKS",
+    docusign: "DOCUSIGN",
   }[provider];
   const clientId = process.env[`${prefix}_OAUTH_CLIENT_ID`];
   const clientSecret = process.env[`${prefix}_OAUTH_CLIENT_SECRET`];
@@ -42,6 +43,21 @@ function configFor(provider: Provider): ProviderConfig | null {
 
 function hasEncryptionKey(): boolean {
   return (process.env.CLIENTGUARD_OAUTH_TOKEN_ENCRYPTION_KEY?.trim().length ?? 0) >= 32;
+}
+
+function docuSignOAuthOrigin(): string {
+  const configured = process.env.DOCUSIGN_OAUTH_HOST?.trim() || "https://account-d.docusign.com";
+  const url = new URL(configured);
+  if (
+    url.protocol !== "https:" ||
+    !/^(account(-d)?\.docusign\.com)$/.test(url.hostname) ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error("DocuSign OAuth host must be account-d.docusign.com or account.docusign.com over HTTPS.");
+  }
+  return url.origin;
 }
 
 export function providerReady(provider: Provider): boolean {
@@ -79,6 +95,8 @@ function scopesFor(provider: Provider) {
       return ["openid", "profile", "email", "offline_access", "accounting.transactions", "accounting.contacts"];
     case "quickbooks":
       return ["openid", "profile", "email", "com.intuit.quickbooks.accounting"];
+    case "docusign":
+      return ["signature", "extended", "offline_access"];
   }
 }
 
@@ -96,6 +114,7 @@ export function authorizationUrl(
     microsoft: new URL("https://login.microsoftonline.com/common/oauth2/v2.0/authorize"),
     xero: new URL("https://login.xero.com/identity/connect/authorize"),
     quickbooks: new URL("https://appcenter.intuit.com/connect/oauth2"),
+    docusign: new URL(`${docuSignOAuthOrigin()}/oauth/auth`),
   }[provider];
   url.searchParams.set("client_id", config.clientId);
   url.searchParams.set("redirect_uri", redirectUri);
@@ -139,6 +158,7 @@ export async function exchangeAuthorizationCode(
     microsoft: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
     xero: "https://identity.xero.com/connect/token",
     quickbooks: "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+    docusign: `${docuSignOAuthOrigin()}/oauth/token`,
   }[provider];
   const body = new URLSearchParams({
     grant_type: "authorization_code",
@@ -149,7 +169,7 @@ export async function exchangeAuthorizationCode(
     "Content-Type": "application/x-www-form-urlencoded",
     Accept: "application/json",
   };
-  if (provider === "xero" || provider === "quickbooks") {
+  if (provider === "xero" || provider === "quickbooks" || provider === "docusign") {
     headers.Authorization = `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`;
   } else {
     body.set("client_id", config.clientId);
@@ -178,6 +198,7 @@ export async function refreshProviderToken(
     microsoft: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
     xero: "https://identity.xero.com/connect/token",
     quickbooks: "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+    docusign: `${docuSignOAuthOrigin()}/oauth/token`,
   }[provider];
   const body = new URLSearchParams({
     grant_type: "refresh_token",
@@ -187,7 +208,7 @@ export async function refreshProviderToken(
     "Content-Type": "application/x-www-form-urlencoded",
     Accept: "application/json",
   };
-  if (provider === "xero" || provider === "quickbooks") {
+  if (provider === "xero" || provider === "quickbooks" || provider === "docusign") {
     headers.Authorization = `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`;
   } else {
     body.set("client_id", config.clientId);
@@ -259,7 +280,7 @@ export async function getProviderProfile(
   provider: Provider,
   token: string,
   quickbooksRealmId?: string,
-) {
+): Promise<{ label: string; remoteAccountId: string; remoteBaseUri?: string }> {
   if (provider === "google") {
     const profile = await providerJson("https://www.googleapis.com/oauth2/v2/userinfo", token);
     return {
@@ -284,12 +305,39 @@ export async function getProviderProfile(
       remoteAccountId: String(first.tenantId),
     };
   }
+  if (provider === "docusign") {
+    const profile = await providerJson(`${docuSignOAuthOrigin()}/oauth/userinfo`, token);
+    const accounts = Array.isArray(profile.accounts)
+      ? profile.accounts as Array<Record<string, unknown>>
+      : [];
+    const account = accounts.find((candidate) => candidate.is_default === true) ?? accounts[0];
+    if (!account?.account_id || typeof account.base_uri !== "string") {
+      throw new Error("No DocuSign account is available to connect.");
+    }
+    const base = new URL(account.base_uri);
+    if (base.protocol !== "https:" || !/\.docusign\.net$/.test(base.hostname)) {
+      throw new Error("DocuSign returned an unsupported account API host.");
+    }
+    return {
+      label: String(account.account_name ?? "DocuSign account"),
+      remoteAccountId: String(account.account_id),
+      remoteBaseUri: base.origin,
+    };
+  }
   if (!quickbooksRealmId) throw new Error("QuickBooks did not return a company identifier.");
   return { label: `QuickBooks company ${quickbooksRealmId}`, remoteAccountId: quickbooksRealmId };
 }
 
 export function oauthConfigFor(provider: Provider) {
   return configFor(provider);
+}
+
+export function docuSignApiBase(remoteBaseUri: string): string {
+  const url = new URL(remoteBaseUri);
+  if (url.protocol !== "https:" || !/\.docusign\.net$/.test(url.hostname)) {
+    throw new Error("Stored DocuSign API host is invalid.");
+  }
+  return `${url.origin}/restapi/v2.1`;
 }
 
 export function tokenExpiry(token: TokenResponse) {

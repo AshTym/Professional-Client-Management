@@ -27,6 +27,10 @@ import {
   workspacesTable,
 } from "@workspace/db";
 import {
+  canMatterOpen,
+  closeoutIsReady,
+} from "../lib/clientguard-practice-service";
+import {
   CloseMatterParams,
   CreateClientBody,
   CreateClientResponse,
@@ -2155,6 +2159,37 @@ router.patch("/matters/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  if (parsed.data.status !== undefined) {
+    const [currentMatter] = await db.select({ status: mattersTable.status })
+      .from(mattersTable)
+      .where(and(
+        eq(mattersTable.id, params.data.id),
+        eq(mattersTable.workspaceId, access.workspaceId),
+      ))
+      .limit(1);
+    if (!currentMatter) {
+      res.status(404).json({ error: "Matter not found." });
+      return;
+    }
+    if (currentMatter.status === "closed" && parsed.data.status !== "closed") {
+      res.status(409).json({ error: "A closed matter cannot be reopened through an edit." });
+      return;
+    }
+    if (parsed.data.status === "open" && !(await canMatterOpen(access.workspaceId, params.data.id))) {
+      res.status(409).json({
+        error: "This firm requires a completed engagement signature before a matter can be opened.",
+        code: "engagement_signature_required",
+      });
+      return;
+    }
+    if (parsed.data.status === "closed" && !(await closeoutIsReady(access.workspaceId, params.data.id))) {
+      res.status(409).json({
+        error: "Complete all matter closeout checklist items before closing this matter.",
+        code: "matter_closeout_required",
+      });
+      return;
+    }
+  }
   const result = await db.transaction(async (tx) => {
     let responsibleLabel: string | undefined;
     if (parsed.data.responsibleMemberId !== undefined) {
@@ -2239,6 +2274,28 @@ router.delete("/matters/:id", async (req, res): Promise<void> => {
   const params = CloseMatterParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const [existing] = await db.select({ status: mattersTable.status, title: mattersTable.title })
+    .from(mattersTable)
+    .where(and(
+      eq(mattersTable.id, params.data.id),
+      eq(mattersTable.workspaceId, access.workspaceId),
+    ))
+    .limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "Matter not found." });
+    return;
+  }
+  if (existing.status === "closed") {
+    res.status(409).json({ error: "This matter is already closed." });
+    return;
+  }
+  if (!(await closeoutIsReady(access.workspaceId, params.data.id))) {
+    res.status(409).json({
+      error: "Complete all matter closeout checklist items before closing this matter.",
+      code: "matter_closeout_required",
+    });
     return;
   }
   const [matter] = await db

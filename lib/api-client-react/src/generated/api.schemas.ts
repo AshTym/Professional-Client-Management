@@ -1388,6 +1388,7 @@ export const ProviderConnectionStatusProvider = {
   microsoft: 'microsoft',
   xero: 'xero',
   quickbooks: 'quickbooks',
+  docusign: 'docusign',
 } as const;
 
 export interface ProviderConnectionStatus {
@@ -1397,6 +1398,608 @@ export interface ProviderConnectionStatus {
   accountLabel: string;
   /** @nullable */
   lastSyncAt: string | null;
+}
+
+export type PracticeSettingsSupportedJurisdictionsItem = typeof PracticeSettingsSupportedJurisdictionsItem[keyof typeof PracticeSettingsSupportedJurisdictionsItem];
+
+
+export const PracticeSettingsSupportedJurisdictionsItem = {
+  Australia: 'Australia',
+  USA: 'USA',
+  Great_Britain: 'Great Britain',
+} as const;
+
+export interface PracticeSettings {
+  requireEngagementSignature: boolean;
+  supportedJurisdictions: PracticeSettingsSupportedJurisdictionsItem[];
+  /** @nullable */
+  updatedAt: string | null;
+}
+
+export type PracticeSettingsInputSupportedJurisdictionsItem = typeof PracticeSettingsInputSupportedJurisdictionsItem[keyof typeof PracticeSettingsInputSupportedJurisdictionsItem];
+
+
+export const PracticeSettingsInputSupportedJurisdictionsItem = {
+  Australia: 'Australia',
+  USA: 'USA',
+  Great_Britain: 'Great Britain',
+} as const;
+
+export interface PracticeSettingsInput {
+  requireEngagementSignature: boolean;
+  supportedJurisdictions: PracticeSettingsInputSupportedJurisdictionsItem[];
+}
+
+export interface EngagementLetterInput {
+  /** @maxLength 254 */
+  clientEmail: string;
+  /**
+     * @minLength 10
+     * @maxLength 12000
+     */
+  scope: string;
+}
+
+export type EngagementLetterStatus = typeof EngagementLetterStatus[keyof typeof EngagementLetterStatus];
+
+
+export const EngagementLetterStatus = {
+  draft: 'draft',
+  sent: 'sent',
+  completed: 'completed',
+  declined: 'declined',
+  voided: 'voided',
+  error: 'error',
+} as const;
+
+export type EngagementLetterProvider = typeof EngagementLetterProvider[keyof typeof EngagementLetterProvider];
+
+
+export const EngagementLetterProvider = {
+  docusign: 'docusign',
+} as const;
+
+export interface EngagementLetter {
+  id: number;
+  matterId: number;
+  matterTitle: string;
+  clientName: string;
+  clientEmail: string;
+  scope: string;
+  billingTerms: string;
+  revision: number;
+  status: EngagementLetterStatus;
+  provider: EngagementLetterProvider;
+  /** @nullable */
+  envelopeId: string | null;
+  /** @nullable */
+  draftDocumentId: number | null;
+  /** @nullable */
+  signedDocumentId: number | null;
+  /** @nullable */
+  sentAt: string | null;
+  /** @nullable */
+  signedAt: string | null;
+  requiresSignatureToOpen: boolean;
+  createdAt: string;
+}
+
+export type TrustAccountInputJurisdiction = typeof TrustAccountInputJurisdiction[keyof typeof TrustAccountInputJurisdiction];
+
+
+export const TrustAccountInputJurisdiction = {
+  Australia: 'Australia',
+  USA: 'USA',
+  Great_Britain: 'Great Britain',
+} as const;
+
+export interface TrustAccountInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+  jurisdiction: TrustAccountInputJurisdiction;
+  /** @pattern ^[A-Za-z]{3}$ */
+  currency: string;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  accountReference?: string | null;
+  requireSecondApproval: boolean;
+}
+
+export type TrustAccountJurisdiction = typeof TrustAccountJurisdiction[keyof typeof TrustAccountJurisdiction];
+
+
+export const TrustAccountJurisdiction = {
+  Australia: 'Australia',
+  USA: 'USA',
+  Great_Britain: 'Great Britain',
+} as const;
+
+export interface TrustAccount {
+  id: number;
+  name: string;
+  jurisdiction: TrustAccountJurisdiction;
+  currency: string;
+  /** @nullable */
+  accountReference: string | null;
+  requireSecondApproval: boolean;
+  active: boolean;
+  balanceCents: number;
+  createdAt: string;
+}
+
+export type TrustEntryInputEntryType = typeof TrustEntryInputEntryType[keyof typeof TrustEntryInputEntryType];
+
+
+export const TrustEntryInputEntryType = {
+  deposit: 'deposit',
+  disbursement: 'disbursement',
+} as const;
+
+export interface TrustEntryInput {
+  /** @minimum 1 */
+  accountId: number;
+  /** @minimum 1 */
+  matterId: number;
+  entryType: TrustEntryInputEntryType;
+  /**
+     * @minimum 1
+     * @maximum 100000000000
+     */
+  amountCents: number;
+  entryDate: string;
+  /**
+     * @minLength 1
+     * @maxLength 1000
+     */
+  description: string;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  reference?: string | null;
+}
+
+export type TrustEntryDecisionInputDecision = typeof TrustEntryDecisionInputDecision[keyof typeof TrustEntryDecisionInputDecision];
+
+
+export const TrustEntryDecisionInputDecision = {
+  approve: 'approve',
+  reject: 'reject',
+} as const;
+
+export interface TrustEntryDecisionInput {
+  decision: TrustEntryDecisionInputDecision;
+  /**
+     * @minLength 1
+     * @maxLength 1000
+     */
+  note: string;
+}
+
+export type TrustEntryEntryType = typeof TrustEntryEntryType[keyof typeof TrustEntryEntryType];
+
+
+export const TrustEntryEntryType = {
+  deposit: 'deposit',
+  disbursement: 'disbursement',
+} as const;
+
+export type TrustEntryStatus = typeof TrustEntryStatus[keyof typeof TrustEntryStatus];
+
+
+export const TrustEntryStatus = {
+  pending_approval: 'pending_approval',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export interface TrustEntry {
+  id: number;
+  accountId: number;
+  accountName: string;
+  matterId: number;
+  matterTitle: string;
+  clientName: string;
+  entryType: TrustEntryEntryType;
+  amountCents: number;
+  currency: string;
+  entryDate: string;
+  description: string;
+  /** @nullable */
+  reference: string | null;
+  status: TrustEntryStatus;
+  createdBy: string;
+  /** @nullable */
+  approvedBy: string | null;
+  /** @nullable */
+  approvedAt: string | null;
+  createdAt: string;
+}
+
+export interface TrustStatementLineInput {
+  lineDate: string;
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  description: string;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  reference?: string | null;
+  /**
+     * @minimum -100000000000
+     * @maximum 100000000000
+     */
+  amountCents: number;
+}
+
+export type TrustStatementInputSourceType = typeof TrustStatementInputSourceType[keyof typeof TrustStatementInputSourceType];
+
+
+export const TrustStatementInputSourceType = {
+  manual: 'manual',
+  csv: 'csv',
+} as const;
+
+export interface TrustStatementInput {
+  /** @minimum 1 */
+  accountId: number;
+  sourceType: TrustStatementInputSourceType;
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  sourceName: string;
+  periodStart: string;
+  periodEnd: string;
+  /**
+     * @minimum -100000000000
+     * @maximum 100000000000
+     */
+  openingBalanceCents: number;
+  /**
+     * @minimum -100000000000
+     * @maximum 100000000000
+     */
+  closingBalanceCents: number;
+  /**
+     * @minItems 1
+     * @maxItems 2500
+     */
+  lines: TrustStatementLineInput[];
+}
+
+export interface TrustStatementMatchInput {
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  matchedEntryId: number | null;
+}
+
+export type TrustStatementLineStatus = typeof TrustStatementLineStatus[keyof typeof TrustStatementLineStatus];
+
+
+export const TrustStatementLineStatus = {
+  unmatched: 'unmatched',
+  matched: 'matched',
+} as const;
+
+export interface TrustStatementLine {
+  id: number;
+  statementId: number;
+  lineDate: string;
+  description: string;
+  /** @nullable */
+  reference: string | null;
+  amountCents: number;
+  /** @nullable */
+  matchedEntryId: number | null;
+  status: TrustStatementLineStatus;
+}
+
+export type TrustStatementSourceType = typeof TrustStatementSourceType[keyof typeof TrustStatementSourceType];
+
+
+export const TrustStatementSourceType = {
+  manual: 'manual',
+  csv: 'csv',
+} as const;
+
+export type TrustStatementStatus = typeof TrustStatementStatus[keyof typeof TrustStatementStatus];
+
+
+export const TrustStatementStatus = {
+  open: 'open',
+  reconciled: 'reconciled',
+} as const;
+
+export interface TrustStatement {
+  id: number;
+  accountId: number;
+  sourceType: TrustStatementSourceType;
+  sourceName: string;
+  periodStart: string;
+  periodEnd: string;
+  openingBalanceCents: number;
+  closingBalanceCents: number;
+  status: TrustStatementStatus;
+  lineCount: number;
+  matchedLines: number;
+  unmatchedLineCount: number;
+  movementDifferenceCents: number;
+  createdAt: string;
+  lines?: TrustStatementLine[];
+}
+
+export type TrustOverviewSupportedJurisdictionsItem = typeof TrustOverviewSupportedJurisdictionsItem[keyof typeof TrustOverviewSupportedJurisdictionsItem];
+
+
+export const TrustOverviewSupportedJurisdictionsItem = {
+  Australia: 'Australia',
+  USA: 'USA',
+  Great_Britain: 'Great Britain',
+} as const;
+
+export type TrustOverviewAlertsItemSeverity = typeof TrustOverviewAlertsItemSeverity[keyof typeof TrustOverviewAlertsItemSeverity];
+
+
+export const TrustOverviewAlertsItemSeverity = {
+  attention: 'attention',
+  warning: 'warning',
+} as const;
+
+export type TrustOverviewAlertsItem = {
+  id: string;
+  severity: TrustOverviewAlertsItemSeverity;
+  title: string;
+  detail: string;
+  accountId: number;
+  /** @nullable */
+  statementId: number | null;
+};
+
+export interface TrustOverview {
+  supportedJurisdictions: TrustOverviewSupportedJurisdictionsItem[];
+  accounts: TrustAccount[];
+  entries: TrustEntry[];
+  statements: TrustStatement[];
+  alerts: TrustOverviewAlertsItem[];
+}
+
+export type TrustAccountStatementJurisdiction = typeof TrustAccountStatementJurisdiction[keyof typeof TrustAccountStatementJurisdiction];
+
+
+export const TrustAccountStatementJurisdiction = {
+  Australia: 'Australia',
+  USA: 'USA',
+  Great_Britain: 'Great Britain',
+} as const;
+
+export type TrustAccountStatementEntriesItemEntryType = typeof TrustAccountStatementEntriesItemEntryType[keyof typeof TrustAccountStatementEntriesItemEntryType];
+
+
+export const TrustAccountStatementEntriesItemEntryType = {
+  deposit: 'deposit',
+  disbursement: 'disbursement',
+} as const;
+
+export type TrustAccountStatementEntriesItem = {
+  id: number;
+  entryDate: string;
+  description: string;
+  /** @nullable */
+  reference: string | null;
+  entryType: TrustAccountStatementEntriesItemEntryType;
+  amountCents: number;
+  balanceCents: number;
+};
+
+export interface TrustAccountStatement {
+  accountId: number;
+  accountName: string;
+  jurisdiction: TrustAccountStatementJurisdiction;
+  currency: string;
+  matterId: number;
+  matterTitle: string;
+  clientName: string;
+  from: string;
+  to: string;
+  openingBalanceCents: number;
+  closingBalanceCents: number;
+  entries: TrustAccountStatementEntriesItem[];
+}
+
+export type CloseoutItemItemKey = typeof CloseoutItemItemKey[keyof typeof CloseoutItemItemKey];
+
+
+export const CloseoutItemItemKey = {
+  final_billing: 'final_billing',
+  document_handover: 'document_handover',
+  retention_review: 'retention_review',
+} as const;
+
+export type CloseoutItemStatus = typeof CloseoutItemStatus[keyof typeof CloseoutItemStatus];
+
+
+export const CloseoutItemStatus = {
+  open: 'open',
+  complete: 'complete',
+} as const;
+
+export interface CloseoutItem {
+  id: number;
+  itemKey: CloseoutItemItemKey;
+  title: string;
+  status: CloseoutItemStatus;
+  /** @nullable */
+  completedBy: string | null;
+  /** @nullable */
+  completedAt: string | null;
+}
+
+export interface MatterFollowupInput {
+  dueAt: string;
+  /**
+     * @minLength 1
+     * @maxLength 1000
+     */
+  reason: string;
+}
+
+export type MatterFollowupUpdateInputStatus = typeof MatterFollowupUpdateInputStatus[keyof typeof MatterFollowupUpdateInputStatus];
+
+
+export const MatterFollowupUpdateInputStatus = {
+  open: 'open',
+  complete: 'complete',
+} as const;
+
+export interface MatterFollowupUpdateInput {
+  status: MatterFollowupUpdateInputStatus;
+}
+
+export type MatterFollowupStatus = typeof MatterFollowupStatus[keyof typeof MatterFollowupStatus];
+
+
+export const MatterFollowupStatus = {
+  open: 'open',
+  complete: 'complete',
+} as const;
+
+export interface MatterFollowup {
+  id: number;
+  matterId: number;
+  matterTitle: string;
+  clientName: string;
+  dueAt: string;
+  reason: string;
+  status: MatterFollowupStatus;
+  createdAt: string;
+}
+
+export interface MatterCloseout {
+  matterId: number;
+  matterTitle: string;
+  matterStatus: string;
+  items: CloseoutItem[];
+  followups: MatterFollowup[];
+  retentionDays: number;
+  /** @nullable */
+  targetRetentionDate: string | null;
+  legalHold: boolean;
+  canClose: boolean;
+}
+
+export type CloseoutItemUpdateInputStatus = typeof CloseoutItemUpdateInputStatus[keyof typeof CloseoutItemUpdateInputStatus];
+
+
+export const CloseoutItemUpdateInputStatus = {
+  open: 'open',
+  complete: 'complete',
+} as const;
+
+export interface CloseoutItemUpdateInput {
+  status: CloseoutItemUpdateInputStatus;
+}
+
+export type OperationsReportTotals = {
+  openMatters: number;
+  onHoldMatters: number;
+  overdueDeadlines: number;
+  dueNext7Days: number;
+};
+
+export type OperationsReportPipelineItem = {
+  status: string;
+  count: number;
+};
+
+export type OperationsReportAgingWorkInProgressItem = {
+  bucket: string;
+  /** @nullable */
+  currency: string | null;
+  entryCount: number;
+  hours: number;
+  estimatedCents: number;
+  pricedEntryCount: number;
+  fixedFeeEntryCount: number;
+  unpricedEntryCount: number;
+};
+
+export type OperationsReportUpcomingDeadlinesItem = {
+  matterId: number;
+  matterTitle: string;
+  clientName: string;
+  responsible: string;
+  dueAt: string;
+  riskLevel: string;
+};
+
+export interface TeamCapacity {
+  membershipId: number;
+  name: string;
+  role: string;
+  weeklyCapacityMinutes: number;
+  activeMatterLimit: number;
+  activeMatterCount: number;
+  loggedMinutes: number;
+}
+
+export interface OperationsReport {
+  from: string;
+  to: string;
+  totals: OperationsReportTotals;
+  pipeline: OperationsReportPipelineItem[];
+  agingWorkInProgress: OperationsReportAgingWorkInProgressItem[];
+  workload: TeamCapacity[];
+  upcomingDeadlines: OperationsReportUpcomingDeadlinesItem[];
+  followups: MatterFollowup[];
+}
+
+export type OperationsReportExportInputFormat = typeof OperationsReportExportInputFormat[keyof typeof OperationsReportExportInputFormat];
+
+
+export const OperationsReportExportInputFormat = {
+  csv: 'csv',
+  pdf: 'pdf',
+} as const;
+
+export interface OperationsReportExportInput {
+  format: OperationsReportExportInputFormat;
+  from: string;
+  to: string;
+}
+
+export interface OperationsReportExportResult {
+  logged: boolean;
+}
+
+export type TeamCapacityInputCapacitiesItem = {
+  /** @minimum 1 */
+  membershipId: number;
+  /**
+     * @minimum 60
+     * @maximum 10080
+     */
+  weeklyCapacityMinutes: number;
+  /**
+     * @minimum 1
+     * @maximum 1000
+     */
+  activeMatterLimit: number;
+};
+
+export interface TeamCapacityInput {
+  /** @maxItems 250 */
+  capacities: TeamCapacityInputCapacitiesItem[];
 }
 
 export interface AuthorizationUrl {
@@ -1543,5 +2146,17 @@ export type ListAuditEventsParams = {
  * @maximum 200
  */
 limit?: number;
+};
+
+export type GetTrustAccountStatementParams = {
+accountId: number;
+matterId: number;
+from: string;
+to: string;
+};
+
+export type GetOperationsReportParams = {
+from?: string;
+to?: string;
 };
 

@@ -1424,7 +1424,7 @@ paths:
     get:
       operationId: listWorkspaceIntegrations
       tags: [integrations]
-      summary: List per-firm Google, Microsoft, Xero, and QuickBooks connections
+      summary: List firm-owned provider connections
       responses:
         "200":
           description: Connection status without credentials
@@ -1441,7 +1441,7 @@ paths:
         required: true
         schema:
           type: string
-          enum: [google, microsoft, xero, quickbooks]
+          enum: [google, microsoft, xero, quickbooks, docusign]
     post:
       operationId: authorizeWorkspaceIntegration
       tags: [integrations]
@@ -1462,7 +1462,7 @@ paths:
         required: true
         schema:
           type: string
-          enum: [google, microsoft, xero, quickbooks]
+          enum: [google, microsoft, xero, quickbooks, docusign]
     get:
       operationId: completeWorkspaceIntegrationAuthorization
       tags: [integrations]
@@ -1541,6 +1541,431 @@ paths:
                 $ref: "#/components/schemas/ProviderSyncResult"
         "409":
           description: Update draft has not been reviewed or was already sent
+  /practice/settings:
+    get:
+      operationId: getPracticeSettings
+      tags: [practice]
+      summary: Get firm signature and supported jurisdiction settings
+      responses:
+        "200":
+          description: Firm practice settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PracticeSettings"
+    put:
+      operationId: updatePracticeSettings
+      tags: [practice]
+      summary: Update firm signature and supported jurisdiction settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PracticeSettingsInput"
+      responses:
+        "200":
+          description: Updated practice settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PracticeSettings"
+  /engagement-letters:
+    get:
+      operationId: listEngagementLetters
+      tags: [engagements]
+      summary: List engagement letters for the firm
+      responses:
+        "200":
+          description: Engagement letters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EngagementLetter"
+  /matters/{id}/engagement-letter:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    post:
+      operationId: createEngagementLetter
+      tags: [engagements]
+      summary: Create a matter engagement letter draft from matter and billing terms
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EngagementLetterInput"
+      responses:
+        "200":
+          description: Engagement letter draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EngagementLetter"
+        "404":
+          description: Matter not found
+  /engagement-letters/{id}/send:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    post:
+      operationId: sendEngagementLetter
+      tags: [engagements]
+      summary: Send a reviewed engagement letter through the firm's DocuSign connection
+      responses:
+        "200":
+          description: Signature request sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EngagementLetter"
+        "409":
+          description: Letter is not a draft or DocuSign is not connected
+  /engagement-letters/{id}/sync:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    post:
+      operationId: syncEngagementLetter
+      tags: [engagements]
+      summary: Check DocuSign status and store a completed signed document
+      responses:
+        "200":
+          description: Updated signature status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EngagementLetter"
+  /trust/overview:
+    get:
+      operationId: getTrustOverview
+      tags: [trust]
+      summary: Get firm trust accounts, ledger entries, and reconciliation exceptions
+      responses:
+        "200":
+          description: Trust recordkeeping overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustOverview"
+  /trust/statement:
+    get:
+      operationId: getTrustAccountStatement
+      tags: [trust]
+      summary: Get a matter-specific trust ledger statement
+      parameters:
+        - name: accountId
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: matterId
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Matter trust ledger statement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustAccountStatement"
+        "400":
+          description: Invalid statement period
+        "401":
+          description: Sign in required
+        "403":
+          description: Firm access required
+        "404":
+          description: Account or matter not found
+        "500":
+          description: Server error
+  /trust/accounts:
+    post:
+      operationId: createTrustAccount
+      tags: [trust]
+      summary: Create a firm trust or client-money recordkeeping account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrustAccountInput"
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustAccount"
+  /trust/entries:
+    post:
+      operationId: createTrustEntry
+      tags: [trust]
+      summary: Record a proposed client-money deposit or disbursement; this does not move funds
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrustEntryInput"
+      responses:
+        "201":
+          description: Entry awaiting approval
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustEntry"
+  /trust/entries/{id}/decision:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    patch:
+      operationId: decideTrustEntry
+      tags: [trust]
+      summary: Approve or reject a pending client-money ledger entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrustEntryDecisionInput"
+      responses:
+        "200":
+          description: Entry decision recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustEntry"
+        "409":
+          description: Entry is not awaiting approval
+  /trust/statements:
+    post:
+      operationId: importTrustStatement
+      tags: [trust]
+      summary: Import a manual or CSV statement for reconciliation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrustStatementInput"
+      responses:
+        "201":
+          description: Statement and lines imported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustStatement"
+  /trust/statements/{statementId}/lines/{lineId}:
+    parameters:
+      - name: statementId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+      - name: lineId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    patch:
+      operationId: matchTrustStatementLine
+      tags: [trust]
+      summary: Match a statement line to an approved ledger entry or clear its match
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrustStatementMatchInput"
+      responses:
+        "200":
+          description: Statement line updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustStatementLine"
+  /matters/{id}/closeout:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    get:
+      operationId: getMatterCloseout
+      tags: [closeout]
+      summary: Get persisted closeout steps, retention context, and re-engagement reminders
+      responses:
+        "200":
+          description: Closeout workflow
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatterCloseout"
+    post:
+      operationId: initializeMatterCloseout
+      tags: [closeout]
+      summary: Create default final-billing, handover, and retention review steps
+      responses:
+        "200":
+          description: Initialized closeout workflow
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatterCloseout"
+  /closeout-items/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    patch:
+      operationId: updateCloseoutItem
+      tags: [closeout]
+      summary: Mark a closeout step complete or reopen it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CloseoutItemUpdateInput"
+      responses:
+        "200":
+          description: Updated closeout step
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CloseoutItem"
+  /matters/{id}/followups:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    post:
+      operationId: createMatterFollowup
+      tags: [closeout]
+      summary: Schedule a renewal or re-engagement reminder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MatterFollowupInput"
+      responses:
+        "201":
+          description: Follow-up scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatterFollowup"
+  /matter-followups/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    patch:
+      operationId: updateMatterFollowup
+      tags: [closeout]
+      summary: Complete or reopen a re-engagement reminder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MatterFollowupUpdateInput"
+      responses:
+        "200":
+          description: Updated follow-up reminder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatterFollowup"
+  /reports/operations:
+    get:
+      operationId: getOperationsReport
+      tags: [reports]
+      summary: Get workload, deadline, aging work-in-progress, and matter pipeline metrics
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Firm operations report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationsReport"
+        "403":
+          description: Firm administrator access required
+  /reports/operations/export:
+    post:
+      operationId: logOperationsReportExport
+      tags: [reports]
+      summary: Record a firm operations report export in the audit trail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperationsReportExportInput"
+      responses:
+        "200":
+          description: Export action recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationsReportExportResult"
+        "400":
+          description: Invalid export metadata
+        "403":
+          description: Firm administrator access required
+  /reports/operations/capacity:
+    put:
+      operationId: saveTeamCapacity
+      tags: [reports]
+      summary: Set weekly hours and active-matter limits for firm members
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamCapacityInput"
+      responses:
+        "200":
+          description: Capacity settings saved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamCapacity"
+        "403":
+          description: Firm administrator access required
 
 components:
   schemas:
@@ -2422,11 +2847,381 @@ components:
       type: object
       required: [provider, connected, ready, accountLabel, lastSyncAt]
       properties:
-        provider: { type: string, enum: [google, microsoft, xero, quickbooks] }
+        provider: { type: string, enum: [google, microsoft, xero, quickbooks, docusign] }
         connected: { type: boolean }
         ready: { type: boolean }
         accountLabel: { type: string }
         lastSyncAt: { type: ["string", "null"], format: date-time }
+    PracticeSettings:
+      type: object
+      required: [requireEngagementSignature, supportedJurisdictions, updatedAt]
+      properties:
+        requireEngagementSignature: { type: boolean }
+        supportedJurisdictions:
+          type: array
+          items: { type: string, enum: [Australia, USA, Great Britain] }
+        updatedAt: { type: ["string", "null"], format: date-time }
+    PracticeSettingsInput:
+      type: object
+      required: [requireEngagementSignature, supportedJurisdictions]
+      properties:
+        requireEngagementSignature: { type: boolean }
+        supportedJurisdictions:
+          type: array
+          uniqueItems: true
+          items: { type: string, enum: [Australia, USA, Great Britain] }
+    EngagementLetterInput:
+      type: object
+      required: [clientEmail, scope]
+      properties:
+        clientEmail: { type: string, format: email, maxLength: 254 }
+        scope: { type: string, minLength: 10, maxLength: 12000 }
+    EngagementLetter:
+      type: object
+      required: [id, matterId, matterTitle, clientName, clientEmail, scope, billingTerms, revision, status, provider, envelopeId, draftDocumentId, signedDocumentId, sentAt, signedAt, requiresSignatureToOpen, createdAt]
+      properties:
+        id: { type: integer }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        clientName: { type: string }
+        clientEmail: { type: string, format: email }
+        scope: { type: string }
+        billingTerms: { type: string }
+        revision: { type: integer }
+        status: { type: string, enum: [draft, sent, completed, declined, voided, error] }
+        provider: { type: string, enum: [docusign] }
+        envelopeId: { type: ["string", "null"] }
+        draftDocumentId: { type: ["integer", "null"] }
+        signedDocumentId: { type: ["integer", "null"] }
+        sentAt: { type: ["string", "null"], format: date-time }
+        signedAt: { type: ["string", "null"], format: date-time }
+        requiresSignatureToOpen: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    TrustAccountInput:
+      type: object
+      required: [name, jurisdiction, currency, requireSecondApproval]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        jurisdiction: { type: string, enum: [Australia, USA, Great Britain] }
+        currency: { type: string, pattern: "^[A-Za-z]{3}$" }
+        accountReference: { type: ["string", "null"], maxLength: 120 }
+        requireSecondApproval: { type: boolean }
+    TrustAccount:
+      type: object
+      required: [id, name, jurisdiction, currency, accountReference, requireSecondApproval, active, balanceCents, createdAt]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        jurisdiction: { type: string, enum: [Australia, USA, Great Britain] }
+        currency: { type: string }
+        accountReference: { type: ["string", "null"] }
+        requireSecondApproval: { type: boolean }
+        active: { type: boolean }
+        balanceCents: { type: integer }
+        createdAt: { type: string, format: date-time }
+    TrustEntryInput:
+      type: object
+      required: [accountId, matterId, entryType, amountCents, entryDate, description]
+      properties:
+        accountId: { type: integer, minimum: 1 }
+        matterId: { type: integer, minimum: 1 }
+        entryType: { type: string, enum: [deposit, disbursement] }
+        amountCents: { type: integer, minimum: 1, maximum: 100000000000 }
+        entryDate: { type: string, format: date }
+        description: { type: string, minLength: 1, maxLength: 1000 }
+        reference: { type: ["string", "null"], maxLength: 120 }
+    TrustEntryDecisionInput:
+      type: object
+      required: [decision, note]
+      properties:
+        decision: { type: string, enum: [approve, reject] }
+        note: { type: string, minLength: 1, maxLength: 1000 }
+    TrustEntry:
+      type: object
+      required: [id, accountId, accountName, matterId, matterTitle, clientName, entryType, amountCents, currency, entryDate, description, reference, status, createdBy, approvedBy, approvedAt, createdAt]
+      properties:
+        id: { type: integer }
+        accountId: { type: integer }
+        accountName: { type: string }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        clientName: { type: string }
+        entryType: { type: string, enum: [deposit, disbursement] }
+        amountCents: { type: integer }
+        currency: { type: string }
+        entryDate: { type: string, format: date }
+        description: { type: string }
+        reference: { type: ["string", "null"] }
+        status: { type: string, enum: [pending_approval, approved, rejected] }
+        createdBy: { type: string }
+        approvedBy: { type: ["string", "null"] }
+        approvedAt: { type: ["string", "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+    TrustStatementLineInput:
+      type: object
+      required: [lineDate, description, amountCents]
+      properties:
+        lineDate: { type: string, format: date }
+        description: { type: string, minLength: 1, maxLength: 500 }
+        reference: { type: ["string", "null"], maxLength: 120 }
+        amountCents: { type: integer, minimum: -100000000000, maximum: 100000000000 }
+    TrustStatementInput:
+      type: object
+      required: [accountId, sourceType, sourceName, periodStart, periodEnd, openingBalanceCents, closingBalanceCents, lines]
+      properties:
+        accountId: { type: integer, minimum: 1 }
+        sourceType: { type: string, enum: [manual, csv] }
+        sourceName: { type: string, minLength: 1, maxLength: 255 }
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        openingBalanceCents: { type: integer, minimum: -100000000000, maximum: 100000000000 }
+        closingBalanceCents: { type: integer, minimum: -100000000000, maximum: 100000000000 }
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 2500
+          items: { $ref: "#/components/schemas/TrustStatementLineInput" }
+    TrustStatementMatchInput:
+      type: object
+      required: [matchedEntryId]
+      properties:
+        matchedEntryId: { type: ["integer", "null"], minimum: 1 }
+    TrustStatementLine:
+      type: object
+      required: [id, statementId, lineDate, description, reference, amountCents, matchedEntryId, status]
+      properties:
+        id: { type: integer }
+        statementId: { type: integer }
+        lineDate: { type: string, format: date }
+        description: { type: string }
+        reference: { type: ["string", "null"] }
+        amountCents: { type: integer }
+        matchedEntryId: { type: ["integer", "null"] }
+        status: { type: string, enum: [unmatched, matched] }
+    TrustStatement:
+      type: object
+      required: [id, accountId, sourceType, sourceName, periodStart, periodEnd, openingBalanceCents, closingBalanceCents, status, lineCount, matchedLines, unmatchedLineCount, movementDifferenceCents, createdAt]
+      properties:
+        id: { type: integer }
+        accountId: { type: integer }
+        sourceType: { type: string, enum: [manual, csv] }
+        sourceName: { type: string }
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        openingBalanceCents: { type: integer }
+        closingBalanceCents: { type: integer }
+        status: { type: string, enum: [open, reconciled] }
+        lineCount: { type: integer }
+        matchedLines: { type: integer }
+        unmatchedLineCount: { type: integer }
+        movementDifferenceCents: { type: integer }
+        createdAt: { type: string, format: date-time }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/TrustStatementLine" }
+    TrustOverview:
+      type: object
+      required: [supportedJurisdictions, accounts, entries, statements, alerts]
+      properties:
+        supportedJurisdictions:
+          type: array
+          items: { type: string, enum: [Australia, USA, Great Britain] }
+        accounts:
+          type: array
+          items: { $ref: "#/components/schemas/TrustAccount" }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/TrustEntry" }
+        statements:
+          type: array
+          items: { $ref: "#/components/schemas/TrustStatement" }
+        alerts:
+          type: array
+          items:
+            type: object
+            required: [id, severity, title, detail, accountId, statementId]
+            properties:
+              id: { type: string }
+              severity: { type: string, enum: [attention, warning] }
+              title: { type: string }
+              detail: { type: string }
+              accountId: { type: integer }
+              statementId: { type: ["integer", "null"] }
+    TrustAccountStatement:
+      type: object
+      required: [accountId, accountName, jurisdiction, currency, matterId, matterTitle, clientName, from, to, openingBalanceCents, closingBalanceCents, entries]
+      properties:
+        accountId: { type: integer }
+        accountName: { type: string }
+        jurisdiction: { type: string, enum: [Australia, USA, Great Britain] }
+        currency: { type: string }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        clientName: { type: string }
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        openingBalanceCents: { type: integer }
+        closingBalanceCents: { type: integer }
+        entries:
+          type: array
+          items:
+            type: object
+            required: [id, entryDate, description, reference, entryType, amountCents, balanceCents]
+            properties:
+              id: { type: integer }
+              entryDate: { type: string, format: date }
+              description: { type: string }
+              reference: { type: ["string", "null"] }
+              entryType: { type: string, enum: [deposit, disbursement] }
+              amountCents: { type: integer }
+              balanceCents: { type: integer }
+    CloseoutItem:
+      type: object
+      required: [id, itemKey, title, status, completedBy, completedAt]
+      properties:
+        id: { type: integer }
+        itemKey: { type: string, enum: [final_billing, document_handover, retention_review] }
+        title: { type: string }
+        status: { type: string, enum: [open, complete] }
+        completedBy: { type: ["string", "null"] }
+        completedAt: { type: ["string", "null"], format: date-time }
+    MatterFollowupInput:
+      type: object
+      required: [dueAt, reason]
+      properties:
+        dueAt: { type: string, format: date-time }
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+    MatterFollowupUpdateInput:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [open, complete] }
+    MatterFollowup:
+      type: object
+      required: [id, matterId, matterTitle, clientName, dueAt, reason, status, createdAt]
+      properties:
+        id: { type: integer }
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        clientName: { type: string }
+        dueAt: { type: string, format: date-time }
+        reason: { type: string }
+        status: { type: string, enum: [open, complete] }
+        createdAt: { type: string, format: date-time }
+    MatterCloseout:
+      type: object
+      required: [matterId, matterTitle, matterStatus, items, followups, retentionDays, targetRetentionDate, legalHold, canClose]
+      properties:
+        matterId: { type: integer }
+        matterTitle: { type: string }
+        matterStatus: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CloseoutItem" }
+        followups:
+          type: array
+          items: { $ref: "#/components/schemas/MatterFollowup" }
+        retentionDays: { type: integer }
+        targetRetentionDate: { type: ["string", "null"], format: date }
+        legalHold: { type: boolean }
+        canClose: { type: boolean }
+    CloseoutItemUpdateInput:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [open, complete] }
+    OperationsReport:
+      type: object
+      required: [from, to, totals, pipeline, agingWorkInProgress, workload, upcomingDeadlines, followups]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        totals:
+          type: object
+          required: [openMatters, onHoldMatters, overdueDeadlines, dueNext7Days]
+          properties:
+            openMatters: { type: integer }
+            onHoldMatters: { type: integer }
+            overdueDeadlines: { type: integer }
+            dueNext7Days: { type: integer }
+        pipeline:
+          type: array
+          items:
+            type: object
+            required: [status, count]
+            properties:
+              status: { type: string }
+              count: { type: integer }
+        agingWorkInProgress:
+          type: array
+          items:
+            type: object
+            required: [bucket, currency, entryCount, hours, estimatedCents, pricedEntryCount, fixedFeeEntryCount, unpricedEntryCount]
+            properties:
+              bucket: { type: string }
+              currency: { type: ["string", "null"] }
+              entryCount: { type: integer }
+              hours: { type: number }
+              estimatedCents: { type: integer }
+              pricedEntryCount: { type: integer }
+              fixedFeeEntryCount: { type: integer }
+              unpricedEntryCount: { type: integer }
+        workload:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamCapacity"
+        upcomingDeadlines:
+          type: array
+          items:
+            type: object
+            required: [matterId, matterTitle, clientName, responsible, dueAt, riskLevel]
+            properties:
+              matterId: { type: integer }
+              matterTitle: { type: string }
+              clientName: { type: string }
+              responsible: { type: string }
+              dueAt: { type: string, format: date-time }
+              riskLevel: { type: string }
+        followups:
+          type: array
+          items: { $ref: "#/components/schemas/MatterFollowup" }
+    OperationsReportExportInput:
+      type: object
+      required: [format, from, to]
+      properties:
+        format: { type: string, enum: [csv, pdf] }
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+    OperationsReportExportResult:
+      type: object
+      required: [logged]
+      properties:
+        logged: { type: boolean }
+    TeamCapacity:
+      type: object
+      required: [membershipId, name, role, weeklyCapacityMinutes, activeMatterLimit, activeMatterCount, loggedMinutes]
+      properties:
+        membershipId: { type: integer }
+        name: { type: string }
+        role: { type: string }
+        weeklyCapacityMinutes: { type: integer }
+        activeMatterLimit: { type: integer }
+        activeMatterCount: { type: integer }
+        loggedMinutes: { type: integer }
+    TeamCapacityInput:
+      type: object
+      required: [capacities]
+      properties:
+        capacities:
+          type: array
+          maxItems: 250
+          items:
+            type: object
+            required: [membershipId, weeklyCapacityMinutes, activeMatterLimit]
+            properties:
+              membershipId: { type: integer, minimum: 1 }
+              weeklyCapacityMinutes: { type: integer, minimum: 60, maximum: 10080 }
+              activeMatterLimit: { type: integer, minimum: 1, maximum: 1000 }
     AuthorizationUrl:
       type: object
       required: [authorizationUrl]

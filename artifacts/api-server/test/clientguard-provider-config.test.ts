@@ -9,6 +9,7 @@ test("provider setup is ready only with app credentials and a strong token-encry
       microsoft: "MICROSOFT",
       xero: "XERO",
       quickbooks: "QUICKBOOKS",
+      docusign: "DOCUSIGN",
     }[provider.toLowerCase() as keyof typeof provider];
     return [`${prefix}_OAUTH_CLIENT_ID`, `${prefix}_OAUTH_CLIENT_SECRET`];
   });
@@ -37,6 +38,8 @@ test("provider setup is ready only with app credentials and a strong token-encry
     process.env.XERO_OAUTH_CLIENT_SECRET = "xero-secret";
     process.env.QUICKBOOKS_OAUTH_CLIENT_ID = "quickbooks-client";
     process.env.QUICKBOOKS_OAUTH_CLIENT_SECRET = "quickbooks-secret";
+    process.env.DOCUSIGN_OAUTH_CLIENT_ID = "docusign-client";
+    process.env.DOCUSIGN_OAUTH_CLIENT_SECRET = "docusign-secret";
     for (const provider of providers) assert.equal(providerReady(provider), true);
 
     delete process.env.CLIENTGUARD_OAUTH_TOKEN_ENCRYPTION_KEY;

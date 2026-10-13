@@ -14,4 +14,5 @@ export const ProviderConnectionStatusProvider = {
   microsoft: 'microsoft',
   xero: 'xero',
   quickbooks: 'quickbooks',
+  docusign: 'docusign',
 } as const;

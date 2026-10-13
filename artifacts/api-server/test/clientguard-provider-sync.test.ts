@@ -68,6 +68,7 @@ before(async () => {
       provider text NOT NULL,
       account_label text NOT NULL DEFAULT 'Connected account',
       remote_account_id text,
+      remote_base_uri text,
       access_token_ciphertext text NOT NULL,
       refresh_token_ciphertext text,
       token_expires_at timestamptz,

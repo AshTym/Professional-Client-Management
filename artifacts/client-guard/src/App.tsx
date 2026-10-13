@@ -11,6 +11,7 @@ import {
   useUpdateWorkspaceMember, useRemoveWorkspaceMember, useTransferWorkspaceOwnership,
   useGetWorkspaceMemberAssignments,
   useListWorkspaceAssignmentMembers, useListWorkspaceAssignmentIssues,
+  useGetMatterCloseout, getGetMatterCloseoutQueryKey,
   useListClients, useCreateClient, useGetClient, useUpdateClient, useDeleteClient,
   useListMatters, useGetMatter, useUpdateMatter, useCloseMatter, useLogMatterExportRequest,
   getHealthCheckQueryKey, getGetWorkspaceQueryKey, getGetDashboardQueryKey, getListActivityQueryKey,
@@ -23,7 +24,7 @@ import {
   Activity as ActivityIcon, ArrowDownRight, ArrowLeft, ArrowRight, BriefcaseBusiness, Check, ClipboardList as ClipboardListIcon,
   ChevronDown, CircleHelp, Clock3, FileText, Fingerprint, LockKeyhole, LogOut, Menu,
   Plus, Search, ShieldCheck, Users, X, Building2, Settings2, AlertTriangle, RefreshCw, Download,
-  Mail, UserPlus,
+  Mail, UserPlus, Landmark,
 } from 'lucide-react';
 import Workflows from './Workflows';
 import Intake from './Intake';
@@ -32,6 +33,9 @@ import Integrations from './Integrations';
 import Portal from './Portal';
 import PortalInvitation from './PortalInvitation';
 import MembershipConflicts from './MembershipConflicts';
+import PracticeOperations from './PracticeOperations';
+import OperationsReport from './OperationsReport';
+import MatterCloseout from './MatterCloseout';
 import './index.css';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 20_000, retry: 1 } } });
@@ -85,6 +89,8 @@ function ClerkRoutes() {
       <Route path="/clients/:id" component={() => <Protected><ClientDetail /></Protected>} />
       <Route path="/matters" component={() => <Protected><MattersPage /></Protected>} />
       <Route path="/matters/:id" component={() => <Protected><MatterDetail /></Protected>} />
+      <Route path="/practice-operations" component={() => <Protected><PracticeOperations /></Protected>} />
+      <Route path="/reports/operations" component={() => <Protected><OperationsReport /></Protected>} />
       <Route path="/workflows" component={() => <Protected><Workflows /></Protected>} />
       <Route path="/intake" component={() => <Protected><Intake /></Protected>} />
       <Route path="/governance" component={() => <Protected><Governance /></Protected>} />
@@ -172,7 +178,7 @@ function Shell({ children, context }: { children: ReactNode; context?: any }) {
   const { signOut } = useClerk();
   const service = useHealthCheck({ query: { queryKey: getHealthCheckQueryKey(), staleTime: 60_000 } });
   const [menuOpen, setMenuOpen] = useState(false);
-  const nav = [{ href: '/dashboard', label: 'Overview', icon: BriefcaseBusiness }, { href: '/clients', label: 'Clients', icon: Users }, { href: '/matters', label: 'Matters', icon: FileText }, { href: '/intake', label: 'Intake', icon: ClipboardListIcon }, { href: '/portal', label: 'Client portal', icon: LockKeyhole }, { href: '/workflows', label: 'Workflows', icon: RefreshCw }, { href: '/governance', label: 'Governance', icon: ShieldCheck }, { href: '/activity', label: 'Activity', icon: ActivityIcon }, { href: '/settings/integrations', label: 'Integrations', icon: Settings2 }, ...(['owner','admin'].includes(context?.role) ? [{ href: '/team', label: 'Team', icon: Users }] : [])];
+  const nav = [{ href: '/dashboard', label: 'Overview', icon: BriefcaseBusiness }, { href: '/clients', label: 'Clients', icon: Users }, { href: '/matters', label: 'Matters', icon: FileText }, { href: '/intake', label: 'Intake', icon: ClipboardListIcon }, { href: '/portal', label: 'Client portal', icon: LockKeyhole }, { href: '/workflows', label: 'Workflows', icon: RefreshCw }, { href: '/governance', label: 'Governance', icon: ShieldCheck }, { href: '/practice-operations', label: 'Practice operations', icon: Landmark }, ...(['owner','admin'].includes(context?.role) ? [{ href: '/reports/operations', label: 'Operations report', icon: ActivityIcon }] : []), { href: '/activity', label: 'Activity', icon: ActivityIcon }, { href: '/settings/integrations', label: 'Integrations', icon: Settings2 }, ...(['owner','admin'].includes(context?.role) ? [{ href: '/team', label: 'Team', icon: Users }] : [])];
   const heading = path.split('/')[1] || 'dashboard';
   return <div className="min-h-[100dvh] bg-[#f6f3eb] text-[#23353b] md:flex">
     <aside className="hidden w-[250px] shrink-0 flex-col bg-[#253f49] text-[#eff0e9] md:flex">
@@ -354,6 +360,7 @@ function MatterDetail() {
   const params = useRoute('/matters/:id')[1];
   const id = Number(params?.id);
   const result = useGetMatter(id, { query: { queryKey: getGetMatterQueryKey(id) } });
+  const closeout = useGetMatterCloseout(id, { query: { queryKey: getGetMatterCloseoutQueryKey(id) } });
   const update = useUpdateMatter();
   const close = useCloseMatter();
   const qc = useQueryClient();
@@ -394,6 +401,7 @@ function MatterDetail() {
     });
   }
   function closeThis() {
+    if (!closeout.data?.canClose) return;
     if (window.confirm(`Close the matter “${m.title}”?`)) close.mutate({ id }, {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getListMattersQueryKey() });
@@ -406,7 +414,7 @@ function MatterDetail() {
 
   return <>
     <Link href="/matters" className="mb-6 inline-flex items-center gap-2 text-xs font-semibold text-[#6f7e7b]" data-testid="link-back-matters"><ArrowLeft className="h-4 w-4" />All matters</Link>
-    <PageHeader eyebrow={`Matter · ${m.reference}`} title={m.title} subtitle={<><Link href={`/clients/${m.clientId}`} className="inline-flex items-center gap-1 font-semibold text-[#405c60] hover:text-[#987747]" data-testid="link-matter-client">{m.clientName}<ArrowRight className="h-3.5 w-3.5" /></Link> · {m.matterType}</>} action={<div className="flex gap-2"><Button variant="outline" onClick={() => setEditing(!editing)} testId="button-edit-matter">Edit matter</Button>{m.status !== 'closed' && <Button variant="danger" onClick={closeThis} disabled={close.isPending} testId="button-close-matter">{close.isPending ? 'Closing…' : 'Close matter'}</Button>}</div>} />
+     <PageHeader eyebrow={`Matter · ${m.reference}`} title={m.title} subtitle={<><Link href={`/clients/${m.clientId}`} className="inline-flex items-center gap-1 font-semibold text-[#405c60] hover:text-[#987747]" data-testid="link-matter-client">{m.clientName}<ArrowRight className="h-3.5 w-3.5" /></Link> · {m.matterType}</>} action={<div className="flex gap-2"><Button variant="outline" onClick={() => setEditing(!editing)} testId="button-edit-matter">Edit matter</Button>{m.status !== 'closed' && <Button variant="danger" onClick={closeThis} disabled={close.isPending || closeout.isLoading || !closeout.data?.canClose} testId="button-close-matter">{close.isPending ? 'Closing…' : closeout.data?.canClose ? 'Close matter' : 'Complete closeout first'}</Button>}</div>} />
     <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
       <section className="rounded-md border border-[#e0dace] bg-[#fbfaf5] p-6">
         {editing ? <form onSubmit={save} className="space-y-4">
@@ -437,6 +445,8 @@ function MatterDetail() {
       </section>
       <aside className="rounded-md bg-[#294651] p-6 text-[#f3f1e9]"><div className="mono text-[9px] uppercase tracking-[.16em] text-[#c5b389]">Matter reference</div><div className="mono mt-3 text-xl">{m.reference}</div><div className="my-5 h-px bg-[#ffffff26]" /><div className="flex justify-between text-xs text-[#c8d2ce]"><span>Risk classification</span><span className="capitalize text-[#f0d79f]">{m.riskLevel}</span></div><p className="mt-5 text-xs leading-5 text-[#b9c8c3]">Matter status and ownership are maintained as part of the firm's shared audit trail.</p></aside>
     </div>
+     {close.isError && <p role="alert" className="mt-3 rounded border border-[#e6c7c1] bg-[#fff9f6] p-3 text-xs text-[#843f38]">{close.error instanceof Error ? close.error.message : 'Matter could not be closed. Review the closeout checklist and try again.'}</p>}
+     <MatterCloseout matterId={id} />
   </>;
 }
 

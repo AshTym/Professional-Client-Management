@@ -349,6 +349,7 @@ export const providerConnectionsTable = pgTable(
     provider: text("provider").notNull(),
     accountLabel: text("account_label").notNull().default("Connected account"),
     remoteAccountId: text("remote_account_id"),
+    remoteBaseUri: text("remote_base_uri"),
     accessTokenCiphertext: text("access_token_ciphertext").notNull(),
     refreshTokenCiphertext: text("refresh_token_ciphertext"),
     tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),

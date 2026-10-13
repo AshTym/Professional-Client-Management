@@ -1921,10 +1921,10 @@ export const ReleaseLegalHoldResponse = zod.object({
 
 
 /**
- * @summary List per-firm Google, Microsoft, Xero, and QuickBooks connections
+ * @summary List firm-owned provider connections
  */
 export const ListWorkspaceIntegrationsResponseItem = zod.object({
-  "provider": zod.enum(['google', 'microsoft', 'xero', 'quickbooks']),
+  "provider": zod.enum(['google', 'microsoft', 'xero', 'quickbooks', 'docusign']),
   "connected": zod.boolean(),
   "ready": zod.boolean(),
   "accountLabel": zod.string(),
@@ -1937,7 +1937,7 @@ export const ListWorkspaceIntegrationsResponse = zod.array(ListWorkspaceIntegrat
  * @summary Start firm-owned OAuth authorization for a provider
  */
 export const AuthorizeWorkspaceIntegrationParams = zod.object({
-  "provider": zod.enum(['google', 'microsoft', 'xero', 'quickbooks'])
+  "provider": zod.enum(['google', 'microsoft', 'xero', 'quickbooks', 'docusign'])
 })
 
 export const AuthorizeWorkspaceIntegrationResponse = zod.object({
@@ -1949,7 +1949,7 @@ export const AuthorizeWorkspaceIntegrationResponse = zod.object({
  * @summary Complete provider OAuth authorization using code and state query parameters
  */
 export const CompleteWorkspaceIntegrationAuthorizationParams = zod.object({
-  "provider": zod.enum(['google', 'microsoft', 'xero', 'quickbooks'])
+  "provider": zod.enum(['google', 'microsoft', 'xero', 'quickbooks', 'docusign'])
 })
 
 export const CompleteWorkspaceIntegrationAuthorizationResponse = zod.void()
@@ -2004,5 +2004,746 @@ export const SendReviewedClientUpdateEmailResponse = zod.object({
   "externalId": zod.string(),
   "message": zod.string()
 })
+
+
+/**
+ * @summary Get firm signature and supported jurisdiction settings
+ */
+export const GetPracticeSettingsResponse = zod.object({
+  "requireEngagementSignature": zod.boolean(),
+  "supportedJurisdictions": zod.array(zod.enum(['Australia', 'USA', 'Great Britain'])),
+  "updatedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Update firm signature and supported jurisdiction settings
+ */
+export const UpdatePracticeSettingsBody = zod.object({
+  "requireEngagementSignature": zod.boolean(),
+  "supportedJurisdictions": zod.array(zod.enum(['Australia', 'USA', 'Great Britain']))
+})
+
+export const UpdatePracticeSettingsResponse = zod.object({
+  "requireEngagementSignature": zod.boolean(),
+  "supportedJurisdictions": zod.array(zod.enum(['Australia', 'USA', 'Great Britain'])),
+  "updatedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary List engagement letters for the firm
+ */
+export const ListEngagementLettersResponseItem = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "clientEmail": zod.string().email(),
+  "scope": zod.string(),
+  "billingTerms": zod.string(),
+  "revision": zod.number().int(),
+  "status": zod.enum(['draft', 'sent', 'completed', 'declined', 'voided', 'error']),
+  "provider": zod.enum(['docusign']),
+  "envelopeId": zod.string().nullable(),
+  "draftDocumentId": zod.number().int().nullable(),
+  "signedDocumentId": zod.number().int().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "requiresSignatureToOpen": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+export const ListEngagementLettersResponse = zod.array(ListEngagementLettersResponseItem)
+
+
+/**
+ * @summary Create a matter engagement letter draft from matter and billing terms
+ */
+
+
+
+export const CreateEngagementLetterParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const createEngagementLetterBodyClientEmailMax = 254;
+
+export const createEngagementLetterBodyScopeMin = 10;
+export const createEngagementLetterBodyScopeMax = 12000;
+
+
+
+export const CreateEngagementLetterBody = zod.object({
+  "clientEmail": zod.string().email().max(createEngagementLetterBodyClientEmailMax),
+  "scope": zod.string().min(createEngagementLetterBodyScopeMin).max(createEngagementLetterBodyScopeMax)
+})
+
+export const CreateEngagementLetterResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "clientEmail": zod.string().email(),
+  "scope": zod.string(),
+  "billingTerms": zod.string(),
+  "revision": zod.number().int(),
+  "status": zod.enum(['draft', 'sent', 'completed', 'declined', 'voided', 'error']),
+  "provider": zod.enum(['docusign']),
+  "envelopeId": zod.string().nullable(),
+  "draftDocumentId": zod.number().int().nullable(),
+  "signedDocumentId": zod.number().int().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "requiresSignatureToOpen": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Send a reviewed engagement letter through the firm's DocuSign connection
+ */
+
+
+
+export const SendEngagementLetterParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const SendEngagementLetterResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "clientEmail": zod.string().email(),
+  "scope": zod.string(),
+  "billingTerms": zod.string(),
+  "revision": zod.number().int(),
+  "status": zod.enum(['draft', 'sent', 'completed', 'declined', 'voided', 'error']),
+  "provider": zod.enum(['docusign']),
+  "envelopeId": zod.string().nullable(),
+  "draftDocumentId": zod.number().int().nullable(),
+  "signedDocumentId": zod.number().int().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "requiresSignatureToOpen": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Check DocuSign status and store a completed signed document
+ */
+
+
+
+export const SyncEngagementLetterParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const SyncEngagementLetterResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "clientEmail": zod.string().email(),
+  "scope": zod.string(),
+  "billingTerms": zod.string(),
+  "revision": zod.number().int(),
+  "status": zod.enum(['draft', 'sent', 'completed', 'declined', 'voided', 'error']),
+  "provider": zod.enum(['docusign']),
+  "envelopeId": zod.string().nullable(),
+  "draftDocumentId": zod.number().int().nullable(),
+  "signedDocumentId": zod.number().int().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "requiresSignatureToOpen": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get firm trust accounts, ledger entries, and reconciliation exceptions
+ */
+export const GetTrustOverviewResponse = zod.object({
+  "supportedJurisdictions": zod.array(zod.enum(['Australia', 'USA', 'Great Britain'])),
+  "accounts": zod.array(zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "jurisdiction": zod.enum(['Australia', 'USA', 'Great Britain']),
+  "currency": zod.string(),
+  "accountReference": zod.string().nullable(),
+  "requireSecondApproval": zod.boolean(),
+  "active": zod.boolean(),
+  "balanceCents": zod.number().int(),
+  "createdAt": zod.coerce.date()
+})),
+  "entries": zod.array(zod.object({
+  "id": zod.number().int(),
+  "accountId": zod.number().int(),
+  "accountName": zod.string(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "entryType": zod.enum(['deposit', 'disbursement']),
+  "amountCents": zod.number().int(),
+  "currency": zod.string(),
+  "entryDate": zod.coerce.date(),
+  "description": zod.string(),
+  "reference": zod.string().nullable(),
+  "status": zod.enum(['pending_approval', 'approved', 'rejected']),
+  "createdBy": zod.string(),
+  "approvedBy": zod.string().nullable(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date()
+})),
+  "statements": zod.array(zod.object({
+  "id": zod.number().int(),
+  "accountId": zod.number().int(),
+  "sourceType": zod.enum(['manual', 'csv']),
+  "sourceName": zod.string(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
+  "openingBalanceCents": zod.number().int(),
+  "closingBalanceCents": zod.number().int(),
+  "status": zod.enum(['open', 'reconciled']),
+  "lineCount": zod.number().int(),
+  "matchedLines": zod.number().int(),
+  "unmatchedLineCount": zod.number().int(),
+  "movementDifferenceCents": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "lines": zod.array(zod.object({
+  "id": zod.number().int(),
+  "statementId": zod.number().int(),
+  "lineDate": zod.coerce.date(),
+  "description": zod.string(),
+  "reference": zod.string().nullable(),
+  "amountCents": zod.number().int(),
+  "matchedEntryId": zod.number().int().nullable(),
+  "status": zod.enum(['unmatched', 'matched'])
+})).optional()
+})),
+  "alerts": zod.array(zod.object({
+  "id": zod.string(),
+  "severity": zod.enum(['attention', 'warning']),
+  "title": zod.string(),
+  "detail": zod.string(),
+  "accountId": zod.number().int(),
+  "statementId": zod.number().int().nullable()
+}))
+})
+
+
+/**
+ * @summary Get a matter-specific trust ledger statement
+ */
+export const GetTrustAccountStatementQueryParams = zod.object({
+  "accountId": zod.coerce.number().int(),
+  "matterId": zod.coerce.number().int(),
+  "from": zod.date(),
+  "to": zod.date()
+})
+
+export const GetTrustAccountStatementResponse = zod.object({
+  "accountId": zod.number().int(),
+  "accountName": zod.string(),
+  "jurisdiction": zod.enum(['Australia', 'USA', 'Great Britain']),
+  "currency": zod.string(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "from": zod.coerce.date(),
+  "to": zod.coerce.date(),
+  "openingBalanceCents": zod.number().int(),
+  "closingBalanceCents": zod.number().int(),
+  "entries": zod.array(zod.object({
+  "id": zod.number().int(),
+  "entryDate": zod.coerce.date(),
+  "description": zod.string(),
+  "reference": zod.string().nullable(),
+  "entryType": zod.enum(['deposit', 'disbursement']),
+  "amountCents": zod.number().int(),
+  "balanceCents": zod.number().int()
+}))
+})
+
+
+/**
+ * @summary Create a firm trust or client-money recordkeeping account
+ */
+export const createTrustAccountBodyNameMax = 120;
+
+export const createTrustAccountBodyCurrencyRegExp = new RegExp('^[A-Za-z]{3}$');
+export const createTrustAccountBodyAccountReferenceMax = 120;
+
+
+
+export const CreateTrustAccountBody = zod.object({
+  "name": zod.string().min(1).max(createTrustAccountBodyNameMax),
+  "jurisdiction": zod.enum(['Australia', 'USA', 'Great Britain']),
+  "currency": zod.string().regex(createTrustAccountBodyCurrencyRegExp),
+  "accountReference": zod.string().max(createTrustAccountBodyAccountReferenceMax).nullish(),
+  "requireSecondApproval": zod.boolean()
+})
+
+export const CreateTrustAccountResponse = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "jurisdiction": zod.enum(['Australia', 'USA', 'Great Britain']),
+  "currency": zod.string(),
+  "accountReference": zod.string().nullable(),
+  "requireSecondApproval": zod.boolean(),
+  "active": zod.boolean(),
+  "balanceCents": zod.number().int(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Record a proposed client-money deposit or disbursement; this does not move funds
+ */
+
+
+export const createTrustEntryBodyAmountCentsMax = 100000000000;
+
+export const createTrustEntryBodyDescriptionMax = 1000;
+
+export const createTrustEntryBodyReferenceMax = 120;
+
+
+
+export const CreateTrustEntryBody = zod.object({
+  "accountId": zod.number().int().min(1),
+  "matterId": zod.number().int().min(1),
+  "entryType": zod.enum(['deposit', 'disbursement']),
+  "amountCents": zod.number().int().min(1).max(createTrustEntryBodyAmountCentsMax),
+  "entryDate": zod.coerce.date(),
+  "description": zod.string().min(1).max(createTrustEntryBodyDescriptionMax),
+  "reference": zod.string().max(createTrustEntryBodyReferenceMax).nullish()
+})
+
+export const CreateTrustEntryResponse = zod.object({
+  "id": zod.number().int(),
+  "accountId": zod.number().int(),
+  "accountName": zod.string(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "entryType": zod.enum(['deposit', 'disbursement']),
+  "amountCents": zod.number().int(),
+  "currency": zod.string(),
+  "entryDate": zod.coerce.date(),
+  "description": zod.string(),
+  "reference": zod.string().nullable(),
+  "status": zod.enum(['pending_approval', 'approved', 'rejected']),
+  "createdBy": zod.string(),
+  "approvedBy": zod.string().nullable(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Approve or reject a pending client-money ledger entry
+ */
+
+
+
+export const DecideTrustEntryParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const decideTrustEntryBodyNoteMax = 1000;
+
+
+
+export const DecideTrustEntryBody = zod.object({
+  "decision": zod.enum(['approve', 'reject']),
+  "note": zod.string().min(1).max(decideTrustEntryBodyNoteMax)
+})
+
+export const DecideTrustEntryResponse = zod.object({
+  "id": zod.number().int(),
+  "accountId": zod.number().int(),
+  "accountName": zod.string(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "entryType": zod.enum(['deposit', 'disbursement']),
+  "amountCents": zod.number().int(),
+  "currency": zod.string(),
+  "entryDate": zod.coerce.date(),
+  "description": zod.string(),
+  "reference": zod.string().nullable(),
+  "status": zod.enum(['pending_approval', 'approved', 'rejected']),
+  "createdBy": zod.string(),
+  "approvedBy": zod.string().nullable(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Import a manual or CSV statement for reconciliation
+ */
+
+export const importTrustStatementBodySourceNameMax = 255;
+
+export const importTrustStatementBodyOpeningBalanceCentsMin = -100000000000;
+export const importTrustStatementBodyOpeningBalanceCentsMax = 100000000000;
+
+export const importTrustStatementBodyClosingBalanceCentsMin = -100000000000;
+export const importTrustStatementBodyClosingBalanceCentsMax = 100000000000;
+
+export const importTrustStatementBodyLinesItemDescriptionMax = 500;
+
+export const importTrustStatementBodyLinesItemReferenceMax = 120;
+
+export const importTrustStatementBodyLinesItemAmountCentsMin = -100000000000;
+export const importTrustStatementBodyLinesItemAmountCentsMax = 100000000000;
+
+export const importTrustStatementBodyLinesMax = 2500;
+
+
+
+export const ImportTrustStatementBody = zod.object({
+  "accountId": zod.number().int().min(1),
+  "sourceType": zod.enum(['manual', 'csv']),
+  "sourceName": zod.string().min(1).max(importTrustStatementBodySourceNameMax),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
+  "openingBalanceCents": zod.number().int().min(importTrustStatementBodyOpeningBalanceCentsMin).max(importTrustStatementBodyOpeningBalanceCentsMax),
+  "closingBalanceCents": zod.number().int().min(importTrustStatementBodyClosingBalanceCentsMin).max(importTrustStatementBodyClosingBalanceCentsMax),
+  "lines": zod.array(zod.object({
+  "lineDate": zod.coerce.date(),
+  "description": zod.string().min(1).max(importTrustStatementBodyLinesItemDescriptionMax),
+  "reference": zod.string().max(importTrustStatementBodyLinesItemReferenceMax).nullish(),
+  "amountCents": zod.number().int().min(importTrustStatementBodyLinesItemAmountCentsMin).max(importTrustStatementBodyLinesItemAmountCentsMax)
+})).min(1).max(importTrustStatementBodyLinesMax)
+})
+
+export const ImportTrustStatementResponse = zod.object({
+  "id": zod.number().int(),
+  "accountId": zod.number().int(),
+  "sourceType": zod.enum(['manual', 'csv']),
+  "sourceName": zod.string(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
+  "openingBalanceCents": zod.number().int(),
+  "closingBalanceCents": zod.number().int(),
+  "status": zod.enum(['open', 'reconciled']),
+  "lineCount": zod.number().int(),
+  "matchedLines": zod.number().int(),
+  "unmatchedLineCount": zod.number().int(),
+  "movementDifferenceCents": zod.number().int(),
+  "createdAt": zod.coerce.date(),
+  "lines": zod.array(zod.object({
+  "id": zod.number().int(),
+  "statementId": zod.number().int(),
+  "lineDate": zod.coerce.date(),
+  "description": zod.string(),
+  "reference": zod.string().nullable(),
+  "amountCents": zod.number().int(),
+  "matchedEntryId": zod.number().int().nullable(),
+  "status": zod.enum(['unmatched', 'matched'])
+})).optional()
+})
+
+
+/**
+ * @summary Match a statement line to an approved ledger entry or clear its match
+ */
+
+
+
+
+export const MatchTrustStatementLineParams = zod.object({
+  "statementId": zod.coerce.number().int().min(1),
+  "lineId": zod.coerce.number().int().min(1)
+})
+
+
+
+
+export const MatchTrustStatementLineBody = zod.object({
+  "matchedEntryId": zod.number().int().min(1).nullable()
+})
+
+export const MatchTrustStatementLineResponse = zod.object({
+  "id": zod.number().int(),
+  "statementId": zod.number().int(),
+  "lineDate": zod.coerce.date(),
+  "description": zod.string(),
+  "reference": zod.string().nullable(),
+  "amountCents": zod.number().int(),
+  "matchedEntryId": zod.number().int().nullable(),
+  "status": zod.enum(['unmatched', 'matched'])
+})
+
+
+/**
+ * @summary Get persisted closeout steps, retention context, and re-engagement reminders
+ */
+
+
+
+export const GetMatterCloseoutParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const GetMatterCloseoutResponse = zod.object({
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "matterStatus": zod.string(),
+  "items": zod.array(zod.object({
+  "id": zod.number().int(),
+  "itemKey": zod.enum(['final_billing', 'document_handover', 'retention_review']),
+  "title": zod.string(),
+  "status": zod.enum(['open', 'complete']),
+  "completedBy": zod.string().nullable(),
+  "completedAt": zod.coerce.date().nullable()
+})),
+  "followups": zod.array(zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "dueAt": zod.coerce.date(),
+  "reason": zod.string(),
+  "status": zod.enum(['open', 'complete']),
+  "createdAt": zod.coerce.date()
+})),
+  "retentionDays": zod.number().int(),
+  "targetRetentionDate": zod.coerce.date().nullable(),
+  "legalHold": zod.boolean(),
+  "canClose": zod.boolean()
+})
+
+
+/**
+ * @summary Create default final-billing, handover, and retention review steps
+ */
+
+
+
+export const InitializeMatterCloseoutParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const InitializeMatterCloseoutResponse = zod.object({
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "matterStatus": zod.string(),
+  "items": zod.array(zod.object({
+  "id": zod.number().int(),
+  "itemKey": zod.enum(['final_billing', 'document_handover', 'retention_review']),
+  "title": zod.string(),
+  "status": zod.enum(['open', 'complete']),
+  "completedBy": zod.string().nullable(),
+  "completedAt": zod.coerce.date().nullable()
+})),
+  "followups": zod.array(zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "dueAt": zod.coerce.date(),
+  "reason": zod.string(),
+  "status": zod.enum(['open', 'complete']),
+  "createdAt": zod.coerce.date()
+})),
+  "retentionDays": zod.number().int(),
+  "targetRetentionDate": zod.coerce.date().nullable(),
+  "legalHold": zod.boolean(),
+  "canClose": zod.boolean()
+})
+
+
+/**
+ * @summary Mark a closeout step complete or reopen it
+ */
+
+
+
+export const UpdateCloseoutItemParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const UpdateCloseoutItemBody = zod.object({
+  "status": zod.enum(['open', 'complete'])
+})
+
+export const UpdateCloseoutItemResponse = zod.object({
+  "id": zod.number().int(),
+  "itemKey": zod.enum(['final_billing', 'document_handover', 'retention_review']),
+  "title": zod.string(),
+  "status": zod.enum(['open', 'complete']),
+  "completedBy": zod.string().nullable(),
+  "completedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Schedule a renewal or re-engagement reminder
+ */
+
+
+
+export const CreateMatterFollowupParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const createMatterFollowupBodyReasonMax = 1000;
+
+
+
+export const CreateMatterFollowupBody = zod.object({
+  "dueAt": zod.coerce.date(),
+  "reason": zod.string().min(1).max(createMatterFollowupBodyReasonMax)
+})
+
+export const CreateMatterFollowupResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "dueAt": zod.coerce.date(),
+  "reason": zod.string(),
+  "status": zod.enum(['open', 'complete']),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Complete or reopen a re-engagement reminder
+ */
+
+
+
+export const UpdateMatterFollowupParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const UpdateMatterFollowupBody = zod.object({
+  "status": zod.enum(['open', 'complete'])
+})
+
+export const UpdateMatterFollowupResponse = zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "dueAt": zod.coerce.date(),
+  "reason": zod.string(),
+  "status": zod.enum(['open', 'complete']),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get workload, deadline, aging work-in-progress, and matter pipeline metrics
+ */
+export const GetOperationsReportQueryParams = zod.object({
+  "from": zod.date().optional(),
+  "to": zod.date().optional()
+})
+
+export const GetOperationsReportResponse = zod.object({
+  "from": zod.coerce.date(),
+  "to": zod.coerce.date(),
+  "totals": zod.object({
+  "openMatters": zod.number().int(),
+  "onHoldMatters": zod.number().int(),
+  "overdueDeadlines": zod.number().int(),
+  "dueNext7Days": zod.number().int()
+}),
+  "pipeline": zod.array(zod.object({
+  "status": zod.string(),
+  "count": zod.number().int()
+})),
+  "agingWorkInProgress": zod.array(zod.object({
+  "bucket": zod.string(),
+  "currency": zod.string().nullable(),
+  "entryCount": zod.number().int(),
+  "hours": zod.number(),
+  "estimatedCents": zod.number().int(),
+  "pricedEntryCount": zod.number().int(),
+  "fixedFeeEntryCount": zod.number().int(),
+  "unpricedEntryCount": zod.number().int()
+})),
+  "workload": zod.array(zod.object({
+  "membershipId": zod.number().int(),
+  "name": zod.string(),
+  "role": zod.string(),
+  "weeklyCapacityMinutes": zod.number().int(),
+  "activeMatterLimit": zod.number().int(),
+  "activeMatterCount": zod.number().int(),
+  "loggedMinutes": zod.number().int()
+})),
+  "upcomingDeadlines": zod.array(zod.object({
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "responsible": zod.string(),
+  "dueAt": zod.coerce.date(),
+  "riskLevel": zod.string()
+})),
+  "followups": zod.array(zod.object({
+  "id": zod.number().int(),
+  "matterId": zod.number().int(),
+  "matterTitle": zod.string(),
+  "clientName": zod.string(),
+  "dueAt": zod.coerce.date(),
+  "reason": zod.string(),
+  "status": zod.enum(['open', 'complete']),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Record a firm operations report export in the audit trail
+ */
+export const LogOperationsReportExportBody = zod.object({
+  "format": zod.enum(['csv', 'pdf']),
+  "from": zod.coerce.date(),
+  "to": zod.coerce.date()
+})
+
+export const LogOperationsReportExportResponse = zod.object({
+  "logged": zod.boolean()
+})
+
+
+/**
+ * @summary Set weekly hours and active-matter limits for firm members
+ */
+
+export const saveTeamCapacityBodyCapacitiesItemWeeklyCapacityMinutesMin = 60;
+export const saveTeamCapacityBodyCapacitiesItemWeeklyCapacityMinutesMax = 10080;
+
+export const saveTeamCapacityBodyCapacitiesItemActiveMatterLimitMax = 1000;
+
+export const saveTeamCapacityBodyCapacitiesMax = 250;
+
+
+
+export const SaveTeamCapacityBody = zod.object({
+  "capacities": zod.array(zod.object({
+  "membershipId": zod.number().int().min(1),
+  "weeklyCapacityMinutes": zod.number().int().min(saveTeamCapacityBodyCapacitiesItemWeeklyCapacityMinutesMin).max(saveTeamCapacityBodyCapacitiesItemWeeklyCapacityMinutesMax),
+  "activeMatterLimit": zod.number().int().min(1).max(saveTeamCapacityBodyCapacitiesItemActiveMatterLimitMax)
+})).max(saveTeamCapacityBodyCapacitiesMax)
+})
+
+export const SaveTeamCapacityResponseItem = zod.object({
+  "membershipId": zod.number().int(),
+  "name": zod.string(),
+  "role": zod.string(),
+  "weeklyCapacityMinutes": zod.number().int(),
+  "activeMatterLimit": zod.number().int(),
+  "activeMatterCount": zod.number().int(),
+  "loggedMinutes": zod.number().int()
+})
+export const SaveTeamCapacityResponse = zod.array(SaveTeamCapacityResponseItem)
 
 
