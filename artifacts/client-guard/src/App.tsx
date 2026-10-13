@@ -9,6 +9,7 @@ import {
   useListWorkspaceInvitations, useCreateWorkspaceInvitation, useResendWorkspaceInvitation,
   useWithdrawWorkspaceInvitation, useAcceptWorkspaceInvitation, useListWorkspaceMembers,
   useUpdateWorkspaceMember, useRemoveWorkspaceMember, useTransferWorkspaceOwnership,
+  useGetWorkspaceMemberAssignments,
   useListClients, useCreateClient, useGetClient, useUpdateClient, useDeleteClient,
   useListMatters, useCreateMatter, useGetMatter, useUpdateMatter, useCloseMatter,
   getHealthCheckQueryKey, getGetWorkspaceQueryKey, getGetDashboardQueryKey, getListActivityQueryKey,
@@ -375,6 +376,12 @@ function TeamPage() {
   const qc = useQueryClient();
   const [invitationActionMessage, setInvitationActionMessage] = useState('');
   const [memberActionMessage, setMemberActionMessage] = useState('');
+  const [removingMemberId, setRemovingMemberId] = useState<number | null>(null);
+  const [replacementMemberId, setReplacementMemberId] = useState<number | null>(null);
+  const assignments = useGetWorkspaceMemberAssignments(removingMemberId ?? 0, {
+    query: { enabled: removingMemberId !== null, staleTime: 0 },
+  });
+  const removingMember = members.data?.find((member) => member.id === removingMemberId);
 
   async function refreshAccessViews() {
     await Promise.all([
@@ -382,6 +389,15 @@ function TeamPage() {
       qc.invalidateQueries({ queryKey: getGetWorkspaceQueryKey() }),
       qc.invalidateQueries({ queryKey: getListActivityQueryKey() }),
       qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
+      qc.invalidateQueries({ queryKey: getListClientsQueryKey() }),
+      qc.invalidateQueries({ queryKey: getListMattersQueryKey() }),
+      qc.invalidateQueries({
+        predicate: query => {
+          const key = query.queryKey[0];
+          return typeof key === 'string' &&
+            (key.startsWith('/api/clients/') || key.startsWith('/api/matters/'));
+        },
+      }),
     ]);
   }
 
@@ -401,16 +417,30 @@ function TeamPage() {
     });
   }
 
-  function removeTeammate(memberId: number, memberName: string) {
-    if (!window.confirm(`Remove ${memberName} from this firm's workspace? They will lose access on their next request.`)) return;
+  function removeTeammate(memberId: number) {
     setMemberActionMessage('');
-    removeMember.mutate({ id: memberId }, {
+    setReplacementMemberId(null);
+    removeMember.reset();
+    setRemovingMemberId(memberId);
+  }
+
+  function confirmRemoveTeammate() {
+    if (!removingMember) return;
+    const memberName = removingMember.name || removingMember.email || 'This teammate';
+    removeMember.mutate({
+      id: removingMember.id,
+      data: replacementMemberId === null ? {} : { replacementMemberId },
+    }, {
       onSuccess: async () => {
         await refreshAccessViews();
         setMemberActionMessage(`${memberName} no longer has access to this firm.`);
+        setRemovingMemberId(null);
       },
       onError: async () => {
-        await qc.invalidateQueries({ queryKey: getListWorkspaceMembersQueryKey() });
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: getListWorkspaceMembersQueryKey() }),
+          assignments.refetch(),
+        ]);
       },
     });
   }
@@ -547,13 +577,64 @@ function TeamPage() {
                 {workspace.data?.role === 'owner' && <Button variant="outline" disabled={updateMember.isPending || removeMember.isPending || transferOwnership.isPending} testId={`button-transfer-ownership-${member.id}`} onClick={() => transferFirmOwnership(member.id, memberName)}>
                   {transferOwnership.isPending ? 'Transferring…' : 'Make firm owner'}
                 </Button>}
-                <Button variant="outline" disabled={updateMember.isPending || removeMember.isPending || transferOwnership.isPending} testId={`button-remove-member-${member.id}`} onClick={() => removeTeammate(member.id, memberName)}>
-                  {removeMember.isPending ? 'Removing…' : 'Remove access'}
+                <Button variant="outline" disabled={updateMember.isPending || removeMember.isPending || transferOwnership.isPending} testId={`button-remove-member-${member.id}`} onClick={() => removeTeammate(member.id)}>
+                  Remove access
                 </Button>
               </div>}
           </div>;
         })}</div>}
     </section>
+    {removingMember && <Modal title={`Remove ${removingMember.name || removingMember.email}?`} close={() => {
+      if (!removeMember.isPending) setRemovingMemberId(null);
+    }}>
+      <div className="space-y-5">
+        <p className="text-sm leading-6 text-[#657572]">Review the client and matter work assigned to this teammate. Any listed assignments must be moved to an active colleague before access is removed.</p>
+        {assignments.isLoading ? <Skeleton title="Checking assigned work" /> :
+          assignments.isError ? <div className="rounded-md border border-[#ead3ce] bg-[#fbefed] p-4 text-sm text-[#9b4941]" role="alert">
+            Assigned work could not be loaded. <button onClick={() => assignments.refetch()} className="font-semibold underline" data-testid="button-retry-member-assignments">Try again</button>
+          </div> : <>
+            <div className="rounded-md border border-[#e4dfd4] bg-[#f8f6ef] p-4" data-testid="member-assignment-summary">
+              <div className="text-xs font-semibold text-[#40565a]">Clients ({assignments.data?.clients.length ?? 0})</div>
+              {assignments.data?.clients.length ? <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-[#657572]">
+                {assignments.data.clients.map(client => <li key={client.id}>{client.name}</li>)}
+              </ul> : <p className="mt-2 text-xs text-[#87918d]">No clients assigned.</p>}
+              <div className="mt-4 border-t border-[#e4dfd4] pt-3 text-xs font-semibold text-[#40565a]">Matters ({assignments.data?.matters.length ?? 0})</div>
+              {assignments.data?.matters.length ? <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-[#657572]">
+                {assignments.data.matters.map(matter => <li key={matter.id}>{matter.reference} · {matter.title} <span className="text-xs text-[#87918d]">({matter.clientName})</span></li>)}
+              </ul> : <p className="mt-2 text-xs text-[#87918d]">No matters assigned.</p>}
+            </div>
+            {!!((assignments.data?.clients.length ?? 0) + (assignments.data?.matters.length ?? 0)) && <Field label="Reassign this work to">
+              <select
+                value={replacementMemberId ?? ''}
+                onChange={event => setReplacementMemberId(event.target.value ? Number(event.target.value) : null)}
+                className="field"
+                data-testid="select-assignment-replacement"
+                required
+              >
+                <option value="">Select an active teammate</option>
+                {(members.data ?? []).filter(member => member.id !== removingMember.id).map(member => (
+                  <option key={member.id} value={member.id}>{member.name || member.email} · {member.role}</option>
+                ))}
+              </select>
+            </Field>}
+          </>}
+        {removeMember.isError && <p className="text-sm text-[#9b4941]" role="alert" data-testid="status-remove-member-error">
+          Removal could not be completed. Assigned work or active membership may have changed; review the list and try again.
+        </p>}
+        <div className="flex flex-wrap justify-end gap-2 border-t border-[#e9e4d9] pt-4">
+          <Button variant="outline" disabled={removeMember.isPending} onClick={() => setRemovingMemberId(null)} testId="button-cancel-remove-member">Cancel</Button>
+          <Button
+            variant="danger"
+            disabled={assignments.isLoading || assignments.isError || removeMember.isPending || (
+              !!((assignments.data?.clients.length ?? 0) + (assignments.data?.matters.length ?? 0)) &&
+              (replacementMemberId === null || !(members.data ?? []).some(member => member.id === replacementMemberId && member.id !== removingMember.id))
+            )}
+            onClick={confirmRemoveTeammate}
+            testId="button-confirm-remove-member"
+          >{removeMember.isPending ? 'Reassigning and removing…' : 'Reassign and remove access'}</Button>
+        </div>
+      </div>
+    </Modal>}
   </>;
 }
 function InviteAcceptance() {

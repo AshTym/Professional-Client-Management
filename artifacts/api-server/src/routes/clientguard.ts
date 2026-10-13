@@ -7,6 +7,7 @@ import {
   desc,
   eq,
   gt,
+  inArray,
   ilike,
   isNull,
   lt,
@@ -45,6 +46,8 @@ import {
   GetWorkspaceResponse,
   ListWorkspaceInvitationsResponse,
   ListWorkspaceMembersResponse,
+  GetWorkspaceMemberAssignmentsParams,
+  GetWorkspaceMemberAssignmentsResponse,
   ResendWorkspaceInvitationParams,
   ResendWorkspaceInvitationResponse,
   WithdrawWorkspaceInvitationParams,
@@ -66,6 +69,7 @@ import {
   UpdateWorkspaceMemberParams,
   UpdateWorkspaceMemberResponse,
   RemoveWorkspaceMemberParams,
+  RemoveWorkspaceMemberBody,
   TransferWorkspaceOwnershipParams,
   TransferWorkspaceOwnershipResponse,
 } from "@workspace/api-zod";
@@ -150,6 +154,10 @@ function memberResponse(member: typeof membershipsTable.$inferSelect) {
   };
 }
 
+function assignmentLabels(member: typeof membershipsTable.$inferSelect): string[] {
+  return [...new Set([member.displayName, member.email].filter((label) => label.trim()))];
+}
+
 router.get("/workspace/members", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
   if (!access) return;
@@ -165,6 +173,79 @@ router.get("/workspace/members", async (req, res): Promise<void> => {
     .orderBy(desc(membershipsTable.createdAt), desc(membershipsTable.id));
   res.json(ListWorkspaceMembersResponse.parse(members.map(memberResponse)));
 });
+
+router.get(
+  "/workspace/members/:id/assignments",
+  async (req, res): Promise<void> => {
+    const access = await firmAccess(req, res);
+    if (!access) return;
+    if (!canManageInvitations(access.role)) {
+      res.status(403).json({ error: "Only firm owners and admins can view member assignments." });
+      return;
+    }
+
+    const params = GetWorkspaceMemberAssignmentsParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+
+    const [member] = await db
+      .select()
+      .from(membershipsTable)
+      .where(
+        and(
+          eq(membershipsTable.id, params.data.id),
+          eq(membershipsTable.workspaceId, access.workspaceId),
+        ),
+      )
+      .limit(1);
+    if (!member) {
+      res.status(404).json({ error: "That member could not be found in your firm." });
+      return;
+    }
+
+    const labels = assignmentLabels(member);
+    const [clients, matters] = await Promise.all([
+      db
+        .select({ id: clientsTable.id, name: clientsTable.name })
+        .from(clientsTable)
+        .where(
+          and(
+            eq(clientsTable.workspaceId, access.workspaceId),
+            inArray(clientsTable.owner, labels),
+          ),
+        )
+        .orderBy(clientsTable.name),
+      db
+        .select({
+          id: mattersTable.id,
+          title: mattersTable.title,
+          reference: mattersTable.reference,
+          clientName: clientsTable.name,
+        })
+        .from(mattersTable)
+        .innerJoin(
+          clientsTable,
+          and(
+            eq(clientsTable.id, mattersTable.clientId),
+            eq(clientsTable.workspaceId, access.workspaceId),
+          ),
+        )
+        .where(
+          and(
+            eq(mattersTable.workspaceId, access.workspaceId),
+            inArray(mattersTable.responsible, labels),
+          ),
+        )
+        .orderBy(mattersTable.reference),
+    ]);
+
+    res.json(
+      GetWorkspaceMemberAssignmentsResponse.parse({ clients, matters }),
+    );
+  },
+);
 
 router.patch("/workspace/members/:id", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
@@ -329,22 +410,116 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  const parsedBody = RemoveWorkspaceMemberBody.safeParse(req.body ?? {});
+  if (!parsedBody.success) {
+    res.status(400).json({ error: parsedBody.error.message });
+    return;
+  }
 
   const result = await db.transaction(async (tx) => {
-    const [member] = await tx
+    const members = await tx
       .select()
       .from(membershipsTable)
-      .where(
-        and(
-          eq(membershipsTable.id, params.data.id),
-          eq(membershipsTable.workspaceId, access.workspaceId),
-        ),
-      )
-      .limit(1)
+      .where(eq(membershipsTable.workspaceId, access.workspaceId))
+      .orderBy(membershipsTable.id)
       .for("update");
+    const member = members.find((candidate) => candidate.id === params.data.id);
     if (!member) return "missing" as const;
     if (member.role === "owner") {
       return "owner" as const;
+    }
+
+    const labels = assignmentLabels(member);
+    const clients = await tx
+      .select()
+      .from(clientsTable)
+      .where(
+        and(
+          eq(clientsTable.workspaceId, access.workspaceId),
+          inArray(clientsTable.owner, labels),
+        ),
+      )
+      .for("update");
+    const matters = await tx
+      .select()
+      .from(mattersTable)
+      .where(
+        and(
+          eq(mattersTable.workspaceId, access.workspaceId),
+          inArray(mattersTable.responsible, labels),
+        ),
+      )
+      .for("update");
+
+    const replacementId = parsedBody.data.replacementMemberId;
+    if ((clients.length || matters.length) && replacementId === undefined) {
+      return "replacement-required" as const;
+    }
+
+    if (replacementId !== undefined) {
+      const replacement = members.find((candidate) => candidate.id === replacementId);
+      if (!replacement) return "replacement-missing" as const;
+      if (replacement.id === member.id) return "replacement-self" as const;
+
+      const replacementLabel =
+        replacement.displayName || replacement.email || "Firm teammate";
+      if (clients.length) {
+        await tx
+          .update(clientsTable)
+          .set({ owner: replacementLabel })
+          .where(
+            and(
+              eq(clientsTable.workspaceId, access.workspaceId),
+              inArray(
+                clientsTable.id,
+                clients.map((client) => client.id),
+              ),
+            ),
+          );
+      }
+      if (matters.length) {
+        await tx
+          .update(mattersTable)
+          .set({ responsible: replacementLabel })
+          .where(
+            and(
+              eq(mattersTable.workspaceId, access.workspaceId),
+              inArray(
+                mattersTable.id,
+                matters.map((matter) => matter.id),
+              ),
+            ),
+          );
+      }
+
+      const actor = access.name || access.email || "Firm user";
+      const previousLabel = member.displayName || member.email;
+      if (clients.length) {
+        await tx.insert(activitiesTable).values(
+          clients.map((client) => ({
+            workspaceId: access.workspaceId,
+            clerkUserId: access.userId,
+            actor,
+            action: `reassigned client ownership from ${previousLabel} to ${replacementLabel}`,
+            entityType: "client",
+            entityId: client.id,
+            entityLabel: client.name,
+          })),
+        );
+      }
+      if (matters.length) {
+        await tx.insert(activitiesTable).values(
+          matters.map((matter) => ({
+            workspaceId: access.workspaceId,
+            clerkUserId: access.userId,
+            actor,
+            action: `reassigned matter responsibility from ${previousLabel} to ${replacementLabel}`,
+            entityType: "matter",
+            entityId: matter.id,
+            entityLabel: matter.title,
+          })),
+        );
+      }
     }
 
     await tx.delete(membershipsTable).where(eq(membershipsTable.id, member.id));
@@ -360,6 +535,20 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
     return "removed" as const;
   });
 
+  if (result === "replacement-required") {
+    res.status(409).json({
+      error: "Select an active firm member to take over this person's assigned clients and matters.",
+    });
+    return;
+  }
+  if (result === "replacement-missing") {
+    res.status(404).json({ error: "The selected replacement is no longer an active firm member." });
+    return;
+  }
+  if (result === "replacement-self") {
+    res.status(400).json({ error: "Choose another firm member to take over these assignments." });
+    return;
+  }
   if (result !== "removed") {
     res.status(404).json({ error: "That member could not be found in your firm." });
     return;

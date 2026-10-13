@@ -133,7 +133,7 @@ export const UpdateWorkspaceMemberResponse = zod.object({
 
 
 /**
- * @summary Remove a member from the current firm
+ * @summary Reassign client and matter work before removing a firm member
  */
 
 
@@ -142,7 +142,38 @@ export const RemoveWorkspaceMemberParams = zod.object({
   "id": zod.coerce.number().int().min(1)
 })
 
+
+
+
+export const RemoveWorkspaceMemberBody = zod.object({
+  "replacementMemberId": zod.number().int().min(1).optional()
+})
+
 export const RemoveWorkspaceMemberResponse = zod.void()
+
+
+/**
+ * @summary List client and matter records assigned to a firm member
+ */
+
+
+
+export const GetWorkspaceMemberAssignmentsParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const GetWorkspaceMemberAssignmentsResponse = zod.object({
+  "clients": zod.array(zod.object({
+  "id": zod.number().int(),
+  "name": zod.string()
+})),
+  "matters": zod.array(zod.object({
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "reference": zod.string(),
+  "clientName": zod.string()
+}))
+})
 
 
 /**

@@ -2177,3 +2177,148 @@ test("client-update schedules can be enabled and listed without generating a dra
   assert.equal(overview.body.schedules.length, 1);
   assert.equal(overview.body.drafts.length, 0);
 });
+
+test("member assignments are listed and reassigned with removal in one audited change", async () => {
+  const suffix = randomUUID();
+  const departingName = `Departing Teammate ${suffix}`;
+  const departingEmail = `departing-${suffix}@example.test`;
+  const replacementName = `Replacement Teammate ${suffix}`;
+  const [departing, replacement] = await db
+    .insert(membershipsTable)
+    .values([
+      {
+        workspaceId: firms.primary.workspaceId,
+        clerkUserId: `departing-${suffix}`,
+        email: departingEmail,
+        displayName: departingName,
+        role: "professional",
+      },
+      {
+        workspaceId: firms.primary.workspaceId,
+        clerkUserId: `replacement-${suffix}`,
+        email: `replacement-${suffix}@example.test`,
+        displayName: replacementName,
+        role: "professional",
+      },
+    ])
+    .returning();
+  const [client] = await db
+    .insert(clientsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      name: `Assigned Client ${suffix}`,
+      owner: departingName,
+    })
+    .returning();
+  const [matter] = await db
+    .insert(mattersTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clientId: client.id,
+      title: `Assigned Matter ${suffix}`,
+      reference: `ASSIGNED-${suffix}`,
+      matterType: "advisory",
+      responsible: departingEmail,
+    })
+    .returning();
+
+  const assignments = await request(
+    `/workspace/members/${departing.id}/assignments`,
+    { userId: firms.primary.ownerId },
+  );
+  assert.equal(assignments.response.status, 200);
+  assert.deepEqual(assignments.body, {
+    clients: [{ id: client.id, name: client.name }],
+    matters: [{
+      id: matter.id,
+      title: matter.title,
+      reference: matter.reference,
+      clientName: client.name,
+    }],
+  });
+  const [viewer] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.role, "viewer"));
+  const forbiddenAssignments = await request(
+    `/workspace/members/${departing.id}/assignments`,
+    { userId: viewer.clerkUserId },
+  );
+  assert.equal(forbiddenAssignments.response.status, 403);
+
+  const removed = await request(`/workspace/members/${departing.id}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+    body: { replacementMemberId: replacement.id },
+  });
+  assert.equal(removed.response.status, 204);
+
+  const [updatedClient] = await db
+    .select()
+    .from(clientsTable)
+    .where(eq(clientsTable.id, client.id));
+  const [updatedMatter] = await db
+    .select()
+    .from(mattersTable)
+    .where(eq(mattersTable.id, matter.id));
+  const remainingMembership = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.id, departing.id));
+  assert.equal(updatedClient.owner, replacementName);
+  assert.equal(updatedMatter.responsible, replacementName);
+  assert.equal(remainingMembership.length, 0);
+
+  const activity = await db
+    .select()
+    .from(activitiesTable)
+    .where(eq(activitiesTable.workspaceId, firms.primary.workspaceId));
+  const reassignmentEvents = activity.filter(
+    (event) =>
+      (event.entityId === client.id || event.entityId === matter.id) &&
+      event.action.startsWith("reassigned "),
+  );
+  assert.equal(reassignmentEvents.length, 2);
+  assert.ok(reassignmentEvents.some((event) => event.entityType === "client"));
+  assert.ok(reassignmentEvents.some((event) => event.entityType === "matter"));
+  assert.ok(activity.some((event) => event.action === `removed ${departingName} from the firm workspace`));
+});
+
+test("member access is not removed when assigned work has no replacement", async () => {
+  const suffix = randomUUID();
+  const [departing] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: `unreassigned-${suffix}`,
+      email: `unreassigned-${suffix}@example.test`,
+      displayName: `Unreassigned Teammate ${suffix}`,
+      role: "professional",
+    })
+    .returning();
+  const [client] = await db
+    .insert(clientsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      name: `Protected Client ${suffix}`,
+      owner: departing.displayName,
+    })
+    .returning();
+
+  const removal = await request(`/workspace/members/${departing.id}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+  });
+  assert.equal(removal.response.status, 409);
+
+  const [stillActive] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.id, departing.id));
+  const [stillAssigned] = await db
+    .select()
+    .from(clientsTable)
+    .where(eq(clientsTable.id, client.id));
+  assert.ok(stillActive);
+  assert.equal(stillAssigned.owner, departing.displayName);
+});

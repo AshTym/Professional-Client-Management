@@ -153,14 +153,47 @@ paths:
     delete:
       operationId: removeWorkspaceMember
       tags: [members]
-      summary: Remove a member from the current firm
+      summary: Reassign client and matter work before removing a firm member
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceMemberRemoval"
       responses:
         "204":
-          description: Member access removed
+          description: Member access removed after assignments were reassigned
+        "400":
+          description: The selected replacement cannot be the member being removed
         "403":
           description: Only owners and admins can remove members
         "404":
-          description: Member not found in this firm or is the firm owner
+          description: Member or replacement not found in this firm
+        "409":
+          description: Assigned records need a replacement before access can be removed
+  /workspace/members/{id}/assignments:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      operationId: getWorkspaceMemberAssignments
+      tags: [members]
+      summary: List client and matter records assigned to a firm member
+      responses:
+        "200":
+          description: Assigned clients and matters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMemberAssignments"
+        "403":
+          description: Only owners and admins can view member assignments
+        "404":
+          description: Member not found in this firm
   /workspace/members/{id}/transfer-ownership:
     parameters:
       - name: id
@@ -877,6 +910,36 @@ components:
         role:
           type: string
           enum: [admin, advisor, professional, assistant]
+    WorkspaceMemberRemoval:
+      type: object
+      properties:
+        replacementMemberId: { type: integer, minimum: 1 }
+    WorkspaceMemberAssignments:
+      type: object
+      required: [clients, matters]
+      properties:
+        clients:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceMemberAssignedClient"
+        matters:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceMemberAssignedMatter"
+    WorkspaceMemberAssignedClient:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+    WorkspaceMemberAssignedMatter:
+      type: object
+      required: [id, title, reference, clientName]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        reference: { type: string }
+        clientName: { type: string }
     WorkspaceInvitationInput:
       type: object
       required: [email, role]

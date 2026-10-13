@@ -107,6 +107,28 @@ export interface WorkspaceMemberUpdate {
   role: WorkspaceMemberUpdateRole;
 }
 
+export interface WorkspaceMemberRemoval {
+  /** @minimum 1 */
+  replacementMemberId?: number;
+}
+
+export interface WorkspaceMemberAssignedClient {
+  id: number;
+  name: string;
+}
+
+export interface WorkspaceMemberAssignedMatter {
+  id: number;
+  title: string;
+  reference: string;
+  clientName: string;
+}
+
+export interface WorkspaceMemberAssignments {
+  clients: WorkspaceMemberAssignedClient[];
+  matters: WorkspaceMemberAssignedMatter[];
+}
+
 export type WorkspaceInvitationInputRole = typeof WorkspaceInvitationInputRole[keyof typeof WorkspaceInvitationInputRole];
 
 

@@ -64,6 +64,8 @@ import type {
   WorkspaceInvitationAcceptance,
   WorkspaceInvitationInput,
   WorkspaceMember,
+  WorkspaceMemberAssignments,
+  WorkspaceMemberRemoval,
   WorkspaceMemberUpdate
 } from './api.schemas';
 
@@ -772,16 +774,31 @@ export const getRemoveWorkspaceMemberUrl = (id: number,) => {
 }
 
 /**
- * @summary Remove a member from the current firm
+ * @summary Reassign client and matter work before removing a firm member
  */
-export const removeWorkspaceMember = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+export const removeWorkspaceMember = async (id: number,
+    workspaceMemberRemoval?: WorkspaceMemberRemoval, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
 
-  return customFetch<void>(getRemoveWorkspaceMemberUrl(id),
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<void>(getRemoveWorkspaceMemberUrl(id),
   {
     ...options,
-    method: 'DELETE'
-
-
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(workspaceMemberRemoval)
   }
 );}
 
@@ -806,9 +823,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeWorkspaceMember>>, RemoveWorkspaceMemberMutationVariables> = (props) => {
-          const {id} = props ?? {};
+          const {id,data} = props ?? {};
 
-          return  removeWorkspaceMember(id,requestOptions)
+          return  removeWorkspaceMember(id,data,requestOptions)
         }
 
 
@@ -819,12 +836,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type RemoveWorkspaceMemberMutationResult = NonNullable<Awaited<ReturnType<typeof removeWorkspaceMember>>>
-
+    export type RemoveWorkspaceMemberMutationBody = BodyType<WorkspaceMemberRemoval> | undefined
     export type RemoveWorkspaceMemberMutationError = ErrorType<void>
-    export type RemoveWorkspaceMemberMutationVariables = {id: number}
+    export type RemoveWorkspaceMemberMutationVariables = {id: number;data?: BodyType<WorkspaceMemberRemoval>}
 
     /**
- * @summary Remove a member from the current firm
+ * @summary Reassign client and matter work before removing a firm member
  */
 export const useRemoveWorkspaceMember = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeWorkspaceMember>>, TError,RemoveWorkspaceMemberMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -836,6 +853,107 @@ export const useRemoveWorkspaceMember = <TError = ErrorType<void>,
       > => {
       return useMutation(getRemoveWorkspaceMemberMutationOptions(options), queryClient);
     }
+
+export const getGetWorkspaceMemberAssignmentsUrl = (id: number,) => {
+
+
+
+
+  return `/api/workspace/members/${id}/assignments`
+}
+
+/**
+ * @summary List client and matter records assigned to a firm member
+ */
+export const getWorkspaceMemberAssignments = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceMemberAssignments> => {
+
+  return customFetch<WorkspaceMemberAssignments>(getGetWorkspaceMemberAssignmentsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWorkspaceMemberAssignmentsQueryKey = (id: number,) => {
+    return [
+    `/api/workspace/members/${id}/assignments`
+    ] as const;
+    }
+
+
+export const getGetWorkspaceMemberAssignmentsQueryOptions = <TData = Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>, TError = ErrorType<void>>(id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWorkspaceMemberAssignmentsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>> = ({ signal }) => getWorkspaceMemberAssignments(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetWorkspaceMemberAssignmentsQueryResult = NonNullable<Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>>
+export type GetWorkspaceMemberAssignmentsQueryError = ErrorType<void>
+
+
+export function useGetWorkspaceMemberAssignments<TData = Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>, TError = ErrorType<void>>(
+ id: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>,
+          TError,
+          Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetWorkspaceMemberAssignments<TData = Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>,
+          TError,
+          Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetWorkspaceMemberAssignments<TData = Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List client and matter records assigned to a firm member
+ */
+
+export function useGetWorkspaceMemberAssignments<TData = Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetWorkspaceMemberAssignmentsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getTransferWorkspaceOwnershipUrl = (id: number,) => {
 
