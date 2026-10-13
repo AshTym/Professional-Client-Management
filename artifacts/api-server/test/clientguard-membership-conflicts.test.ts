@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { randomUUID } from "node:crypto";
 import express, { type Request } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Pool } from "pg";
 import type { Server } from "node:http";
 
@@ -314,10 +314,142 @@ async function request(
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
+  const contentType = response.headers.get("content-type") ?? "";
   return {
     response,
-    body: response.status === 204 ? undefined : await response.json(),
+    body: response.status === 204
+      ? undefined
+      : contentType.includes("application/json")
+      ? await response.json()
+      : await response.text(),
   };
+}
+
+async function createAssignedConflict(suffix: string) {
+  const userId = `failed-removal-${suffix}-${randomUUID()}`;
+  const [localMember] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firmAWorkspaceId,
+      clerkUserId: userId,
+      email: `${userId}@example.test`,
+      displayName: `Failed Removal ${suffix}`,
+      role: "professional",
+    })
+    .returning();
+  await db.insert(membershipsTable).values({
+    workspaceId: firmBWorkspaceId,
+    clerkUserId: userId,
+    email: `${userId}@example.test`,
+    displayName: `Failed Removal ${suffix}`,
+    role: "professional",
+  });
+  const [client] = await db
+    .insert(clientsTable)
+    .values({
+      workspaceId: firmAWorkspaceId,
+      name: `Failure Test Client ${suffix}`,
+      owner: localMember.displayName,
+      ownerMemberId: localMember.id,
+    })
+    .returning();
+  const [matter] = await db
+    .insert(mattersTable)
+    .values({
+      workspaceId: firmAWorkspaceId,
+      clientId: client.id,
+      title: `Failure Test Matter ${suffix}`,
+      reference: `FAIL-${suffix}`,
+      matterType: "advisory",
+      responsible: localMember.displayName,
+      responsibleMemberId: localMember.id,
+    })
+    .returning();
+  return { userId, member: localMember, client, matter };
+}
+
+async function assertFailedRemovalIsRolledBack(
+  fixture: Awaited<ReturnType<typeof createAssignedConflict>>,
+) {
+  const [membershipAfter] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.id, fixture.member.id));
+  assert.deepEqual(membershipAfter, fixture.member);
+
+  const [clientAfter] = await db
+    .select()
+    .from(clientsTable)
+    .where(eq(clientsTable.id, fixture.client.id));
+  assert.deepEqual(clientAfter, fixture.client);
+
+  const [matterAfter] = await db
+    .select()
+    .from(mattersTable)
+    .where(eq(mattersTable.id, fixture.matter.id));
+  assert.deepEqual(matterAfter, fixture.matter);
+
+  const auditHistory = await db
+    .select()
+    .from(auditEventsTable)
+    .where(
+      and(
+        eq(auditEventsTable.workspaceId, firmAWorkspaceId),
+        eq(auditEventsTable.entityType, "membership_access_conflict"),
+        eq(auditEventsTable.entityId, fixture.member.id),
+      ),
+    );
+  assert.deepEqual(auditHistory, []);
+
+  const activityHistory = await db
+    .select()
+    .from(activitiesTable)
+    .where(eq(activitiesTable.workspaceId, firmAWorkspaceId));
+  assert.deepEqual(
+    activityHistory.filter((activity) =>
+      (activity.entityType === "membership" && activity.entityId === fixture.member.id) ||
+      (activity.entityType === "client" && activity.entityId === fixture.client.id) ||
+      (activity.entityType === "matter" && activity.entityId === fixture.matter.id)
+    ),
+    [],
+  );
+}
+
+async function withInsertFailure(
+  table: "clientguard_audit_events" | "clientguard_activities",
+  condition: string,
+  callback: () => Promise<void>,
+) {
+  const suffix = randomUUID().replaceAll("-", "");
+  const functionName = `fail_conflict_insert_${suffix}`;
+  const triggerName = `fail_conflict_insert_${suffix}`;
+  await bootstrapPool!.query(`
+    CREATE FUNCTION "${schemaName}"."${functionName}"()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+      IF ${condition} THEN
+        RAISE EXCEPTION 'Forced membership conflict ${table} failure';
+      END IF;
+      RETURN NEW;
+    END;
+    $$;
+    CREATE TRIGGER "${triggerName}"
+    BEFORE INSERT ON "${schemaName}"."${table}"
+    FOR EACH ROW
+    EXECUTE FUNCTION "${schemaName}"."${functionName}"();
+  `);
+  try {
+    await callback();
+  } finally {
+    await bootstrapPool!.query(
+      `DROP TRIGGER IF EXISTS "${triggerName}" ON "${schemaName}"."${table}"`,
+    );
+    await bootstrapPool!.query(
+      `DROP FUNCTION IF EXISTS "${schemaName}"."${functionName}"()`,
+    );
+  }
 }
 
 test("each firm admin reviews only local memberships and removals preserve assigned records", async () => {
@@ -500,6 +632,56 @@ test("each firm admin reviews only local memberships and removals preserve assig
     .where(eq(activitiesTable.workspaceId, firmAWorkspaceId));
   assert.ok(reassignmentActivities.some((event) => event.entityId === assignedClientId));
   assert.ok(reassignmentActivities.some((event) => event.entityId === assignedMatterId));
+});
+
+test("audit insert failure preserves conflict membership, assignments, and activity history", async () => {
+  const fixture = await createAssignedConflict("audit");
+
+  await withInsertFailure(
+    "clientguard_audit_events",
+    `NEW.entity_type = 'membership_access_conflict' AND NEW.entity_id = ${fixture.member.id}`,
+    async () => {
+      const failed = await request(
+        `/workspace/membership-conflicts/${fixture.member.id}/decision`,
+        {
+          userId: firmAOwnerId,
+          method: "POST",
+          body: {
+            decision: "remove",
+            reason: "Remove duplicate access after review",
+            replacementMemberId: replacementMembershipId,
+          },
+        },
+      );
+      assert.equal(failed.response.status, 500);
+      await assertFailedRemovalIsRolledBack(fixture);
+    },
+  );
+});
+
+test("activity insert failure preserves conflict membership, assignments, and audit history", async () => {
+  const fixture = await createAssignedConflict("activity");
+
+  await withInsertFailure(
+    "clientguard_activities",
+    `NEW.entity_type = 'membership' AND NEW.entity_id = ${fixture.member.id}`,
+    async () => {
+      const failed = await request(
+        `/workspace/membership-conflicts/${fixture.member.id}/decision`,
+        {
+          userId: firmAOwnerId,
+          method: "POST",
+          body: {
+            decision: "remove",
+            reason: "Remove duplicate access after review",
+            replacementMemberId: replacementMembershipId,
+          },
+        },
+      );
+      assert.equal(failed.response.status, 500);
+      await assertFailedRemovalIsRolledBack(fixture);
+    },
+  );
 });
 
 test("concurrent firm decisions serialize and reject a stale local removal", async () => {
