@@ -231,10 +231,10 @@ paths:
     get:
       operationId: getWorkspaceMemberAssignments
       tags: [members]
-      summary: List client and matter records assigned to a firm member
+      summary: List client, matter, and pending intake assignments for a firm member
       responses:
         "200":
-          description: Assigned clients and matters
+          description: Assigned clients, matters, and pending intakes
           content:
             application/json:
               schema:
@@ -2253,7 +2253,7 @@ components:
         replacementMemberId: { type: integer, minimum: 1 }
     WorkspaceMemberAssignments:
       type: object
-      required: [clients, matters, unresolvedClients, unresolvedMatters]
+      required: [clients, matters, intakes, unresolvedClients, unresolvedMatters]
       properties:
         clients:
           type: array
@@ -2263,6 +2263,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceMemberAssignedMatter"
+        intakes:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceMemberAssignedIntake"
         unresolvedClients:
           type: array
           items:
@@ -2297,6 +2301,16 @@ components:
         title: { type: string }
         reference: { type: string }
         clientName: { type: string }
+    WorkspaceMemberAssignedIntake:
+      type: object
+      required: [id, clientName, matterTitle, status]
+      properties:
+        id: { type: integer }
+        clientName: { type: string }
+        matterTitle: { type: string }
+        status:
+          type: string
+          enum: [review_required, cleared]
     WorkspaceInvitationInput:
       type: object
       required: [email, role]

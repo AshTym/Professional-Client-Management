@@ -84,6 +84,14 @@ describe("firm membership conflict review", () => {
     mocks.useGetWorkspaceMemberAssignments.mockReturnValue({
       data: {
         clients: [{ id: 4, name: "Current Firm Client" }],
+        intakes: [
+          {
+            id: 12,
+            clientName: "Current Firm Intake Client",
+            matterTitle: "Current Firm Pending Intake",
+            status: "review_required",
+          },
+        ],
         matters: [
           {
             id: 9,
@@ -125,6 +133,9 @@ describe("firm membership conflict review", () => {
 
     fireEvent.click(screen.getByTestId("radio-remove-42"));
     expect(screen.getByText("Current Firm Matter")).toBeTruthy();
+    expect(screen.getByTestId("assigned-intakes-42").textContent).toContain(
+      "Current Firm Pending Intake",
+    );
     fireEvent.change(screen.getByTestId("select-replacement-42"), {
       target: { value: "17" },
     });

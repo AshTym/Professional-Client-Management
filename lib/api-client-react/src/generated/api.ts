@@ -1123,7 +1123,7 @@ export const getGetWorkspaceMemberAssignmentsUrl = (id: number,) => {
 }
 
 /**
- * @summary List client and matter records assigned to a firm member
+ * @summary List client, matter, and pending intake assignments for a firm member
  */
 export const getWorkspaceMemberAssignments = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceMemberAssignments> => {
 
@@ -1194,7 +1194,7 @@ export function useGetWorkspaceMemberAssignments<TData = Awaited<ReturnType<type
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary List client and matter records assigned to a firm member
+ * @summary List client, matter, and pending intake assignments for a firm member
  */
 
 export function useGetWorkspaceMemberAssignments<TData = Awaited<ReturnType<typeof getWorkspaceMemberAssignments>>, TError = ErrorType<void>>(

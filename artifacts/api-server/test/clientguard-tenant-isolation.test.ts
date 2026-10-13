@@ -39,6 +39,7 @@ let membershipsTable: typeof import("@workspace/db").membershipsTable;
 let invitationsTable: typeof import("@workspace/db").invitationsTable;
 let clientsTable: typeof import("@workspace/db").clientsTable;
 let mattersTable: typeof import("@workspace/db").mattersTable;
+let intakesTable: typeof import("@workspace/db").intakesTable;
 let activitiesTable: typeof import("@workspace/db").activitiesTable;
 let portalAccessTable: typeof import("@workspace/db").portalAccessTable;
 let portalMessagesTable: typeof import("@workspace/db").portalMessagesTable;
@@ -363,6 +364,7 @@ before(async () => {
     invitationsTable,
     clientsTable,
     mattersTable,
+    intakesTable,
     activitiesTable,
     portalAccessTable,
     portalMessagesTable,
@@ -4488,6 +4490,51 @@ test("member assignments are listed and reassigned with removal in one audited c
       owner: departingName,
     })
     .returning();
+  const [otherFirmMember] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.other.workspaceId,
+      clerkUserId: `other-intake-assignee-${suffix}`,
+      email: `other-intake-assignee-${suffix}@example.test`,
+      displayName: `Other Firm Assignee ${suffix}`,
+      role: "professional",
+    })
+    .returning();
+  const [reviewRequiredIntake, clearedIntake, otherFirmIntake] = await db
+    .insert(intakesTable)
+    .values([
+      {
+        workspaceId: firms.primary.workspaceId,
+        clientName: `Intake Client ${suffix}`,
+        matterTitle: `Review Required Intake ${suffix}`,
+        matterType: "advisory",
+        responsible: departingName,
+        responsibleMemberId: departing.id,
+        status: "review_required",
+        createdByClerkUserId: firms.primary.ownerId,
+      },
+      {
+        workspaceId: firms.primary.workspaceId,
+        clientName: `Cleared Intake Client ${suffix}`,
+        matterTitle: `Cleared Intake ${suffix}`,
+        matterType: "advisory",
+        responsible: departingName,
+        responsibleMemberId: departing.id,
+        status: "cleared",
+        createdByClerkUserId: firms.primary.ownerId,
+      },
+      {
+        workspaceId: firms.other.workspaceId,
+        clientName: `Other Firm Intake Client ${suffix}`,
+        matterTitle: `Other Firm Intake ${suffix}`,
+        matterType: "advisory",
+        responsible: otherFirmMember.displayName,
+        responsibleMemberId: otherFirmMember.id,
+        status: "review_required",
+        createdByClerkUserId: firms.other.ownerId,
+      },
+    ])
+    .returning();
   const [matter] = await db
     .insert(mattersTable)
     .values({
@@ -4513,6 +4560,20 @@ test("member assignments are listed and reassigned with removal in one audited c
       reference: matter.reference,
       clientName: client.name,
     }],
+    intakes: [
+      {
+        id: reviewRequiredIntake.id,
+        clientName: reviewRequiredIntake.clientName,
+        matterTitle: reviewRequiredIntake.matterTitle,
+        status: "review_required",
+      },
+      {
+        id: clearedIntake.id,
+        clientName: clearedIntake.clientName,
+        matterTitle: clearedIntake.matterTitle,
+        status: "cleared",
+      },
+    ],
     unresolvedClients: [],
     unresolvedMatters: [],
   });
@@ -4529,6 +4590,17 @@ test("member assignments are listed and reassigned with removal in one audited c
     { userId: viewer.clerkUserId },
   );
   assert.equal(forbiddenAssignments.response.status, 403);
+
+  const missingReplacement = await request(`/workspace/members/${departing.id}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+  });
+  assert.equal(missingReplacement.response.status, 409);
+  const [unchangedIntake] = await db
+    .select()
+    .from(intakesTable)
+    .where(eq(intakesTable.id, reviewRequiredIntake.id));
+  assert.equal(unchangedIntake.responsibleMemberId, departing.id);
 
   const removed = await request(`/workspace/members/${departing.id}`, {
     userId: firms.primary.ownerId,
@@ -4553,6 +4625,33 @@ test("member assignments are listed and reassigned with removal in one audited c
   assert.equal(updatedClient.ownerMemberId, replacement.id);
   assert.equal(updatedMatter.responsible, replacementName);
   assert.equal(updatedMatter.responsibleMemberId, replacement.id);
+  const reassignedIntakes = await db
+    .select()
+    .from(intakesTable)
+    .where(inArray(intakesTable.id, [reviewRequiredIntake.id, clearedIntake.id]));
+  assert.equal(reassignedIntakes.length, 2);
+  for (const intake of reassignedIntakes) {
+    assert.equal(intake.responsible, replacementName);
+    assert.equal(intake.responsibleMemberId, replacement.id);
+  }
+  const [untouchedOtherFirmIntake] = await db
+    .select()
+    .from(intakesTable)
+    .where(eq(intakesTable.id, otherFirmIntake.id));
+  assert.equal(untouchedOtherFirmIntake.workspaceId, firms.other.workspaceId);
+  assert.equal(untouchedOtherFirmIntake.responsible, otherFirmMember.displayName);
+  assert.equal(untouchedOtherFirmIntake.responsibleMemberId, otherFirmMember.id);
+
+  const intakeOverview = await request("/intake", {
+    userId: firms.primary.ownerId,
+  });
+  assert.equal(intakeOverview.response.status, 200);
+  for (const intakeId of [reviewRequiredIntake.id, clearedIntake.id]) {
+    const displayedIntake = intakeOverview.body.intakes.find(
+      (intake: { id: number }) => intake.id === intakeId,
+    );
+    assert.equal(displayedIntake.responsible, replacementName);
+  }
   assert.equal(remainingMembership.length, 0);
 
   const activity = await db
@@ -4561,13 +4660,79 @@ test("member assignments are listed and reassigned with removal in one audited c
     .where(eq(activitiesTable.workspaceId, firms.primary.workspaceId));
   const reassignmentEvents = activity.filter(
     (event) =>
-      (event.entityId === client.id || event.entityId === matter.id) &&
-      event.action.startsWith("reassigned "),
+      event.action.startsWith("reassigned ") &&
+      (
+        (event.entityType === "client" && event.entityId === client.id) ||
+        (event.entityType === "matter" && event.entityId === matter.id) ||
+        (event.entityType === "intake" &&
+          [reviewRequiredIntake.id, clearedIntake.id].includes(event.entityId))
+      ),
   );
-  assert.equal(reassignmentEvents.length, 2);
+  assert.equal(reassignmentEvents.length, 4);
   assert.ok(reassignmentEvents.some((event) => event.entityType === "client"));
   assert.ok(reassignmentEvents.some((event) => event.entityType === "matter"));
+  assert.equal(reassignmentEvents.filter((event) => event.entityType === "intake").length, 2);
   assert.ok(activity.some((event) => event.action === `removed ${departingName} from the firm workspace`));
+});
+
+test("pending intake assignments alone require an active replacement before teammate removal", async () => {
+  const suffix = randomUUID();
+  const [departing, replacement] = await db
+    .insert(membershipsTable)
+    .values([
+      {
+        workspaceId: firms.primary.workspaceId,
+        clerkUserId: `intake-only-departing-${suffix}`,
+        email: `intake-only-departing-${suffix}@example.test`,
+        displayName: `Intake Only Departing ${suffix}`,
+        role: "professional",
+      },
+      {
+        workspaceId: firms.primary.workspaceId,
+        clerkUserId: `intake-only-replacement-${suffix}`,
+        email: `intake-only-replacement-${suffix}@example.test`,
+        displayName: `Intake Only Replacement ${suffix}`,
+        role: "professional",
+      },
+    ])
+    .returning();
+  const [intake] = await db
+    .insert(intakesTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clientName: `Intake Only Client ${suffix}`,
+      matterTitle: `Intake Only Matter ${suffix}`,
+      matterType: "advisory",
+      responsible: departing.displayName,
+      responsibleMemberId: departing.id,
+      status: "review_required",
+      createdByClerkUserId: firms.primary.ownerId,
+    })
+    .returning();
+
+  const missingReplacement = await request(`/workspace/members/${departing.id}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+  });
+  assert.equal(missingReplacement.response.status, 409);
+  const stillActive = await db
+    .select({ id: membershipsTable.id })
+    .from(membershipsTable)
+    .where(eq(membershipsTable.id, departing.id));
+  assert.equal(stillActive.length, 1);
+
+  const removed = await request(`/workspace/members/${departing.id}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+    body: { replacementMemberId: replacement.id },
+  });
+  assert.equal(removed.response.status, 204);
+  const [reassigned] = await db
+    .select()
+    .from(intakesTable)
+    .where(eq(intakesTable.id, intake.id));
+  assert.equal(reassigned.responsible, replacement.displayName);
+  assert.equal(reassigned.responsibleMemberId, replacement.id);
 });
 
 test("matter edits cannot restore assignment after concurrent teammate removal", async () => {

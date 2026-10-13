@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { WorkspaceMemberAssignedClient } from './workspaceMemberAssignedClient';
+import type { WorkspaceMemberAssignedIntake } from './workspaceMemberAssignedIntake';
 import type { WorkspaceMemberAssignedMatter } from './workspaceMemberAssignedMatter';
 import type { WorkspaceMemberAssignmentsUnresolvedClientsItem } from './workspaceMemberAssignmentsUnresolvedClientsItem';
 import type { WorkspaceMemberAssignmentsUnresolvedMattersItem } from './workspaceMemberAssignmentsUnresolvedMattersItem';
@@ -13,6 +14,7 @@ import type { WorkspaceMemberAssignmentsUnresolvedMattersItem } from './workspac
 export interface WorkspaceMemberAssignments {
   clients: WorkspaceMemberAssignedClient[];
   matters: WorkspaceMemberAssignedMatter[];
+  intakes: WorkspaceMemberAssignedIntake[];
   unresolvedClients: WorkspaceMemberAssignmentsUnresolvedClientsItem[];
   unresolvedMatters: WorkspaceMemberAssignmentsUnresolvedMattersItem[];
 }

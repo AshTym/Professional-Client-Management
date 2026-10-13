@@ -214,6 +214,8 @@ export * from './workspaceInvitationInputRole';
 export * from './workspaceInvitationRole';
 export * from './workspaceMember';
 export * from './workspaceMemberAssignedClient';
+export * from './workspaceMemberAssignedIntake';
+export * from './workspaceMemberAssignedIntakeStatus';
 export * from './workspaceMemberAssignedMatter';
 export * from './workspaceMemberAssignments';
 export * from './workspaceMemberAssignmentsUnresolvedClientsItem';

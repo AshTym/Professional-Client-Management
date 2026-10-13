@@ -93,6 +93,31 @@ before(async () => {
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE "${schemaName}".clientguard_intakes (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,
+      client_id integer REFERENCES "${schemaName}".clientguard_clients(id) ON DELETE SET NULL,
+      client_name text NOT NULL,
+      client_type text NOT NULL DEFAULT 'individual',
+      email text,
+      phone text,
+      industry text,
+      matter_title text NOT NULL,
+      matter_type text NOT NULL,
+      responsible text NOT NULL,
+      responsible_member_id integer REFERENCES "${schemaName}".clientguard_memberships(id) ON DELETE SET NULL,
+      due_at timestamptz,
+      party_names jsonb NOT NULL DEFAULT '[]',
+      answers jsonb NOT NULL DEFAULT '{}',
+      conflict_findings jsonb NOT NULL DEFAULT '[]',
+      status text NOT NULL DEFAULT 'review_required',
+      review_note text,
+      reviewer_clerk_user_id text,
+      opened_matter_id integer REFERENCES "${schemaName}".clientguard_matters(id) ON DELETE SET NULL,
+      created_by_clerk_user_id text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
     CREATE TABLE "${schemaName}".clientguard_activities (
       id serial PRIMARY KEY,
       workspace_id integer NOT NULL REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,

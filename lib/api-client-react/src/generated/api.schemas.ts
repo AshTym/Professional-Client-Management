@@ -270,9 +270,25 @@ export interface WorkspaceMemberAssignedMatter {
   clientName: string;
 }
 
+export type WorkspaceMemberAssignedIntakeStatus = typeof WorkspaceMemberAssignedIntakeStatus[keyof typeof WorkspaceMemberAssignedIntakeStatus];
+
+
+export const WorkspaceMemberAssignedIntakeStatus = {
+  review_required: 'review_required',
+  cleared: 'cleared',
+} as const;
+
+export interface WorkspaceMemberAssignedIntake {
+  id: number;
+  clientName: string;
+  matterTitle: string;
+  status: WorkspaceMemberAssignedIntakeStatus;
+}
+
 export interface WorkspaceMemberAssignments {
   clients: WorkspaceMemberAssignedClient[];
   matters: WorkspaceMemberAssignedMatter[];
+  intakes: WorkspaceMemberAssignedIntake[];
   unresolvedClients: WorkspaceMemberAssignmentsUnresolvedClientsItem[];
   unresolvedMatters: WorkspaceMemberAssignmentsUnresolvedMattersItem[];
 }

@@ -50,7 +50,9 @@ function ConflictCard({ conflict, members, currentMemberEmail, onSaved }: {
     },
   });
   const assignments = assignmentsQuery.data;
-  const hasAssignments = Boolean(assignments && (assignments.clients.length > 0 || assignments.matters.length > 0));
+  const hasAssignments = Boolean(assignments && (
+    assignments.clients.length > 0 || assignments.matters.length > 0 || assignments.intakes.length > 0
+  ));
   const eligibleMembers = members.filter(member => member.id !== conflict.membershipId);
   const targetIsOwner = conflict.role.toLowerCase() === 'owner';
   const targetIsCurrentAdmin = Boolean(currentMemberEmail && conflict.email.toLowerCase() === currentMemberEmail.toLowerCase());
@@ -155,6 +157,10 @@ function ConflictCard({ conflict, members, currentMemberEmail, onSaved }: {
                       <p className="mono text-[9px] uppercase tracking-[.12em] text-[#87918b]">Matters · {assignments.matters.length}</p>
                       {assignments.matters.length ? <ul className="mt-2 space-y-1.5 text-xs">{assignments.matters.map(matter => <li key={matter.id} className="min-w-0"><span className="block truncate font-semibold">{matter.title}</span><span className="block truncate text-[#81908b]">{matter.reference} · {matter.clientName}</span></li>)}</ul> : <p className="mt-2 text-xs text-[#87918b]">No assigned matters</p>}
                     </div>
+                    <div className="rounded-sm border border-[#e4dfd5] bg-[#fffefa] p-3" data-testid={`assigned-intakes-${conflict.membershipId}`}>
+                      <p className="mono text-[9px] uppercase tracking-[.12em] text-[#87918b]">Pending intakes · {assignments.intakes.length}</p>
+                      {assignments.intakes.length ? <ul className="mt-2 space-y-1.5 text-xs">{assignments.intakes.map(intake => <li key={intake.id} className="min-w-0"><span className="block truncate font-semibold">{intake.clientName}</span><span className="block truncate text-[#81908b]">{intake.matterTitle} · {intake.status.replaceAll('_', ' ')}</span></li>)}</ul> : <p className="mt-2 text-xs text-[#87918b]">No pending intakes</p>}
+                    </div>
                   </div>
                   <label htmlFor={`replacement-${conflict.membershipId}`} className="mt-4 block text-xs font-semibold">Replacement teammate <span className="text-[#a65349]">Required</span></label>
                   <div className="relative mt-1.5">
@@ -166,7 +172,7 @@ function ConflictCard({ conflict, members, currentMemberEmail, onSaved }: {
                   </div>
                   <p id={`replacement-help-${conflict.membershipId}`} className="mt-1 text-[11px] text-[#7c8884]">Only active teammates in this firm are listed.</p>
                   {eligibleMembers.length === 0 && <p className="mt-2 text-xs text-[#8f4d45]" role="alert">No eligible replacement teammate is available in this firm.</p>}
-                </> : assignments && <p className="mt-2 text-xs leading-5 text-[#71807d]" data-testid={`text-no-assignments-${conflict.membershipId}`}>No clients or matters are assigned to this teammate in your firm.</p>}
+                </> : assignments && <p className="mt-2 text-xs leading-5 text-[#71807d]" data-testid={`text-no-assignments-${conflict.membershipId}`}>No clients, matters, or pending intakes are assigned to this teammate in your firm.</p>}
           </div>
         </div>
       </section>}

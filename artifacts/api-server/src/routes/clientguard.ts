@@ -22,6 +22,7 @@ import {
   activitiesTable,
   clientsTable,
   invitationsTable,
+  intakesTable,
   mattersTable,
   membershipsTable,
   workspacesTable,
@@ -671,6 +672,17 @@ router.post(
             ),
           )
           .for("update");
+        const assignedIntakes = await tx
+          .select()
+          .from(intakesTable)
+          .where(
+            and(
+              eq(intakesTable.workspaceId, access.workspaceId),
+              eq(intakesTable.responsibleMemberId, member.id),
+              inArray(intakesTable.status, ["review_required", "cleared"]),
+            ),
+          )
+          .for("update");
       const [unresolvedClient, unresolvedMatter] = await Promise.all([
         tx.select({ id: clientsTable.id }).from(clientsTable).where(and(
           eq(clientsTable.workspaceId, access.workspaceId),
@@ -687,13 +699,14 @@ router.post(
         return { kind: "unresolved_assignments" as const };
       }
         if (
-          (assignedClients.length || assignedMatters.length) &&
+          (assignedClients.length || assignedMatters.length || assignedIntakes.length) &&
           body.data.replacementMemberId === undefined
         ) {
           return {
             kind: "replacement_required" as const,
             assignedClientCount: assignedClients.length,
             assignedMatterCount: assignedMatters.length,
+            assignedIntakeCount: assignedIntakes.length,
           };
         }
 
@@ -746,6 +759,24 @@ router.post(
                 ),
               );
           }
+          if (assignedIntakes.length) {
+            await tx
+              .update(intakesTable)
+              .set({
+                responsible: replacementLabel,
+                responsibleMemberId: replacement.id,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(intakesTable.workspaceId, access.workspaceId),
+                  inArray(
+                    intakesTable.id,
+                    assignedIntakes.map((intake) => intake.id),
+                  ),
+                ),
+              );
+          }
 
           const actor = access.name || access.email || "Firm user";
           const previousLabel = member.displayName || member.email;
@@ -772,6 +803,19 @@ router.post(
                 entityType: "matter",
                 entityId: matter.id,
                 entityLabel: matter.title,
+              })),
+            );
+          }
+          if (assignedIntakes.length) {
+            await tx.insert(activitiesTable).values(
+              assignedIntakes.map((intake) => ({
+                workspaceId: access.workspaceId,
+                clerkUserId: access.userId,
+                actor,
+                action: `reassigned intake responsibility from ${previousLabel} to ${replacementLabel}`,
+                entityType: "intake",
+                entityId: intake.id,
+                entityLabel: intake.matterTitle,
               })),
             );
           }
@@ -865,10 +909,11 @@ router.post(
     }
     if (result.kind === "replacement_required") {
       res.status(409).json({
-        error: "Assigned clients and matters need an active teammate before access is removed.",
+        error: "Assigned clients, matters, and pending intakes need an active teammate before access is removed.",
         code: "membership_assignments_replacement_required",
         assignedClientCount: result.assignedClientCount,
         assignedMatterCount: result.assignedMatterCount,
+        assignedIntakeCount: result.assignedIntakeCount,
       });
       return;
     }
@@ -925,7 +970,7 @@ router.get(
 
     await backfillAssignmentIdentities(access.workspaceId);
     const labels = assignmentLabels(member);
-    const [clients, matters, unresolvedClients, unresolvedMatters] = await Promise.all([
+    const [clients, matters, intakes, unresolvedClients, unresolvedMatters] = await Promise.all([
       db
         .select({ id: clientsTable.id, name: clientsTable.name })
         .from(clientsTable)
@@ -948,6 +993,22 @@ router.get(
           eq(mattersTable.responsibleMemberId, member.id),
         ))
         .orderBy(mattersTable.reference),
+      db
+        .select({
+          id: intakesTable.id,
+          clientName: intakesTable.clientName,
+          matterTitle: intakesTable.matterTitle,
+          status: intakesTable.status,
+        })
+        .from(intakesTable)
+        .where(
+          and(
+            eq(intakesTable.workspaceId, access.workspaceId),
+            eq(intakesTable.responsibleMemberId, member.id),
+            inArray(intakesTable.status, ["review_required", "cleared"]),
+          ),
+        )
+        .orderBy(intakesTable.createdAt, intakesTable.id),
       db
         .select({ id: clientsTable.id, name: clientsTable.name, label: clientsTable.owner })
         .from(clientsTable)
@@ -984,7 +1045,7 @@ router.get(
     ]);
 
     res.json(
-      GetWorkspaceMemberAssignmentsResponse.parse({ clients, matters, unresolvedClients, unresolvedMatters }),
+      GetWorkspaceMemberAssignmentsResponse.parse({ clients, matters, intakes, unresolvedClients, unresolvedMatters }),
     );
   },
 );
@@ -1453,6 +1514,17 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
         ),
       )
       .for("update");
+    const intakes = await tx
+      .select()
+      .from(intakesTable)
+      .where(
+        and(
+          eq(intakesTable.workspaceId, access.workspaceId),
+          eq(intakesTable.responsibleMemberId, member.id),
+          inArray(intakesTable.status, ["review_required", "cleared"]),
+        ),
+      )
+      .for("update");
     const [unresolvedClient, unresolvedMatter] = await Promise.all([
       tx.select({ id: clientsTable.id }).from(clientsTable).where(and(
         eq(clientsTable.workspaceId, access.workspaceId),
@@ -1470,7 +1542,7 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
     }
 
     const replacementId = parsedBody.data.replacementMemberId;
-    if ((clients.length || matters.length) && replacementId === undefined) {
+    if ((clients.length || matters.length || intakes.length) && replacementId === undefined) {
       return "replacement-required" as const;
     }
 
@@ -1509,6 +1581,24 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
             ),
           );
       }
+      if (intakes.length) {
+        await tx
+          .update(intakesTable)
+          .set({
+            responsible: replacementLabel,
+            responsibleMemberId: replacement.id,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(intakesTable.workspaceId, access.workspaceId),
+              inArray(
+                intakesTable.id,
+                intakes.map((intake) => intake.id),
+              ),
+            ),
+          );
+      }
 
       const actor = access.name || access.email || "Firm user";
       const previousLabel = member.displayName || member.email;
@@ -1538,6 +1628,19 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
           })),
         );
       }
+      if (intakes.length) {
+        await tx.insert(activitiesTable).values(
+          intakes.map((intake) => ({
+            workspaceId: access.workspaceId,
+            clerkUserId: access.userId,
+            actor,
+            action: `reassigned intake responsibility from ${previousLabel} to ${replacementLabel}`,
+            entityType: "intake",
+            entityId: intake.id,
+            entityLabel: intake.matterTitle,
+          })),
+        );
+      }
     }
 
     await tx.delete(membershipsTable).where(eq(membershipsTable.id, member.id));
@@ -1555,7 +1658,7 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
 
   if (result === "replacement-required") {
     res.status(409).json({
-      error: "Select an active firm member to take over this person's assigned clients and matters.",
+      error: "Select an active firm member to take over this person's assigned clients, matters, and pending intakes.",
     });
     return;
   }

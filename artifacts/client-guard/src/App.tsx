@@ -20,6 +20,7 @@ import {
   getListWorkspaceInvitationsQueryKey, getListWorkspaceMembersQueryKey,
   getListOwnershipNoticeFailuresQueryKey,
   getListWorkspaceAssignmentIssuesQueryKey,
+  getGetIntakeOverviewQueryKey,
   getListClientsQueryKey, getGetClientQueryKey, getListMattersQueryKey, getGetMatterQueryKey,
 } from '@workspace/api-client-react';
 import type { Client, ClientInput, Matter, WorkspaceInput, WorkspaceInvitationInput, WorkspaceMemberUpdate } from '@workspace/api-client-react';
@@ -593,6 +594,7 @@ function TeamPage() {
       qc.invalidateQueries({ queryKey: getListClientsQueryKey() }),
       qc.invalidateQueries({ queryKey: getListMattersQueryKey() }),
       qc.invalidateQueries({ queryKey: getListWorkspaceAssignmentIssuesQueryKey() }),
+      qc.invalidateQueries({ queryKey: getGetIntakeOverviewQueryKey() }),
       qc.invalidateQueries({
         predicate: query => {
           const key = query.queryKey[0];
@@ -913,7 +915,7 @@ function TeamPage() {
       if (!removeMember.isPending) setRemovingMemberId(null);
     }}>
       <div className="space-y-5">
-        <p className="text-sm leading-6 text-[#657572]">Review the client and matter work assigned to this teammate. Any listed assignments must be moved to an active colleague before access is removed.</p>
+        <p className="text-sm leading-6 text-[#657572]">Review the clients, matters, and pending intakes assigned to this teammate. Any listed assignments must be moved to an active colleague before access is removed.</p>
         {assignments.isLoading ? <Skeleton title="Checking assigned work" /> :
           assignments.isError ? <div className="rounded-md border border-[#ead3ce] bg-[#fbefed] p-4 text-sm text-[#9b4941]" role="alert">
             Assigned work could not be loaded. <button onClick={() => assignments.refetch()} className="font-semibold underline" data-testid="button-retry-member-assignments">Try again</button>
@@ -934,8 +936,12 @@ function TeamPage() {
               {assignments.data?.matters.length ? <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-[#657572]">
                 {assignments.data.matters.map(matter => <li key={matter.id}>{matter.reference} · {matter.title} <span className="text-xs text-[#87918d]">({matter.clientName})</span></li>)}
               </ul> : <p className="mt-2 text-xs text-[#87918d]">No matters assigned.</p>}
+              <div className="mt-4 border-t border-[#e4dfd4] pt-3 text-xs font-semibold text-[#40565a]">Pending intakes ({assignments.data?.intakes.length ?? 0})</div>
+              {assignments.data?.intakes.length ? <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-[#657572]">
+                {assignments.data.intakes.map(intake => <li key={intake.id}>{intake.clientName} · {intake.matterTitle} <span className="text-xs capitalize text-[#87918d]">({intake.status.replaceAll('_', ' ')})</span></li>)}
+              </ul> : <p className="mt-2 text-xs text-[#87918d]">No pending intakes assigned.</p>}
             </div>
-            {!!((assignments.data?.clients.length ?? 0) + (assignments.data?.matters.length ?? 0)) && <Field label="Reassign this work to">
+            {!!((assignments.data?.clients.length ?? 0) + (assignments.data?.matters.length ?? 0) + (assignments.data?.intakes.length ?? 0)) && <Field label="Reassign this work to">
               <select
                 value={replacementMemberId ?? ''}
                 onChange={event => setReplacementMemberId(event.target.value ? Number(event.target.value) : null)}
@@ -958,7 +964,7 @@ function TeamPage() {
           <Button
             variant="danger"
             disabled={assignments.isLoading || assignments.isError || removeMember.isPending || !!((assignments.data?.unresolvedClients.length ?? 0) + (assignments.data?.unresolvedMatters.length ?? 0)) || (
-              !!((assignments.data?.clients.length ?? 0) + (assignments.data?.matters.length ?? 0)) &&
+              !!((assignments.data?.clients.length ?? 0) + (assignments.data?.matters.length ?? 0) + (assignments.data?.intakes.length ?? 0)) &&
               (replacementMemberId === null || !(members.data ?? []).some(member => member.id === replacementMemberId && member.id !== removingMember.id))
             )}
             onClick={confirmRemoveTeammate}

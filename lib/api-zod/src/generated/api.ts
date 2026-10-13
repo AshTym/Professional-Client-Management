@@ -207,7 +207,7 @@ export const RemoveWorkspaceMemberResponse = zod.void()
 
 
 /**
- * @summary List client and matter records assigned to a firm member
+ * @summary List client, matter, and pending intake assignments for a firm member
  */
 
 
@@ -226,6 +226,12 @@ export const GetWorkspaceMemberAssignmentsResponse = zod.object({
   "title": zod.string(),
   "reference": zod.string(),
   "clientName": zod.string()
+})),
+  "intakes": zod.array(zod.object({
+  "id": zod.number().int(),
+  "clientName": zod.string(),
+  "matterTitle": zod.string(),
+  "status": zod.enum(['review_required', 'cleared'])
 })),
   "unresolvedClients": zod.array(zod.object({
   "id": zod.number().int(),
