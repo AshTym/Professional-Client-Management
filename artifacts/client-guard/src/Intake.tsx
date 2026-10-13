@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCreateIntake, useGetIntakeOverview, useListClients, useOpenMatterFromIntake, useReviewIntake, useSaveIntakeChecks, getGetIntakeOverviewQueryKey, getListClientsQueryKey, getListMattersQueryKey } from '@workspace/api-client-react';
+import { useCreateIntake, useGetIntakeOverview, useListClients, useOpenMatterFromIntake, useReviewIntake, useSaveIntakeChecks, getGetClientQueryKey, getGetDashboardQueryKey, getGetIntakeOverviewQueryKey, getListActivityQueryKey, getListClientsQueryKey, getListMattersQueryKey } from '@workspace/api-client-react';
 import type { IntakeCase, IntakeInput, IntakeRule } from '@workspace/api-client-react';
 import { AlertTriangle, Check, ClipboardCheck, Plus, ShieldCheck } from 'lucide-react';
 
@@ -22,7 +22,18 @@ export default function Intake() {
   const saveChecks = useSaveIntakeChecks();
   const create = useCreateIntake();
   const review = useReviewIntake();
-  const openMatter = useOpenMatterFromIntake();
+  const openMatter = useOpenMatterFromIntake({
+    mutation: {
+      onSuccess: (matter) => {
+        void Promise.all([
+          qc.invalidateQueries({ queryKey: getListClientsQueryKey() }),
+          qc.invalidateQueries({ queryKey: getGetClientQueryKey(matter.clientId) }),
+          qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
+          qc.invalidateQueries({ queryKey: getListActivityQueryKey() }),
+        ]);
+      },
+    },
+  });
   const [editingChecks, setEditingChecks] = useState(false);
   const [checks, setChecks] = useState<IntakeRule[]>([]);
   const [formOpen, setFormOpen] = useState(new URLSearchParams(window.location.search).get('create') === '1');

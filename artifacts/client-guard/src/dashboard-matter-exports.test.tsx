@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@workspace/api-client-react', () => ({
   ...mocks,
   getGetDashboardQueryKey: () => ['dashboard'],
+  getGetClientQueryKey: (id: number) => ['client', id],
   getListActivityQueryKey: () => ['activity'],
   getListClientsQueryKey: () => ['clients'],
   getGetIntakeOverviewQueryKey: () => ['intake'],
@@ -59,11 +60,10 @@ const secondMatter = {
   dueAt: null,
 };
 
-function renderAt(path: string) {
+function renderAt(path: string, queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+})) {
   window.history.replaceState({}, '', path);
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
 
   return render(
     <QueryClientProvider client={queryClient}>
@@ -119,10 +119,20 @@ describe('dashboard shortcuts and matter exports', () => {
     mocks.useSaveIntakeChecks.mockReturnValue({ mutate: vi.fn(), isPending: false });
     mocks.useCreateIntake.mockReturnValue({ mutate: vi.fn(), isPending: false });
     mocks.useReviewIntake.mockReturnValue({ mutate: vi.fn(), isPending: false });
-    mocks.useOpenMatterFromIntake.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    mocks.useOpenMatterFromIntake.mockImplementation((options: any) => ({
+      mutate: (variables: any, callbacks: any) => {
+        const matter = { id: 99, clientId: 5 };
+        options?.mutation?.onSuccess?.(matter, variables, undefined, undefined);
+        callbacks?.onSuccess?.(matter, variables, undefined);
+      },
+      isPending: false,
+    }));
   });
 
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
 
   it('opens the client form from the dashboard client shortcut', () => {
     renderAt('/dashboard');
@@ -149,6 +159,55 @@ describe('dashboard shortcuts and matter exports', () => {
 
     expect(screen.getByRole('dialog', { name: 'Start a client intake' })).toBeTruthy();
     expect(screen.getByTestId('button-submit-intake')).toBeTruthy();
+  });
+
+  it('refreshes client counts and related views after a matter is opened', async () => {
+    mocks.useGetIntakeOverview.mockReturnValue({
+      data: {
+        intakes: [{
+          id: 21,
+          clientId: null,
+          clientName: 'Northstar Ltd',
+          clientType: 'business',
+          email: 'client@example.test',
+          matterTitle: 'Northstar acquisition',
+          matterType: 'Acquisition',
+          responsible: 'A. Morgan',
+          dueAt: null,
+          partyNames: [],
+          answers: {},
+          conflictFindings: [],
+          status: 'cleared',
+          reviewNote: 'Conflict review complete',
+          reviewerClerkUserId: 'reviewer',
+          openedMatterId: null,
+          createdByClerkUserId: 'assistant',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        }],
+        checks: [],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    renderAt('/intake', queryClient);
+
+    fireEvent.click(screen.getByTestId('button-open-matter-21'));
+
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['clients'] });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['client', 5] });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['activity'] });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['matters'] });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['intake'] });
+    });
+    expect(screen.getByRole('status').textContent).toContain('Matter opened');
   });
 
   it('exports only selected matters in the selected PDF and audit request', async () => {
