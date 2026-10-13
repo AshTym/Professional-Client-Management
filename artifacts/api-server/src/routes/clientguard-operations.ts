@@ -1,9 +1,10 @@
 import { clerkClient } from "@clerk/express";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { pipeline } from "node:stream/promises";
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
+  activitiesTable,
   auditEventsTable,
   billingDraftsTable,
   clientsTable,
@@ -1106,7 +1107,7 @@ router.post("/portal/updates", async (req, res): Promise<void> => {
 });
 
 router.post("/audit/exports", async (req, res): Promise<void> => {
-  const access = await firmAccess(req, res, true);
+  const access = await firmAccess(req, res);
   if (!access) return;
   const parsed = api.LogMatterExportRequestBody.safeParse(req.body);
   if (!parsed.success) {
@@ -1128,14 +1129,39 @@ router.post("/audit/exports", async (req, res): Promise<void> => {
     res.status(404).json({ error: "One or more selected matters were not found in this firm." });
     return;
   }
-  await logAuditEvent(
-    access,
-    "matter_pdf_export_requested",
-    "matter_export",
-    null,
-    "Matter PDF export",
-    { scope: parsed.data.scope, matterCount: ids.length, format: "pdf" },
-  );
+  if (parsed.data.scope === "all") {
+    const [matterCount] = await db
+      .select({ value: count() })
+      .from(mattersTable)
+      .where(eq(mattersTable.workspaceId, access.workspaceId));
+    if (matterCount.value !== ids.length) {
+      res.status(400).json({ error: "An all-matters export must include every matter in this firm." });
+      return;
+    }
+  }
+  const actor = access.name || access.email || "Firm user";
+  const countLabel = `${ids.length} ${ids.length === 1 ? "record" : "records"}`;
+  await db.transaction(async (tx) => {
+    await tx.insert(auditEventsTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor,
+      action: "matter_pdf_exported",
+      entityType: "matter_export",
+      entityId: null,
+      entityLabel: "Matter PDF export",
+      details: { scope: parsed.data.scope, matterCount: ids.length, format: "pdf" },
+    });
+    await tx.insert(activitiesTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor,
+      action: `exported ${parsed.data.scope} matters (${countLabel})`,
+      entityType: "workspace",
+      entityId: access.workspaceId,
+      entityLabel: "Matter PDF",
+    });
+  });
   res.sendStatus(204);
 });
 

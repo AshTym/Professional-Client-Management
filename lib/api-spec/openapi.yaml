@@ -1247,7 +1247,8 @@ paths:
     post:
       operationId: logMatterExportRequest
       tags: [governance]
-      summary: Audit a matter PDF export request
+      summary: Record a successfully generated matter PDF export
+      description: The client calls this after generating the PDF and initiating the browser download. The server records firm-scoped activity and audit events without storing PDF contents.
       requestBody:
         required: true
         content:
@@ -1256,7 +1257,7 @@ paths:
               $ref: "#/components/schemas/MatterExportAuditInput"
       responses:
         "204":
-          description: Export request recorded
+          description: Successful export recorded
   /governance:
     get:
       operationId: getGovernanceOverview

@@ -5983,7 +5983,8 @@ export const getLogMatterExportRequestUrl = () => {
 }
 
 /**
- * @summary Audit a matter PDF export request
+ * The client calls this after generating the PDF and initiating the browser download. The server records firm-scoped activity and audit events without storing PDF contents.
+ * @summary Record a successfully generated matter PDF export
  */
 export const logMatterExportRequest = async (matterExportAuditInput: MatterExportAuditInput, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
 
@@ -6049,7 +6050,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type LogMatterExportRequestMutationVariables = {data: BodyType<MatterExportAuditInput>}
 
     /**
- * @summary Audit a matter PDF export request
+ * @summary Record a successfully generated matter PDF export
  */
 export const useLogMatterExportRequest = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logMatterExportRequest>>, TError,LogMatterExportRequestMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}

@@ -257,6 +257,7 @@ function ClientDetail() {
 }
 
 function MattersPage() {
+  const qc=useQueryClient();
  const [search,setSearch]=useState('');
  const [status,setStatus]=useState(()=>{const initial=new URLSearchParams(window.location.search).get('status')||'';return ['open','on_hold','closed'].includes(initial)?initial:'';});
  const [dueFilter,setDueFilter]=useState<'overdue'|''>(()=>new URLSearchParams(window.location.search).get('due')==='overdue'?'overdue':'');
@@ -294,14 +295,18 @@ function MattersPage() {
   setPdfError('');
   setIsExportingPdf(true);
   try{
-    try{
-     await logExport.mutateAsync({data:{scope,matterIds:records.map(record=>record.id)}});
-    }catch{
-     setPdfError('The PDF was not created because the export could not be recorded in the audit trail. Retry when audit logging is available.');
-     return;
-    }
    const {downloadMattersPdf}=await import('./lib/matters-pdf');
    downloadMattersPdf(records,scope);
+    try{
+      await logExport.mutateAsync({data:{scope,matterIds:records.map(record=>record.id)}});
+    }catch{
+      setPdfError('The PDF was downloaded, but the export could not be recorded in the audit trail. Contact your firm administrator before retrying.');
+      return;
+    }
+    void Promise.all([
+      qc.invalidateQueries({queryKey:getListActivityQueryKey()}),
+      qc.invalidateQueries({queryKey:getGetDashboardQueryKey()}),
+    ]);
   }catch{
    setPdfError('The PDF could not be created. Please try again.');
   }finally{

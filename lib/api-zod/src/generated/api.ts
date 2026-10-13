@@ -1685,7 +1685,8 @@ export const ListAuditEventsResponse = zod.array(ListAuditEventsResponseItem)
 
 
 /**
- * @summary Audit a matter PDF export request
+ * The client calls this after generating the PDF and initiating the browser download. The server records firm-scoped activity and audit events without storing PDF contents.
+ * @summary Record a successfully generated matter PDF export
  */
 
 export const logMatterExportRequestBodyMatterIdsMax = 2000;

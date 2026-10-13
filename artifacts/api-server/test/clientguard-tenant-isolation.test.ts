@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, mock, test } from "node:test";
 import { createHash, randomUUID } from "node:crypto";
 import express, { type Request } from "express";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { Pool } from "pg";
 import type { Server } from "node:http";
 import { clerkClient } from "@clerk/express";
@@ -1196,6 +1196,127 @@ test("clients, matters, and activity lists and details stay inside the signed-in
     { userId: firms.primary.ownerId },
   );
   assert.equal(otherActivityDetail.response.status, 404);
+});
+
+test("successful matter exports are recorded in the activity feed for only the exporting firm", async () => {
+  const [additionalMatter] = await db
+    .insert(mattersTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clientId: firms.primary.clientId,
+      title: `Additional Export Matter ${randomUUID()}`,
+      reference: `EXPORT-${randomUUID()}`,
+      matterType: "advisory",
+      responsible: "Primary Owner",
+    })
+    .returning();
+  try {
+    const exported = await request("/audit/exports", {
+      userId: firms.primary.ownerId,
+      method: "POST",
+      body: { scope: "selected", matterIds: [firms.primary.matterId] },
+    });
+    assert.equal(exported.response.status, 204);
+
+    const activity = await request("/activity", {
+      userId: firms.primary.ownerId,
+    });
+    assert.equal(activity.response.status, 200);
+    const events = activity.body as Array<{
+      id: number;
+      actor: string;
+      action: string;
+      entityType: string;
+      entityId: number;
+      entityLabel: string;
+      occurredAt: string;
+    }>;
+    const exportEvent = events.find((event) =>
+      event.action === "exported selected matters (1 record)",
+    );
+    assert.ok(exportEvent);
+    assert.equal(exportEvent.actor, "Test User");
+    assert.equal(exportEvent.entityType, "workspace");
+    assert.equal(exportEvent.entityId, firms.primary.workspaceId);
+    assert.equal(exportEvent.entityLabel, "Matter PDF");
+    assert.ok(Number.isFinite(Date.parse(exportEvent.occurredAt)));
+    const [storedExport] = await db
+      .select()
+      .from(activitiesTable)
+      .where(eq(activitiesTable.id, exportEvent.id));
+    assert.equal(storedExport.clerkUserId, firms.primary.ownerId);
+
+    const partialAllExport = await request("/audit/exports", {
+      userId: firms.primary.ownerId,
+      method: "POST",
+      body: { scope: "all", matterIds: [firms.primary.matterId] },
+    });
+    assert.equal(partialAllExport.response.status, 400);
+
+    const allMattersExport = await request("/audit/exports", {
+      userId: firms.primary.ownerId,
+      method: "POST",
+      body: {
+        scope: "all",
+        matterIds: [firms.primary.matterId, additionalMatter.id],
+      },
+    });
+    assert.equal(allMattersExport.response.status, 204);
+
+    const otherFirmActivity = await request("/activity", {
+      userId: firms.other.ownerId,
+    });
+    assert.equal(otherFirmActivity.response.status, 200);
+    assert.equal(
+      (otherFirmActivity.body as Array<{ action: string }>).some((event) =>
+        event.action.includes("exported"),
+      ),
+      false,
+    );
+
+    const crossFirmExport = await request("/audit/exports", {
+      userId: firms.primary.ownerId,
+      method: "POST",
+      body: { scope: "all", matterIds: [firms.other.matterId] },
+    });
+    assert.equal(crossFirmExport.response.status, 404);
+    const activityAfterRejectedExport = await request("/activity", {
+      userId: firms.primary.ownerId,
+    });
+    const exportEvents = (
+      activityAfterRejectedExport.body as Array<{ action: string }>
+    ).filter((event) => event.action.includes("exported"));
+    assert.equal(exportEvents.length, 2);
+    assert.ok(
+      exportEvents.some(
+        (event) => event.action === "exported all matters (2 records)",
+      ),
+    );
+  } finally {
+    const testEvents = await db
+      .select({ id: activitiesTable.id })
+      .from(activitiesTable)
+      .where(
+        and(
+          eq(activitiesTable.workspaceId, firms.primary.workspaceId),
+          inArray(activitiesTable.action, [
+            "exported selected matters (1 record)",
+            "exported all matters (2 records)",
+          ]),
+        ),
+      );
+    if (testEvents.length) {
+      await db.delete(activitiesTable).where(
+        inArray(
+          activitiesTable.id,
+          testEvents.map((event) => event.id),
+        ),
+      );
+    }
+    await db
+      .delete(mattersTable)
+      .where(eq(mattersTable.id, additionalMatter.id));
+  }
 });
 
 test("activity pagination keeps page boundaries and firm isolation", async () => {
