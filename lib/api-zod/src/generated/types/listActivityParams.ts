@@ -12,4 +12,8 @@ export type ListActivityParams = {
  * @maximum 100
  */
 limit?: number;
+/**
+ * @minimum 0
+ */
+offset?: number;
 };

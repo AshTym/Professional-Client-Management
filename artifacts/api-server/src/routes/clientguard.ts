@@ -1079,8 +1079,9 @@ router.get("/activity", async (req, res): Promise<void> => {
     .select()
     .from(activitiesTable)
     .where(eq(activitiesTable.workspaceId, access.workspaceId))
-    .orderBy(desc(activitiesTable.occurredAt))
-    .limit(parsed.data.limit);
+    .orderBy(desc(activitiesTable.occurredAt), desc(activitiesTable.id))
+    .limit(parsed.data.limit)
+    .offset(parsed.data.offset);
   res.json(ListActivityResponse.parse(activity));
 });
 

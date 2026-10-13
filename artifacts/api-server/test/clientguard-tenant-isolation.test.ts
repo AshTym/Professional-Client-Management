@@ -970,6 +970,98 @@ test("clients, matters, and activity lists and details stay inside the signed-in
   assert.equal(otherActivityDetail.response.status, 404);
 });
 
+test("activity pagination keeps page boundaries and firm isolation", async () => {
+  const insertedActivityIds: number[] = [];
+  const occurredAt = new Date("2099-01-01T00:00:00.000Z");
+  const primaryActions = [
+    `primary page event oldest ${randomUUID()}`,
+    `primary page event middle ${randomUUID()}`,
+    `primary page event newest ${randomUUID()}`,
+  ];
+  const otherActions = [
+    `other page event oldest ${randomUUID()}`,
+    `other page event newest ${randomUUID()}`,
+  ];
+
+  try {
+    const inserted = await db
+      .insert(activitiesTable)
+      .values([
+        ...primaryActions.map((action, index) => ({
+          workspaceId: firms.primary.workspaceId,
+          clerkUserId: firms.primary.ownerId,
+          actor: "Primary Owner",
+          action,
+          entityType: "client",
+          entityId: firms.primary.clientId,
+          entityLabel: "Primary test client",
+          occurredAt: new Date(occurredAt.getTime() + index * 60_000),
+        })),
+        ...otherActions.map((action, index) => ({
+          workspaceId: firms.other.workspaceId,
+          clerkUserId: firms.other.ownerId,
+          actor: "Other Firm Owner",
+          action,
+          entityType: "client",
+          entityId: firms.other.clientId,
+          entityLabel: "Other test client",
+          occurredAt: new Date(occurredAt.getTime() + index * 60_000),
+        })),
+      ])
+      .returning({ id: activitiesTable.id });
+    insertedActivityIds.push(...inserted.map(({ id }) => id));
+
+    const firstPage = await request("/activity?limit=2&offset=0", {
+      userId: firms.primary.ownerId,
+    });
+    assert.equal(firstPage.response.status, 200);
+    assert.deepEqual(
+      (firstPage.body as Array<{ action: string }>).map(({ action }) => action),
+      [primaryActions[2], primaryActions[1]],
+    );
+
+    const secondPage = await request("/activity?limit=2&offset=2", {
+      userId: firms.primary.ownerId,
+    });
+    assert.equal(secondPage.response.status, 200);
+    assert.deepEqual(
+      (secondPage.body as Array<{ action: string }>).map(({ action }) => action),
+      [primaryActions[0], "primary-only activity"],
+    );
+    assert(
+      (secondPage.body as Array<{ action: string }>).every(
+        ({ action }) => !action.startsWith("other"),
+      ),
+    );
+
+    const pastLastPage = await request("/activity?limit=2&offset=4", {
+      userId: firms.primary.ownerId,
+    });
+    assert.equal(pastLastPage.response.status, 200);
+    assert.deepEqual(pastLastPage.body, []);
+
+    const otherFirmPage = await request("/activity?limit=2&offset=0", {
+      userId: firms.other.ownerId,
+    });
+    assert.equal(otherFirmPage.response.status, 200);
+    assert.deepEqual(
+      (otherFirmPage.body as Array<{ action: string }>).map(({ action }) => action),
+      [otherActions[1], otherActions[0]],
+    );
+
+    const invalidOffset = await request("/activity?offset=-1", {
+      userId: firms.primary.ownerId,
+    });
+    assert.equal(invalidOffset.response.status, 400);
+  } finally {
+    if (insertedActivityIds.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, insertedActivityIds));
+    }
+  }
+});
+
 test("firm owners and admins can manage teammate roles with scoped audit events", async () => {
   const adminId = `member-admin-${randomUUID()}`;
   const teammateId = `member-teammate-${randomUUID()}`;

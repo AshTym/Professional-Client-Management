@@ -281,10 +281,14 @@ export const GetDashboardResponse = zod.object({
 export const listActivityQueryLimitDefault = 20;
 export const listActivityQueryLimitMax = 100;
 
+export const listActivityQueryOffsetDefault = 0;
+export const listActivityQueryOffsetMin = 0;
+
 
 
 export const ListActivityQueryParams = zod.object({
-  "limit": zod.coerce.number().int().min(1).max(listActivityQueryLimitMax).default(listActivityQueryLimitDefault)
+  "limit": zod.coerce.number().int().min(1).max(listActivityQueryLimitMax).default(listActivityQueryLimitDefault),
+  "offset": zod.coerce.number().int().min(listActivityQueryOffsetMin).default(listActivityQueryOffsetDefault)
 })
 
 export const ListActivityResponseItem = zod.object({
