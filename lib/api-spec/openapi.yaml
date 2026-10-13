@@ -533,6 +533,20 @@ paths:
           schema:
             type: integer
             minimum: 1
+        - name: startDate
+          in: query
+          required: false
+          description: Include events occurring on or after this UTC calendar date.
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          required: false
+          description: Include events occurring on or before this UTC calendar date.
+          schema:
+            type: string
+            format: date
       responses:
         "200":
           description: Audit events from a stable firm-wide snapshot
@@ -567,6 +581,20 @@ paths:
           schema:
             type: integer
             minimum: 1
+        - name: startDate
+          in: query
+          required: false
+          description: Include events occurring on or after this UTC calendar date.
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          required: false
+          description: Include events occurring on or before this UTC calendar date.
+          schema:
+            type: string
+            format: date
       responses:
         "200":
           description: Firm activity history in CSV format, newest events first

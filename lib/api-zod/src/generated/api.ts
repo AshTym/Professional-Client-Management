@@ -466,6 +466,11 @@ export const listActivityQuerySnapshotIdMin = 0;
 
 export const listActivityQueryActorNameMax = 255;
 
+const ActivityCalendarDate = zod.string().refine((value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}, 'Expected a valid date in YYYY-MM-DD format');
 
 
 
@@ -475,7 +480,17 @@ export const ListActivityQueryParams = zod.object({
   "snapshotId": zod.coerce.number().int().min(listActivityQuerySnapshotIdMin).optional().describe('Include only events at or below this firm-wide activity snapshot ID.'),
   "actorName": zod.coerce.string().max(listActivityQueryActorNameMax).optional().describe('Restrict results to activity by this exact actor name in the current firm\'s history.'),
   "entityType": zod.enum(['client', 'matter', 'workspace']).optional().describe('Restrict results to a related client, matter, or workspace record.'),
-  "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.')
+  "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.'),
+  "startDate": ActivityCalendarDate.optional().describe('Include events occurring on or after this UTC calendar date.'),
+  "endDate": ActivityCalendarDate.optional().describe('Include events occurring on or before this UTC calendar date.')
+}).superRefine((value, context) => {
+  if (value.startDate && value.endDate && value.startDate > value.endDate) {
+    context.addIssue({
+      code: zod.ZodIssueCode.custom,
+      path: ['endDate'],
+      message: 'End date must be on or after the start date.',
+    });
+  }
 })
 
 export const listActivityResponseSnapshotIdMin = 0;
@@ -507,7 +522,17 @@ export const exportActivityQueryActorNameMax = 255;
 export const ExportActivityQueryParams = zod.object({
   "actorName": zod.coerce.string().max(exportActivityQueryActorNameMax).optional().describe('Restrict results to activity by this exact actor name in the current firm\'s history.'),
   "entityType": zod.enum(['client', 'matter', 'workspace']).optional().describe('Restrict results to a related client, matter, or workspace record.'),
-  "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.')
+  "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.'),
+  "startDate": ActivityCalendarDate.optional().describe('Include events occurring on or after this UTC calendar date.'),
+  "endDate": ActivityCalendarDate.optional().describe('Include events occurring on or before this UTC calendar date.')
+}).superRefine((value, context) => {
+  if (value.startDate && value.endDate && value.startDate > value.endDate) {
+    context.addIssue({
+      code: zod.ZodIssueCode.custom,
+      path: ['endDate'],
+      message: 'End date must be on or after the start date.',
+    });
+  }
 })
 
 export const ExportActivityResponse = zod.unknown()

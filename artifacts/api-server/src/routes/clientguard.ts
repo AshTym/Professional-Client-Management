@@ -7,6 +7,7 @@ import {
   count,
   desc,
   eq,
+  gte,
   gt,
   inArray,
   ilike,
@@ -2384,6 +2385,14 @@ router.get("/activity", async (req, res): Promise<void> => {
   if (parsed.data.entityId !== undefined) {
     filters.push(eq(activitiesTable.entityId, parsed.data.entityId));
   }
+  if (parsed.data.startDate !== undefined) {
+    filters.push(gte(activitiesTable.occurredAt, new Date(`${parsed.data.startDate}T00:00:00.000Z`)));
+  }
+  if (parsed.data.endDate !== undefined) {
+    const endExclusive = new Date(`${parsed.data.endDate}T00:00:00.000Z`);
+    endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+    filters.push(lt(activitiesTable.occurredAt, endExclusive));
+  }
   filters.push(lte(activitiesTable.id, snapshotId));
   const activity = await db
     .select()
@@ -2413,6 +2422,14 @@ router.get("/activity/export.csv", async (req, res): Promise<void> => {
   }
   if (parsed.data.entityId !== undefined) {
     filters.push(eq(activitiesTable.entityId, parsed.data.entityId));
+  }
+  if (parsed.data.startDate !== undefined) {
+    filters.push(gte(activitiesTable.occurredAt, new Date(`${parsed.data.startDate}T00:00:00.000Z`)));
+  }
+  if (parsed.data.endDate !== undefined) {
+    const endExclusive = new Date(`${parsed.data.endDate}T00:00:00.000Z`);
+    endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+    filters.push(lt(activitiesTable.occurredAt, endExclusive));
   }
 
   const activity = await db

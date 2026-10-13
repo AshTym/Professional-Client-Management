@@ -2119,6 +2119,16 @@ entityType?: ListActivityEntityType;
  * @minimum 1
  */
 entityId?: number;
+/**
+ * Include events occurring on or after this UTC calendar date.
+ * @format date
+ */
+startDate?: string;
+/**
+ * Include events occurring on or before this UTC calendar date.
+ * @format date
+ */
+endDate?: string;
 };
 
 export type ListActivityEntityType = typeof ListActivityEntityType[keyof typeof ListActivityEntityType];
@@ -2145,6 +2155,16 @@ entityType?: ExportActivityEntityType;
  * @minimum 1
  */
 entityId?: number;
+/**
+ * Include events occurring on or after this UTC calendar date.
+ * @format date
+ */
+startDate?: string;
+/**
+ * Include events occurring on or before this UTC calendar date.
+ * @format date
+ */
+endDate?: string;
 };
 
 export type ExportActivityEntityType = typeof ExportActivityEntityType[keyof typeof ExportActivityEntityType];

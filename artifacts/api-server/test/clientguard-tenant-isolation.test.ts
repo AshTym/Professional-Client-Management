@@ -1932,6 +1932,57 @@ test("activity filters stay firm-scoped and apply before pagination", async () =
       (recordFilter.body.items as Array<{ action: string }>).map(({ action }) => action),
       [unrelatedActions[0]],
     );
+
+    const dateFilteredPage = await request(
+      `/activity?startDate=2099-01-02&endDate=2099-01-02&actorName=${encodeURIComponent("Primary Owner")}&entityType=client&entityId=${firms.primary.clientId}&limit=2&offset=0`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(dateFilteredPage.response.status, 200);
+    assert.deepEqual(
+      (dateFilteredPage.body.items as Array<{ action: string }>).map(({ action }) => action),
+      [ownerActions[2], ownerActions[1]],
+    );
+    const dateFilteredSecondPage = await request(
+      `/activity?startDate=2099-01-02&endDate=2099-01-02&actorName=${encodeURIComponent("Primary Owner")}&entityType=client&entityId=${firms.primary.clientId}&limit=2&offset=2&snapshotId=${dateFilteredPage.body.snapshotId}`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(dateFilteredSecondPage.response.status, 200);
+    assert.deepEqual(
+      (dateFilteredSecondPage.body.items as Array<{ action: string }>).map(({ action }) => action),
+      [ownerActions[0]],
+    );
+    assert(
+      !(dateFilteredPage.body.items as Array<{ action: string }>).some(
+        ({ action }) => action === unrelatedActions[2],
+      ),
+    );
+    const emptyDateRange = await request(
+      "/activity?startDate=2099-01-04&endDate=2099-01-04",
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(emptyDateRange.response.status, 200);
+    assert.deepEqual(emptyDateRange.body.items, []);
+
+    const impossibleDate = await request("/activity?startDate=2099-02-30", {
+      userId: firms.primary.ownerId,
+    });
+    assert.equal(impossibleDate.response.status, 400);
+    assert.match(String(impossibleDate.body.error), /valid date/i);
+    const reversedDateRange = await request(
+      "/activity?startDate=2099-01-03&endDate=2099-01-02",
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(reversedDateRange.response.status, 400);
+    assert.match(String(reversedDateRange.body.error), /on or after/i);
+
+    const dateFilteredCsvResponse = await fetch(
+      `${baseUrl}/activity/export.csv?startDate=2099-01-02&endDate=2099-01-02`,
+      { headers: { "x-test-user-id": firms.primary.ownerId } },
+    );
+    const dateFilteredCsv = await dateFilteredCsvResponse.text();
+    assert.equal(dateFilteredCsvResponse.status, 200);
+    assert(dateFilteredCsv.includes(ownerActions[0]));
+    assert(!dateFilteredCsv.includes(unrelatedActions[2]));
   } finally {
     if (insertedActivityIds.length) {
       await db
