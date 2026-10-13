@@ -608,7 +608,7 @@ router.post("/workspace/invitations/accept", async (req, res): Promise<void> => 
     [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
     clerkUser.primaryEmailAddress?.emailAddress ||
     "Firm user";
-  let result: "accepted" | "already-accepted" | "missing" | "expired" | "used" | "other-firm" | "already-member" =
+  let result: "accepted" | "already-accepted" | "missing" | "superseded" | "expired" | "used" | "other-firm" | "already-member" =
     "missing";
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tokenHash}))`);
@@ -619,7 +619,7 @@ router.post("/workspace/invitations/accept", async (req, res): Promise<void> => 
       .limit(1)
       .for("update");
     if (!invitation) {
-      result = "missing";
+      result = "superseded";
       return;
     }
     if (invitation.acceptedAt) {
@@ -699,8 +699,12 @@ router.post("/workspace/invitations/accept", async (req, res): Promise<void> => 
     res.status(404).json({ error: "This invitation could not be found." });
     return;
   }
+  if (result === "superseded") {
+    res.status(410).json({ error: "This invitation was replaced and can no longer be accepted." });
+    return;
+  }
   if (result === "expired" || result === "used") {
-    res.status(410).json({ error: "This invitation has expired or has already been used." });
+    res.status(410).json({ error: "This invitation has expired, been withdrawn, or has already been used." });
     return;
   }
   if (result === "other-firm") {

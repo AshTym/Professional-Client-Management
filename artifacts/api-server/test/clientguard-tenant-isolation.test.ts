@@ -40,6 +40,14 @@ let clientsTable: typeof import("@workspace/db").clientsTable;
 let mattersTable: typeof import("@workspace/db").mattersTable;
 let activitiesTable: typeof import("@workspace/db").activitiesTable;
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 before(async () => {
   if (!originalDatabaseUrl) {
     throw new Error(
@@ -1343,6 +1351,148 @@ test("firm owners can withdraw a pending invitation and its link cannot be accep
     body: { token },
   });
   assert.equal(acceptance.response.status, 410);
+});
+
+test("a resend racing with acceptance rejects the superseded link without creating membership", async (t) => {
+  const token = randomUUID();
+  const email = `resend-race-${randomUUID()}@example.test`;
+  const userId = `resend-race-${randomUUID()}`;
+  const [pending] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email,
+      role: "assistant",
+      invitedByClerkUserId: firms.primary.ownerId,
+      tokenHash: createHash("sha256").update(token).digest("hex"),
+      expiresAt: new Date(Date.now() + 60_000),
+    })
+    .returning();
+  const verificationStarted = deferred<void>();
+  const finishVerification = deferred<void>();
+  t.mock.method(clerkClient.users, "getUser", async () => {
+    verificationStarted.resolve();
+    await finishVerification.promise;
+    return {
+      id: userId,
+      firstName: "Resend",
+      lastName: "Race",
+      primaryEmailAddress: { emailAddress: email },
+      emailAddresses: [
+        { emailAddress: email, verification: { status: "verified" } },
+      ],
+    } as never;
+  });
+  t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async () => ({ id: `resent-${randomUUID()}` }) as never,
+  );
+
+  const acceptancePromise = request("/workspace/invitations/accept", {
+    userId,
+    method: "POST",
+    body: { token },
+  });
+  await verificationStarted.promise;
+
+  const resent = await request(`/workspace/invitations/${pending.id}/resend`, {
+    userId: firms.primary.ownerId,
+    method: "POST",
+  });
+  assert.equal(resent.response.status, 200);
+  finishVerification.resolve();
+
+  const acceptance = await acceptancePromise;
+  assert.equal(acceptance.response.status, 410);
+  assert.equal(
+    (acceptance.body as { error: string }).error,
+    "This invitation was replaced and can no longer be accepted.",
+  );
+
+  const [stored] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, pending.id));
+  assert.notEqual(stored.tokenHash, createHash("sha256").update(token).digest("hex"));
+  assert.equal(stored.acceptedAt, null);
+  assert.equal(stored.revokedAt, null);
+  const [membership] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, userId));
+  assert.equal(membership, undefined);
+});
+
+test("a withdrawal racing with acceptance rejects the withdrawn link without creating membership", async (t) => {
+  const token = randomUUID();
+  const email = `withdraw-race-${randomUUID()}@example.test`;
+  const userId = `withdraw-race-${randomUUID()}`;
+  const [pending] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email,
+      role: "assistant",
+      invitedByClerkUserId: firms.primary.ownerId,
+      clerkInvitationId: `withdraw-race-${randomUUID()}`,
+      tokenHash: createHash("sha256").update(token).digest("hex"),
+      expiresAt: new Date(Date.now() + 60_000),
+    })
+    .returning();
+  const verificationStarted = deferred<void>();
+  const finishVerification = deferred<void>();
+  t.mock.method(clerkClient.users, "getUser", async () => {
+    verificationStarted.resolve();
+    await finishVerification.promise;
+    return {
+      id: userId,
+      firstName: "Withdraw",
+      lastName: "Race",
+      primaryEmailAddress: { emailAddress: email },
+      emailAddresses: [
+        { emailAddress: email, verification: { status: "verified" } },
+      ],
+    } as never;
+  });
+  t.mock.method(
+    clerkClient.invitations,
+    "revokeInvitation",
+    async () => ({ id: pending.clerkInvitationId }) as never,
+  );
+
+  const acceptancePromise = request("/workspace/invitations/accept", {
+    userId,
+    method: "POST",
+    body: { token },
+  });
+  await verificationStarted.promise;
+
+  const withdrawn = await request(`/workspace/invitations/${pending.id}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+  });
+  assert.equal(withdrawn.response.status, 204);
+  finishVerification.resolve();
+
+  const acceptance = await acceptancePromise;
+  assert.equal(acceptance.response.status, 410);
+  assert.equal(
+    (acceptance.body as { error: string }).error,
+    "This invitation has expired, been withdrawn, or has already been used.",
+  );
+
+  const [stored] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, pending.id));
+  assert(stored.revokedAt);
+  assert.equal(stored.acceptedAt, null);
+  const [membership] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, userId));
+  assert.equal(membership, undefined);
 });
 
 test("invitation acceptance adds the verified invitee to the exact firm and role", async (t) => {
