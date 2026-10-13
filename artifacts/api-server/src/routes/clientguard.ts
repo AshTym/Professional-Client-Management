@@ -2384,35 +2384,43 @@ router.post("/clients", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const [requestingMembership] = await db.select().from(membershipsTable).where(and(
-    eq(membershipsTable.workspaceId, access.workspaceId),
-    eq(membershipsTable.clerkUserId, access.userId),
-  )).limit(1);
-  if (!requestingMembership) {
+  const result = await db.transaction(async (tx) => {
+    const [assignedMembership] = await tx
+      .select()
+      .from(membershipsTable)
+      .where(and(
+        eq(membershipsTable.workspaceId, access.workspaceId),
+        parsed.data.ownerMemberId === undefined
+          ? eq(membershipsTable.clerkUserId, access.userId)
+          : eq(membershipsTable.id, parsed.data.ownerMemberId),
+      ))
+      .for("update")
+      .limit(1);
+    if (!assignedMembership) {
+      return parsed.data.ownerMemberId === undefined
+        ? { kind: "requesting-member-missing" as const }
+        : { kind: "assigned-member-missing" as const };
+    }
+    const [client] = await tx
+      .insert(clientsTable)
+      .values({
+        ...parsed.data,
+        workspaceId: access.workspaceId,
+        owner: assignedMembership.displayName || assignedMembership.email || "Firm teammate",
+        ownerMemberId: assignedMembership.id,
+      })
+      .returning();
+    return { kind: "created" as const, client };
+  });
+  if (result.kind === "requesting-member-missing") {
     res.status(403).json({ error: "An active firm membership is required to assign this client." });
     return;
   }
-  let assignedMembership = requestingMembership;
-  if (parsed.data.ownerMemberId !== undefined) {
-    const [selectedMembership] = await db.select().from(membershipsTable).where(and(
-      eq(membershipsTable.id, parsed.data.ownerMemberId),
-      eq(membershipsTable.workspaceId, access.workspaceId),
-    )).limit(1);
-    if (!selectedMembership) {
-      res.status(400).json({ error: "Choose an active teammate in this firm." });
-      return;
-    }
-    assignedMembership = selectedMembership;
+  if (result.kind === "assigned-member-missing") {
+    res.status(400).json({ error: "Choose an active teammate in this firm." });
+    return;
   }
-  const [client] = await db
-    .insert(clientsTable)
-    .values({
-      ...parsed.data,
-      workspaceId: access.workspaceId,
-      owner: assignedMembership.displayName || assignedMembership.email || "Firm teammate",
-      ownerMemberId: assignedMembership.id,
-    })
-    .returning();
+  const { client } = result;
   await logActivity(access, "client", client.id, client.name, "created client");
   res.status(201).json(
     CreateClientResponse.parse({
@@ -2494,35 +2502,50 @@ router.patch("/clients/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  let ownerLabel: string | undefined;
-  if (parsed.data.ownerMemberId !== undefined) {
-    const [member] = await db.select().from(membershipsTable).where(and(
-      eq(membershipsTable.id, parsed.data.ownerMemberId),
-      eq(membershipsTable.workspaceId, access.workspaceId),
-    )).limit(1);
-    if (!member) {
-      res.status(400).json({ error: "Choose an active teammate in this firm." });
-      return;
+  const result = await db.transaction(async (tx) => {
+    let ownerLabel: string | undefined;
+    if (parsed.data.ownerMemberId !== undefined) {
+      const [member] = await tx
+        .select()
+        .from(membershipsTable)
+        .where(and(
+          eq(membershipsTable.id, parsed.data.ownerMemberId),
+          eq(membershipsTable.workspaceId, access.workspaceId),
+        ))
+        .for("update")
+        .limit(1);
+      if (!member) return { kind: "inactive-member" as const };
+      ownerLabel = member.displayName || member.email || "Firm teammate";
     }
-    ownerLabel = member.displayName || member.email || "Firm teammate";
+    const [client] = await tx
+      .update(clientsTable)
+      .set({
+        ...parsed.data,
+        owner: ownerLabel,
+      })
+      .where(
+        and(
+          eq(clientsTable.id, params.data.id),
+          eq(clientsTable.workspaceId, access.workspaceId),
+        ),
+      )
+      .returning();
+    return client
+      ? { kind: "updated" as const, client, ownerLabel }
+      : { kind: "client-missing" as const };
+  });
+  if (result.kind === "inactive-member") {
+    res.status(409).json({
+      error: "That teammate is no longer active in this firm. Choose another teammate and try again.",
+      code: "client_owner_inactive",
+    });
+    return;
   }
-  const [client] = await db
-    .update(clientsTable)
-    .set({
-      ...parsed.data,
-      owner: ownerLabel,
-    })
-    .where(
-      and(
-        eq(clientsTable.id, params.data.id),
-        eq(clientsTable.workspaceId, access.workspaceId),
-      ),
-    )
-    .returning();
-  if (!client) {
+  if (result.kind === "client-missing") {
     res.status(404).json({ error: "Client not found." });
     return;
   }
+  const { client, ownerLabel } = result;
   await logActivity(access, "client", client.id, client.name, "updated client");
   const [matterCount] = await db
     .select({ value: count() })

@@ -4649,6 +4649,99 @@ test("matter edits cannot restore assignment after concurrent teammate removal",
   }
 });
 
+test("client creation and edits cannot restore ownership after concurrent teammate removal", async () => {
+  const suffix = randomUUID();
+  const departingName = `Client Race Departing ${suffix}`;
+  const [departing] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: `client-race-departing-${suffix}`,
+      email: `client-race-departing-${suffix}@example.test`,
+      displayName: departingName,
+      role: "professional",
+    })
+    .returning();
+  const [primaryOwner] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, firms.primary.ownerId))
+    .limit(1);
+  assert.ok(primaryOwner);
+  const [client] = await db
+    .insert(clientsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      name: `Concurrent Client Ownership ${suffix}`,
+      owner: primaryOwner.displayName || primaryOwner.email,
+      ownerMemberId: primaryOwner.id,
+    })
+    .returning();
+
+  const lockHolder = await bootstrapPool!.connect();
+  await lockHolder.query("BEGIN");
+  await lockHolder.query(
+    `SELECT id FROM "${schemaName}".clientguard_memberships WHERE id = $1 FOR UPDATE`,
+    [departing.id],
+  );
+
+  let lockReleased = false;
+  try {
+    const removal = request(`/workspace/members/${departing.id}`, {
+      userId: firms.primary.ownerId,
+      method: "DELETE",
+    });
+    await waitForBlockedMembershipQueries(1);
+
+    const edit = request(`/clients/${client.id}`, {
+      userId: firms.primary.ownerId,
+      method: "PATCH",
+      body: { ownerMemberId: departing.id },
+    });
+    const newClientName = `Concurrent Client Creation ${suffix}`;
+    const create = request("/clients", {
+      userId: firms.primary.ownerId,
+      method: "POST",
+      body: {
+        name: newClientName,
+        clientType: "business",
+        ownerMemberId: departing.id,
+      },
+    });
+    await waitForBlockedMembershipQueries(3);
+
+    await lockHolder.query("COMMIT");
+    lockReleased = true;
+    const [removed, edited, created] = await Promise.all([removal, edit, create]);
+
+    assert.equal(removed.response.status, 204);
+    assert.equal(edited.response.status, 409);
+    assert.equal(edited.body.code, "client_owner_inactive");
+    assert.match(edited.body.error, /Choose another teammate and try again/);
+    assert.equal(created.response.status, 400);
+    assert.match(created.body.error, /Choose an active teammate in this firm/);
+
+    const [savedClient] = await db
+      .select()
+      .from(clientsTable)
+      .where(eq(clientsTable.id, client.id));
+    const attemptedCreation = await db
+      .select()
+      .from(clientsTable)
+      .where(eq(clientsTable.name, newClientName));
+    const remainingMembership = await db
+      .select()
+      .from(membershipsTable)
+      .where(eq(membershipsTable.id, departing.id));
+    assert.equal(savedClient.ownerMemberId, primaryOwner.id);
+    assert.equal(attemptedCreation.length, 0);
+    assert.equal(remainingMembership.length, 0);
+  } finally {
+    if (!lockReleased) await lockHolder.query("ROLLBACK");
+    lockHolder.release();
+  }
+});
+
 test("duplicate teammate names require an explicit active member choice to resolve legacy assignments", async () => {
   const suffix = randomUUID();
   const duplicateName = `Shared Name ${suffix}`;
