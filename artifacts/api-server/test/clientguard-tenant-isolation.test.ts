@@ -39,6 +39,7 @@ let membershipsTable: typeof import("@workspace/db").membershipsTable;
 let invitationsTable: typeof import("@workspace/db").invitationsTable;
 let clientsTable: typeof import("@workspace/db").clientsTable;
 let mattersTable: typeof import("@workspace/db").mattersTable;
+let matterCloseoutItemsTable: typeof import("@workspace/db").matterCloseoutItemsTable;
 let intakesTable: typeof import("@workspace/db").intakesTable;
 let intakeDraftsTable: typeof import("@workspace/db").intakeDraftsTable;
 let activitiesTable: typeof import("@workspace/db").activitiesTable;
@@ -129,6 +130,26 @@ before(async () => {
       due_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE "${schemaName}".clientguard_practice_settings (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL UNIQUE,
+      require_engagement_signature boolean NOT NULL DEFAULT false,
+      supported_jurisdictions text[] NOT NULL DEFAULT '{}',
+      updated_by_clerk_user_id text NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE "${schemaName}".clientguard_matter_closeout_items (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL,
+      matter_id integer NOT NULL,
+      item_key text NOT NULL,
+      title text NOT NULL,
+      status text NOT NULL DEFAULT 'open',
+      completed_by_clerk_user_id text,
+      completed_at timestamptz,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (workspace_id, matter_id, item_key)
     );
     CREATE TABLE "${schemaName}".clientguard_activities (
       id serial PRIMARY KEY,
@@ -374,6 +395,7 @@ before(async () => {
     invitationsTable,
     clientsTable,
     mattersTable,
+    matterCloseoutItemsTable,
     intakesTable,
     intakeDraftsTable,
     activitiesTable,
@@ -4475,6 +4497,29 @@ test("owner can create, update, archive, and close records", async () => {
     (updatedMatter.body as { title: string }).title,
     "Updated Matter",
   );
+  await db.insert(matterCloseoutItemsTable).values([
+    {
+      workspaceId: firms.primary.workspaceId,
+      matterId: newMatterId,
+      itemKey: "final_billing",
+      title: "Final billing reviewed",
+      status: "complete",
+    },
+    {
+      workspaceId: firms.primary.workspaceId,
+      matterId: newMatterId,
+      itemKey: "document_handover",
+      title: "Document handover reviewed",
+      status: "complete",
+    },
+    {
+      workspaceId: firms.primary.workspaceId,
+      matterId: newMatterId,
+      itemKey: "retention_review",
+      title: "Retention disposition reviewed",
+      status: "complete",
+    },
+  ]);
   const closedMatter = await request(`/matters/${newMatterId}`, {
     userId: firms.primary.ownerId,
     method: "DELETE",

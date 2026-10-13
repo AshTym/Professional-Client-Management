@@ -23,16 +23,15 @@ import {
   auditEventsTable,
   activitiesTable,
   clientsTable,
+  engagementLettersTable,
   invitationsTable,
   intakesTable,
+  matterCloseoutItemsTable,
   mattersTable,
   membershipsTable,
+  practiceSettingsTable,
   workspacesTable,
 } from "@workspace/db";
-import {
-  canMatterOpen,
-  closeoutIsReady,
-} from "../lib/clientguard-practice-service";
 import {
   CloseMatterParams,
   CreateClientBody,
@@ -2918,38 +2917,54 @@ router.patch("/matters/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  if (parsed.data.status !== undefined) {
-    const [currentMatter] = await db.select({ status: mattersTable.status })
-      .from(mattersTable)
-      .where(and(
-        eq(mattersTable.id, params.data.id),
-        eq(mattersTable.workspaceId, access.workspaceId),
-      ))
-      .limit(1);
-    if (!currentMatter) {
-      res.status(404).json({ error: "Matter not found." });
-      return;
-    }
-    if (currentMatter.status === "closed" && parsed.data.status !== "closed") {
-      res.status(409).json({ error: "A closed matter cannot be reopened through an edit." });
-      return;
-    }
-    if (parsed.data.status === "open" && !(await canMatterOpen(access.workspaceId, params.data.id))) {
-      res.status(409).json({
-        error: "This firm requires a completed engagement signature before a matter can be opened.",
-        code: "engagement_signature_required",
-      });
-      return;
-    }
-    if (parsed.data.status === "closed" && !(await closeoutIsReady(access.workspaceId, params.data.id))) {
-      res.status(409).json({
-        error: "Complete all matter closeout checklist items before closing this matter.",
-        code: "matter_closeout_required",
-      });
-      return;
-    }
-  }
   const result = await db.transaction(async (tx) => {
+    const [currentMatter] = await tx.select({
+      id: mattersTable.id,
+      status: mattersTable.status,
+      title: mattersTable.title,
+    }).from(mattersTable).where(and(
+      eq(mattersTable.id, params.data.id),
+      eq(mattersTable.workspaceId, access.workspaceId),
+    )).for("update").limit(1);
+    if (!currentMatter) return { kind: "matter-missing" as const };
+    if (parsed.data.status !== undefined) {
+      if (currentMatter.status === "closed" && parsed.data.status !== "closed") {
+        return { kind: "closed-matter" as const };
+      }
+      if (parsed.data.status === "open") {
+        const [settings] = await tx.select({
+          required: practiceSettingsTable.requireEngagementSignature,
+        }).from(practiceSettingsTable)
+          .where(eq(practiceSettingsTable.workspaceId, access.workspaceId)).limit(1);
+        if (settings?.required) {
+          const [signedLetter] = await tx.select({ id: engagementLettersTable.id })
+            .from(engagementLettersTable).where(and(
+              eq(engagementLettersTable.workspaceId, access.workspaceId),
+              eq(engagementLettersTable.matterId, params.data.id),
+              eq(engagementLettersTable.status, "completed"),
+            )).limit(1);
+          if (!signedLetter) return { kind: "signature-required" as const };
+        }
+      }
+      if (parsed.data.status === "closed") {
+        const items = await tx.select({
+          itemKey: matterCloseoutItemsTable.itemKey,
+          status: matterCloseoutItemsTable.status,
+        }).from(matterCloseoutItemsTable).where(and(
+          eq(matterCloseoutItemsTable.workspaceId, access.workspaceId),
+          eq(matterCloseoutItemsTable.matterId, params.data.id),
+          inArray(matterCloseoutItemsTable.itemKey, [
+            "final_billing",
+            "document_handover",
+            "retention_review",
+          ]),
+        ));
+        const ready = ["final_billing", "document_handover", "retention_review"].every((key) =>
+          items.some((item) => item.itemKey === key && item.status === "complete"),
+        );
+        if (!ready) return { kind: "closeout-required" as const };
+      }
+    }
     let responsibleLabel: string | undefined;
     if (parsed.data.responsibleMemberId !== undefined) {
       const [member] = await tx
@@ -2987,10 +3002,51 @@ router.patch("/matters/:id", async (req, res): Promise<void> => {
         eq(mattersTable.workspaceId, access.workspaceId),
       ))
       .returning();
+    if (matter) {
+      await tx.insert(activitiesTable).values({
+        workspaceId: access.workspaceId,
+        clerkUserId: access.userId,
+        actor: access.name || access.email || "Firm user",
+        action: "updated matter",
+        entityType: "matter",
+        entityId: matter.id,
+        entityLabel: matter.title,
+      });
+      if (parsed.data.status !== undefined && parsed.data.status !== currentMatter.status) {
+        await tx.insert(auditEventsTable).values({
+          workspaceId: access.workspaceId,
+          clerkUserId: access.userId,
+          actor: access.name || access.email || "Firm user",
+          action: "matter_status_updated",
+          entityType: "matter",
+          entityId: matter.id,
+          entityLabel: matter.title,
+          details: { previousStatus: currentMatter.status, status: matter.status },
+        });
+      }
+    }
     return matter
       ? { kind: "updated" as const, matter, responsibleLabel }
       : { kind: "matter-missing" as const };
   });
+  if (result.kind === "closed-matter") {
+    res.status(409).json({ error: "A closed matter cannot be reopened through an edit." });
+    return;
+  }
+  if (result.kind === "signature-required") {
+    res.status(409).json({
+      error: "This firm requires a completed engagement signature before a matter can be opened.",
+      code: "engagement_signature_required",
+    });
+    return;
+  }
+  if (result.kind === "closeout-required") {
+    res.status(409).json({
+      error: "Complete all matter closeout checklist items before closing this matter.",
+      code: "matter_closeout_required",
+    });
+    return;
+  }
   if (result.kind === "inactive-member") {
     res.status(409).json({
       error: "That teammate is no longer active in this firm. Choose another teammate and try again.",
@@ -3017,7 +3073,6 @@ router.patch("/matters/:id", async (req, res): Promise<void> => {
       ),
     )
     .limit(1);
-  await logActivity(access, "matter", matter.id, matter.title, "updated matter");
   res.json(
     UpdateMatterResponse.parse({
       ...matter,
@@ -3035,43 +3090,78 @@ router.delete("/matters/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const [existing] = await db.select({ status: mattersTable.status, title: mattersTable.title })
-    .from(mattersTable)
-    .where(and(
+  const result = await db.transaction(async (tx) => {
+    const [existing] = await tx.select({
+      id: mattersTable.id,
+      status: mattersTable.status,
+      title: mattersTable.title,
+    }).from(mattersTable).where(and(
       eq(mattersTable.id, params.data.id),
       eq(mattersTable.workspaceId, access.workspaceId),
-    ))
-    .limit(1);
-  if (!existing) {
+    )).for("update").limit(1);
+    if (!existing) return { kind: "matter-missing" as const };
+    if (existing.status === "closed") return { kind: "already-closed" as const };
+    const items = await tx.select({
+      itemKey: matterCloseoutItemsTable.itemKey,
+      status: matterCloseoutItemsTable.status,
+    }).from(matterCloseoutItemsTable).where(and(
+      eq(matterCloseoutItemsTable.workspaceId, access.workspaceId),
+      eq(matterCloseoutItemsTable.matterId, params.data.id),
+      inArray(matterCloseoutItemsTable.itemKey, [
+        "final_billing",
+        "document_handover",
+        "retention_review",
+      ]),
+    ));
+    const ready = ["final_billing", "document_handover", "retention_review"].every((key) =>
+      items.some((item) => item.itemKey === key && item.status === "complete"),
+    );
+    if (!ready) return { kind: "closeout-required" as const };
+    const [matter] = await tx.update(mattersTable).set({ status: "closed" }).where(and(
+      eq(mattersTable.id, params.data.id),
+      eq(mattersTable.workspaceId, access.workspaceId),
+    )).returning();
+    if (!matter) return { kind: "matter-missing" as const };
+    await tx.insert(activitiesTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action: "closed matter",
+      entityType: "matter",
+      entityId: matter.id,
+      entityLabel: matter.title,
+    });
+    await tx.insert(auditEventsTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action: "matter_status_updated",
+      entityType: "matter",
+      entityId: matter.id,
+      entityLabel: matter.title,
+      details: { previousStatus: existing.status, status: matter.status },
+    });
+    return { kind: "closed" as const };
+  });
+  if (result.kind === "matter-missing") {
     res.status(404).json({ error: "Matter not found." });
     return;
   }
-  if (existing.status === "closed") {
+  if (result.kind === "already-closed") {
     res.status(409).json({ error: "This matter is already closed." });
     return;
   }
-  if (!(await closeoutIsReady(access.workspaceId, params.data.id))) {
+  if (result.kind === "closeout-required") {
     res.status(409).json({
       error: "Complete all matter closeout checklist items before closing this matter.",
       code: "matter_closeout_required",
     });
     return;
   }
-  const [matter] = await db
-    .update(mattersTable)
-    .set({ status: "closed" })
-    .where(
-      and(
-        eq(mattersTable.id, params.data.id),
-        eq(mattersTable.workspaceId, access.workspaceId),
-      ),
-    )
-    .returning();
-  if (!matter) {
+  if (result.kind !== "closed") {
     res.status(404).json({ error: "Matter not found." });
     return;
   }
-  await logActivity(access, "matter", matter.id, matter.title, "closed matter");
   res.sendStatus(204);
 });
 

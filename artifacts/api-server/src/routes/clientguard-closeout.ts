@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import * as api from "@workspace/api-zod";
 import {
+  auditEventsTable,
   clientsTable,
   legalHoldsTable,
   matterCloseoutItemsTable,
@@ -135,28 +136,40 @@ router.post("/matters/:id/closeout", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const [matter] = await db.select({ id: mattersTable.id, title: mattersTable.title })
-    .from(mattersTable)
-    .where(and(
-      eq(mattersTable.id, params.data.id),
-      eq(mattersTable.workspaceId, access.workspaceId),
-    )).limit(1);
-  if (!matter) {
+  const result = await db.transaction(async (tx) => {
+    const [matter] = await tx.select({ id: mattersTable.id, title: mattersTable.title })
+      .from(mattersTable).where(and(
+        eq(mattersTable.id, params.data.id),
+        eq(mattersTable.workspaceId, access.workspaceId),
+      )).for("update").limit(1);
+    if (!matter) return null;
+    await tx.insert(matterCloseoutItemsTable).values(CLOSEOUT_STEPS.map((step) => ({
+      workspaceId: access.workspaceId,
+      matterId: matter.id,
+      itemKey: step.itemKey,
+      title: step.title,
+    }))).onConflictDoNothing();
+    await tx.insert(auditEventsTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action: "matter_closeout_initialized",
+      entityType: "matter",
+      entityId: matter.id,
+      entityLabel: matter.title,
+      details: {},
+    });
+    return matter;
+  });
+  if (!result) {
     res.status(404).json({ error: "Matter not found." });
     return;
   }
-  await db.insert(matterCloseoutItemsTable).values(CLOSEOUT_STEPS.map((step) => ({
-    workspaceId: access.workspaceId,
-    matterId: matter.id,
-    itemKey: step.itemKey,
-    title: step.title,
-  }))).onConflictDoNothing();
-  const data = await closeoutData(access.workspaceId, matter.id);
+  const data = await closeoutData(access.workspaceId, result.id);
   if (!data) {
     res.status(404).json({ error: "Matter not found." });
     return;
   }
-  await logAuditEvent(access, "matter_closeout_initialized", "matter", matter.id, matter.title);
   res.status(201).json(api.InitializeMatterCloseoutResponse.parse(data));
 });
 
@@ -173,37 +186,53 @@ router.patch("/closeout-items/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
-  const [item] = await db.select({
-    item: matterCloseoutItemsTable,
-    matterTitle: mattersTable.title,
-    matterStatus: mattersTable.status,
-  }).from(matterCloseoutItemsTable).innerJoin(mattersTable, and(
-    eq(mattersTable.id, matterCloseoutItemsTable.matterId),
-    eq(mattersTable.workspaceId, matterCloseoutItemsTable.workspaceId),
-  )).where(and(
-    eq(matterCloseoutItemsTable.id, params.data.id),
-    eq(matterCloseoutItemsTable.workspaceId, access.workspaceId),
-  )).limit(1);
-  if (!item) {
+  const result = await db.transaction(async (tx) => {
+    const [item] = await tx.select({
+      item: matterCloseoutItemsTable,
+      matterTitle: mattersTable.title,
+    }).from(matterCloseoutItemsTable).innerJoin(mattersTable, and(
+      eq(mattersTable.id, matterCloseoutItemsTable.matterId),
+      eq(mattersTable.workspaceId, matterCloseoutItemsTable.workspaceId),
+    )).where(and(
+      eq(matterCloseoutItemsTable.id, params.data.id),
+      eq(matterCloseoutItemsTable.workspaceId, access.workspaceId),
+    )).limit(1);
+    if (!item) return { kind: "missing" as const };
+    const [matter] = await tx.select({ status: mattersTable.status }).from(mattersTable)
+      .where(and(
+        eq(mattersTable.id, item.item.matterId),
+        eq(mattersTable.workspaceId, access.workspaceId),
+      )).for("update").limit(1);
+    if (matter?.status === "closed") return { kind: "closed" as const };
+    const [updated] = await tx.update(matterCloseoutItemsTable).set({
+      status: body.data.status,
+      completedByClerkUserId: body.data.status === "complete" ? access.userId : null,
+      completedAt: body.data.status === "complete" ? new Date() : null,
+    }).where(and(
+      eq(matterCloseoutItemsTable.id, item.item.id),
+      eq(matterCloseoutItemsTable.workspaceId, access.workspaceId),
+    )).returning();
+    await tx.insert(auditEventsTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action: "matter_closeout_item_updated",
+      entityType: "matter",
+      entityId: item.item.matterId,
+      entityLabel: item.matterTitle,
+      details: { itemKey: item.item.itemKey, status: updated.status },
+    });
+    return { kind: "updated" as const, item: item.item, matterTitle: item.matterTitle, updated };
+  });
+  if (result.kind === "missing") {
     res.status(404).json({ error: "Closeout checklist item not found." });
     return;
   }
-  if (item.matterStatus === "closed") {
+  if (result.kind === "closed") {
     res.status(409).json({ error: "A closed matter's closeout checklist is read-only." });
     return;
   }
-  const [updated] = await db.update(matterCloseoutItemsTable).set({
-    status: body.data.status,
-    completedByClerkUserId: body.data.status === "complete" ? access.userId : null,
-    completedAt: body.data.status === "complete" ? new Date() : null,
-  }).where(and(
-    eq(matterCloseoutItemsTable.id, item.item.id),
-    eq(matterCloseoutItemsTable.workspaceId, access.workspaceId),
-  )).returning();
-  await logAuditEvent(access, "matter_closeout_item_updated", "matter", item.item.matterId, item.matterTitle, {
-    itemKey: item.item.itemKey,
-    status: updated.status,
-  });
+  const { item, updated } = result;
   res.json(api.UpdateCloseoutItemResponse.parse({
     id: updated.id,
     itemKey: updated.itemKey,
@@ -246,16 +275,25 @@ router.post("/matters/:id/followups", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Enter a valid follow-up date." });
     return;
   }
-  const [followup] = await db.insert(matterFollowupsTable).values({
-    workspaceId: access.workspaceId,
-    matterId: matter.matter.id,
-    dueAt,
-    reason: body.data.reason.trim(),
-    createdByClerkUserId: access.userId,
-  }).returning();
-  await logAuditEvent(access, "matter_reengagement_reminder_created", "matter", matter.matter.id, matter.matter.title, {
-    followupId: followup.id,
-    dueAt: followup.dueAt.toISOString(),
+  const followup = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(matterFollowupsTable).values({
+      workspaceId: access.workspaceId,
+      matterId: matter.matter.id,
+      dueAt,
+      reason: body.data.reason.trim(),
+      createdByClerkUserId: access.userId,
+    }).returning();
+    await tx.insert(auditEventsTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action: "matter_reengagement_reminder_created",
+      entityType: "matter",
+      entityId: matter.matter.id,
+      entityLabel: matter.matter.title,
+      details: { followupId: created.id, dueAt: created.dueAt.toISOString() },
+    });
+    return created;
   });
   res.status(201).json(api.CreateMatterFollowupResponse.parse({
     id: followup.id,
@@ -300,17 +338,26 @@ router.patch("/matter-followups/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Re-engagement reminder not found." });
     return;
   }
-  const [updated] = await db.update(matterFollowupsTable).set({
-    status: body.data.status,
-    completedByClerkUserId: body.data.status === "complete" ? access.userId : null,
-    completedAt: body.data.status === "complete" ? new Date() : null,
-  }).where(and(
-    eq(matterFollowupsTable.id, row.followup.id),
-    eq(matterFollowupsTable.workspaceId, access.workspaceId),
-  )).returning();
-  await logAuditEvent(access, "matter_reengagement_reminder_updated", "matter", row.followup.matterId, row.matterTitle, {
-    followupId: updated.id,
-    status: updated.status,
+  const updated = await db.transaction(async (tx) => {
+    const [saved] = await tx.update(matterFollowupsTable).set({
+      status: body.data.status,
+      completedByClerkUserId: body.data.status === "complete" ? access.userId : null,
+      completedAt: body.data.status === "complete" ? new Date() : null,
+    }).where(and(
+      eq(matterFollowupsTable.id, row.followup.id),
+      eq(matterFollowupsTable.workspaceId, access.workspaceId),
+    )).returning();
+    await tx.insert(auditEventsTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action: "matter_reengagement_reminder_updated",
+      entityType: "matter",
+      entityId: row.followup.matterId,
+      entityLabel: row.matterTitle,
+      details: { followupId: saved.id, status: saved.status },
+    });
+    return saved;
   });
   res.json(api.UpdateMatterFollowupResponse.parse({
     id: updated.id,

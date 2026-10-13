@@ -3,6 +3,7 @@ import { Router, type IRouter } from "express";
 import PDFDocument from "pdfkit";
 import * as api from "@workspace/api-zod";
 import {
+  auditEventsTable,
   billingProfilesTable,
   clientsTable,
   documentsTable,
@@ -121,6 +122,22 @@ async function persistPdf(
   fileName: string,
   contents: Buffer,
 ) {
+  const objectPath = await uploadPdfObject(userId, fileName, contents);
+  const [document] = await db.insert(documentsTable).values({
+    workspaceId,
+    matterId,
+    uploadedByClerkUserId: userId,
+    objectPath,
+    originalName: fileName.slice(0, 255),
+    contentType: "application/pdf",
+    sizeBytes: contents.byteLength,
+    status: "ready",
+    clientVisible: false,
+  }).returning();
+  return document;
+}
+
+async function uploadPdfObject(userId: string, _fileName: string, contents: Buffer) {
   const uploadURL = await objectStorage.getObjectEntityUploadURL();
   const objectPath = objectStorage.normalizeObjectEntityPath(uploadURL);
   if (!objectPath.startsWith("/objects/uploads/")) {
@@ -137,18 +154,7 @@ async function persistPdf(
     owner: userId,
     visibility: "private",
   });
-  const [document] = await db.insert(documentsTable).values({
-    workspaceId,
-    matterId,
-    uploadedByClerkUserId: userId,
-    objectPath,
-    originalName: fileName.slice(0, 255),
-    contentType: "application/pdf",
-    sizeBytes: contents.byteLength,
-    status: "ready",
-    clientVisible: false,
-  }).returning();
-  return document;
+  return objectPath;
 }
 
 async function docuSignConnection(workspaceId: number) {
@@ -419,16 +425,31 @@ router.post("/engagement-letters/:id/send", async (req, res): Promise<void> => {
       },
     );
     if (typeof result.envelopeId !== "string") throw new Error("DocuSign did not return an envelope identifier.");
-    const [updated] = await db.update(engagementLettersTable).set({
-      envelopeId: result.envelopeId,
-      status: "sent",
-      sentAt: new Date(),
-      updatedAt: new Date(),
-    }).where(and(
-      eq(engagementLettersTable.id, letterRow.letter.id),
-      eq(engagementLettersTable.workspaceId, access.workspaceId),
-      eq(engagementLettersTable.status, "draft"),
-    )).returning();
+    const envelopeId = result.envelopeId;
+    const updated = await db.transaction(async (tx) => {
+      const [saved] = await tx.update(engagementLettersTable).set({
+        envelopeId,
+        status: "sent",
+        sentAt: new Date(),
+        updatedAt: new Date(),
+      }).where(and(
+        eq(engagementLettersTable.id, letterRow.letter.id),
+        eq(engagementLettersTable.workspaceId, access.workspaceId),
+        eq(engagementLettersTable.status, "draft"),
+      )).returning();
+      if (!saved) return null;
+      await tx.insert(auditEventsTable).values({
+        workspaceId: access.workspaceId,
+        clerkUserId: access.userId,
+        actor: access.name || access.email || "Firm user",
+        action: "engagement_letter_sent",
+        entityType: "engagement_letter",
+        entityId: saved.id,
+        entityLabel: letterRow.matterTitle,
+        details: { matterId: saved.matterId, revision: saved.revision },
+      });
+      return saved;
+    });
     if (!updated) {
       res.status(409).json({ error: "This letter changed while it was being sent. Refresh its status before retrying." });
       return;
@@ -437,10 +458,6 @@ router.post("/engagement-letters/:id/send", async (req, res): Promise<void> => {
       .from(practiceSettingsTable)
       .where(eq(practiceSettingsTable.workspaceId, access.workspaceId))
       .limit(1);
-    await logAuditEvent(access, "engagement_letter_sent", "engagement_letter", updated.id, letterRow.matterTitle, {
-      matterId: updated.matterId,
-      revision: updated.revision,
-    });
     res.json(api.SendEngagementLetterResponse.parse(
       mapLetter(updated, letterRow.matterTitle, letterRow.clientName, settings?.required ?? false),
     ));
@@ -461,7 +478,6 @@ router.post("/engagement-letters/:id/sync", async (req, res): Promise<void> => {
   const [row] = await db.select({
     letter: engagementLettersTable,
     matterTitle: mattersTable.title,
-    matterStatus: mattersTable.status,
     matterReference: mattersTable.reference,
     clientName: clientsTable.name,
   }).from(engagementLettersTable)
@@ -518,9 +534,9 @@ router.post("/engagement-letters/:id/sync", async (req, res): Promise<void> => {
     if (providerStatus === "completed") letterStatus = "completed";
     else if (providerStatus === "declined") letterStatus = "declined";
     else if (providerStatus === "voided") letterStatus = "voided";
-    let signedDocumentId = row.letter.signedDocumentId;
-    let signedAt = row.letter.signedAt;
-    if (letterStatus === "completed" && !signedDocumentId) {
+    let signedDocumentPath: string | null = null;
+    let signedDocumentSize = 0;
+    if (letterStatus === "completed" && !row.letter.signedDocumentId) {
       const response = await fetch(
         `${docusign.apiBase}/accounts/${encodeURIComponent(docusign.accountId)}/envelopes/${encodeURIComponent(row.letter.envelopeId)}/documents/combined`,
         {
@@ -536,52 +552,101 @@ router.post("/engagement-letters/:id/sync", async (req, res): Promise<void> => {
       if (!data.byteLength || data.byteLength > MAX_SIGNED_PDF_BYTES) {
         throw new Error("DocuSign returned an invalid signed document size.");
       }
-      const document = await persistPdf(
-        access.workspaceId,
-        row.letter.matterId,
+      signedDocumentSize = data.byteLength;
+      signedDocumentPath = await uploadPdfObject(
         access.userId,
         `engagement-${row.matterReference}-signed-r${row.letter.revision}.pdf`,
         data,
       );
-      signedDocumentId = document.id;
-      signedAt = new Date();
     }
-    const [updated] = await db.update(engagementLettersTable).set({
-      status: letterStatus,
-      signedDocumentId,
-      signedAt,
-      updatedAt: new Date(),
-    }).where(and(
-      eq(engagementLettersTable.id, row.letter.id),
-      eq(engagementLettersTable.workspaceId, access.workspaceId),
-    )).returning();
+    const synced = await db.transaction(async (tx) => {
+      const [current] = await tx.select().from(engagementLettersTable).where(and(
+        eq(engagementLettersTable.id, row.letter.id),
+        eq(engagementLettersTable.workspaceId, access.workspaceId),
+      )).for("update").limit(1);
+      if (!current) return null;
+      if (current.status === "completed" && current.signedDocumentId) {
+        const [settings] = await tx.select({
+          required: practiceSettingsTable.requireEngagementSignature,
+        }).from(practiceSettingsTable)
+          .where(eq(practiceSettingsTable.workspaceId, access.workspaceId)).limit(1);
+        return { updated: current, required: settings?.required ?? false };
+      }
+      let signedDocumentId = current.signedDocumentId;
+      let signedAt = current.signedAt;
+      if (letterStatus === "completed" && !signedDocumentId && signedDocumentPath) {
+        const [document] = await tx.insert(documentsTable).values({
+          workspaceId: access.workspaceId,
+          matterId: current.matterId,
+          uploadedByClerkUserId: access.userId,
+          objectPath: signedDocumentPath,
+          originalName: `engagement-${row.matterReference}-signed-r${current.revision}.pdf`.slice(0, 255),
+          contentType: "application/pdf",
+          sizeBytes: signedDocumentSize,
+          status: "ready",
+          clientVisible: false,
+        }).returning();
+        signedDocumentId = document.id;
+        signedAt = new Date();
+      }
+      const [updated] = await tx.update(engagementLettersTable).set({
+        status: letterStatus,
+        signedDocumentId,
+        signedAt,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(engagementLettersTable.id, current.id),
+        eq(engagementLettersTable.workspaceId, access.workspaceId),
+      )).returning();
+      const [settings] = await tx.select({
+        required: practiceSettingsTable.requireEngagementSignature,
+      }).from(practiceSettingsTable)
+        .where(eq(practiceSettingsTable.workspaceId, access.workspaceId)).limit(1);
+      let openedMatter = false;
+      if (letterStatus === "completed" && settings?.required) {
+        const [opened] = await tx.update(mattersTable).set({ status: "open" }).where(and(
+          eq(mattersTable.id, current.matterId),
+          eq(mattersTable.workspaceId, access.workspaceId),
+          eq(mattersTable.status, "on_hold"),
+        )).returning({ id: mattersTable.id });
+        openedMatter = Boolean(opened);
+      }
+      await tx.insert(auditEventsTable).values({
+        workspaceId: access.workspaceId,
+        clerkUserId: access.userId,
+        actor: access.name || access.email || "Firm user",
+        action: "engagement_letter_status_synced",
+        entityType: "engagement_letter",
+        entityId: updated.id,
+        entityLabel: row.matterTitle,
+        details: {
+          matterId: updated.matterId,
+          status: updated.status,
+          signedDocumentId: updated.signedDocumentId ?? null,
+        },
+      });
+      if (openedMatter) {
+        await tx.insert(auditEventsTable).values({
+          workspaceId: access.workspaceId,
+          clerkUserId: access.userId,
+          actor: access.name || access.email || "Firm user",
+          action: "matter_opened_after_engagement_signature",
+          entityType: "matter",
+          entityId: current.matterId,
+          entityLabel: row.matterTitle,
+          details: { engagementLetterId: updated.id },
+        });
+      }
+      return { updated, required: settings?.required ?? false };
+    });
+    if (!synced) throw new Error("The engagement letter disappeared during status sync.");
+    const { updated } = synced;
     await db.update(providerConnectionsTable).set({ lastSyncAt: new Date() }).where(eq(
       providerConnectionsTable.id,
       docusign.connection.id,
     ));
-    const [settings] = await db.select({ required: practiceSettingsTable.requireEngagementSignature })
-      .from(practiceSettingsTable)
-      .where(eq(practiceSettingsTable.workspaceId, access.workspaceId))
-      .limit(1);
-    if (letterStatus === "completed" && settings?.required && row.matterStatus === "on_hold") {
-      await db.update(mattersTable).set({ status: "open" }).where(and(
-        eq(mattersTable.id, row.letter.matterId),
-        eq(mattersTable.workspaceId, access.workspaceId),
-        eq(mattersTable.status, "on_hold"),
-      ));
-    }
-    await logAuditEvent(access, "engagement_letter_status_synced", "engagement_letter", updated.id, row.matterTitle, {
-      matterId: updated.matterId,
-      status: updated.status,
-      signedDocumentId: updated.signedDocumentId ?? null,
-    });
-    if (letterStatus === "completed" && settings?.required && row.matterStatus === "on_hold") {
-      await logAuditEvent(access, "matter_opened_after_engagement_signature", "matter", row.letter.matterId, row.matterTitle, {
-        engagementLetterId: updated.id,
-      });
-    }
     res.json(api.SyncEngagementLetterResponse.parse(
-      mapLetter(updated, row.matterTitle, row.clientName, settings?.required ?? false),
+      mapLetter(updated, row.matterTitle, row.clientName, synced.required),
     ));
   } catch (error) {
     req.log.warn({ err: error, letterId: row.letter.id }, "DocuSign status sync failed");
