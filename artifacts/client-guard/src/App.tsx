@@ -184,7 +184,7 @@ function Button({ children, onClick, variant='primary', disabled=false, testId='
 function Skeleton({ title='Loading records' }: { title?:string }) { return <div aria-label={title} data-testid="loading-skeleton"><div className="h-8 w-56 animate-pulse rounded bg-[#e6e2d7]" /><div className="mt-7 grid gap-4 md:grid-cols-3"><div className="h-28 animate-pulse rounded-md bg-[#eae7de]" /><div className="h-28 animate-pulse rounded-md bg-[#eae7de]" /><div className="h-28 animate-pulse rounded-md bg-[#eae7de]" /></div><div className="mt-5 h-56 animate-pulse rounded-md bg-[#eae7de]" /></div>; }
 function ErrorState({ title, retry }: { title:string; retry:()=>void }) { return <div className="rounded-md border border-[#e6c7c1] bg-[#fff9f6] p-8" data-testid="status-error"><div className="flex items-center gap-2 font-semibold text-[#843f38]"><AlertTriangle className="h-4 w-4" />{title}</div><p className="mt-2 text-sm text-[#7d7470]">We could not load this information. Your firm data has not been changed.</p><Button onClick={retry} variant="outline" testId="button-retry"><RefreshCw className="h-4 w-4" />Try again</Button></div>; }
 function EmptyState({ title, detail, action }: { title:string; detail:string; action?:ReactNode }) { return <div className="grid min-h-64 place-items-center rounded-md border border-dashed border-[#d6d1c5] bg-[#fbfaf5] p-8 text-center" data-testid="status-empty"><div><div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#e8eee8] text-[#4d7463]"><FileText className="h-5 w-5" /></div><h3 className="serif mt-4 text-xl font-bold">{title}</h3><p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#71807e]">{detail}</p>{action&&<div className="mt-5">{action}</div>}</div></div>; }
-function Dashboard() {
+export function Dashboard() {
  const summary = useGetDashboard(); const activity = useListActivity({limit:6}); const [,setLocation]=useLocation();
  if(summary.isLoading||activity.isLoading) return <Skeleton title="Loading firm overview" />;
  if(summary.isError) return <ErrorState title="Overview unavailable" retry={()=>summary.refetch()} />;
@@ -213,7 +213,7 @@ function timeAgo(date:string){if(!date)return 'Recently';const mins=Math.floor((
 function formatTime(date:string){return date?new Date(date).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'—';}
 function StatusPill({value}:{value:string}) { const label=value.replace('_',' ');const style=value==='active'||value==='open'?'bg-[#e5eee7] text-[#47725b]':value==='prospect'||value==='on_hold'?'bg-[#f3eddd] text-[#8d713e]':value==='high'?'bg-[#f7e6e1] text-[#9d5045]':'bg-[#ecebe5] text-[#687371]';return <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold capitalize ${style}`} data-testid={`status-${value}`}>{label}</span>}
 
-function ClientsPage() {
+export function ClientsPage() {
  const [search,setSearch]=useState(''); const [status,setStatus]=useState(()=>{const initial=new URLSearchParams(window.location.search).get('status')||'';return ['active','prospect','archived'].includes(initial)?initial:'';}); const [modal,setModal]=useState(()=>new URLSearchParams(window.location.search).get('create')==='1');
  const [,setLocation]=useLocation();
  const result=useListClients({search:search||undefined,status:(status||undefined) as any});
