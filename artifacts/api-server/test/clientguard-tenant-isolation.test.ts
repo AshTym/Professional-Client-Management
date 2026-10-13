@@ -2185,6 +2185,137 @@ test("only the current owner can transfer ownership to an active member and both
   }
 });
 
+test("one failed ownership notice does not suppress the other owner's notice or transfer", async (t) => {
+  const successorId = `ownership-partial-notice-${randomUUID()}`;
+  const successorName = `Partial Notice Successor ${randomUUID()}`;
+  const [currentOwner] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, firms.primary.ownerId))
+    .limit(1);
+  const [successor] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: successorId,
+      email: "ownership-partial-notice@example.test",
+      displayName: successorName,
+      role: "professional",
+    })
+    .returning();
+  const previousNotificationSender = process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL;
+  process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL = "notifications@example.test";
+  const sentRecipients: string[] = [];
+  const createEmail = t.mock.method(
+    clerkClient.emails,
+    "create",
+    async (params) => {
+      const email = params as { to: { userId?: string } };
+      const recipientId = email.to.userId ?? "";
+      sentRecipients.push(recipientId);
+      if (recipientId === successorId) {
+        throw new Error("Email provider unavailable for new owner");
+      }
+      return {} as never;
+    },
+  );
+  const activityIds: number[] = [];
+  const auditIds: number[] = [];
+
+  try {
+    const transferred = await request(
+      `/workspace/members/${successor.id}/transfer-ownership`,
+      { userId: firms.primary.ownerId, method: "POST" },
+    );
+    assert.equal(transferred.response.status, 200);
+    assert.equal(createEmail.mock.callCount(), 2);
+    assert.deepEqual(
+      sentRecipients.slice().sort(),
+      [currentOwner.clerkUserId, successorId].sort(),
+    );
+    assert.equal(
+      sentRecipients.filter((recipientId) => recipientId === currentOwner.clerkUserId).length,
+      1,
+    );
+    assert.equal(
+      sentRecipients.filter((recipientId) => recipientId === successorId).length,
+      1,
+    );
+
+    const [formerOwner] = await db
+      .select()
+      .from(membershipsTable)
+      .where(eq(membershipsTable.clerkUserId, currentOwner.clerkUserId))
+      .limit(1);
+    const [newOwner] = await db
+      .select()
+      .from(membershipsTable)
+      .where(eq(membershipsTable.clerkUserId, successorId))
+      .limit(1);
+    assert.equal(formerOwner.role, "admin");
+    assert.equal(newOwner.role, "owner");
+
+    const noticeEvents = await db
+      .select()
+      .from(auditEventsTable)
+      .where(
+        and(
+          eq(auditEventsTable.workspaceId, firms.primary.workspaceId),
+          eq(auditEventsTable.action, "ownership_notice_delivery"),
+        ),
+      );
+    const transferNoticeEvents = noticeEvents.filter(
+      (event) => event.details.newOwnerName === successorName,
+    );
+    auditIds.push(...transferNoticeEvents.map(({ id }) => id));
+    const transferNoticeRoles = transferNoticeEvents.map((event) => ({
+      role: event.details.recipientRole,
+      status: event.details.status,
+    }));
+    assert.deepEqual(
+      transferNoticeRoles.sort((a, b) => String(a.role).localeCompare(String(b.role))),
+      [
+        { role: "former_owner", status: "sent" },
+        { role: "new_owner", status: "failed" },
+      ],
+    );
+
+    const transferEvents = await db
+      .select()
+      .from(activitiesTable)
+      .where(eq(activitiesTable.workspaceId, firms.primary.workspaceId));
+    const ownershipEvent = transferEvents.find((event) =>
+      event.action ===
+      `transferred firm ownership from ${currentOwner.displayName || currentOwner.email} to ${successorName}`,
+    );
+    assert(ownershipEvent);
+    activityIds.push(ownershipEvent.id);
+  } finally {
+    if (activityIds.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, activityIds));
+    }
+    if (auditIds.length) {
+      await db
+        .delete(auditEventsTable)
+        .where(inArray(auditEventsTable.id, auditIds));
+    }
+    await db
+      .update(membershipsTable)
+      .set({ role: "owner" })
+      .where(eq(membershipsTable.id, currentOwner.id));
+    await db
+      .delete(membershipsTable)
+      .where(eq(membershipsTable.id, successor.id));
+    if (previousNotificationSender === undefined) {
+      delete process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL;
+    } else {
+      process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL = previousNotificationSender;
+    }
+  }
+});
+
 test("failed ownership notices can be retried separately without repeating the transfer", async (t) => {
   const successorId = `ownership-notice-failure-${randomUUID()}`;
   const viewerId = `ownership-notice-viewer-${randomUUID()}`;
