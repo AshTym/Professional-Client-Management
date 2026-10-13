@@ -3255,13 +3255,24 @@ test("firm admins can resend a pending invitation and invalidate its previous li
   assert.equal(createInvitation.mock.callCount(), 1);
   assert.equal(revokeInvitation.mock.callCount(), 1);
   assert.equal(revokeInvitation.mock.calls[0].arguments[0], "old_clerk_invitation");
-  assert.equal((resent.body as { id: number }).id, pending.id);
-  assert.equal((resent.body as { email: string }).email, "resend-target@example.test");
 
   const [updated] = await db
     .select()
     .from(invitationsTable)
     .where(eq(invitationsTable.id, pending.id));
+  const resentInvitation = resent.body as Record<string, unknown>;
+  assert.deepEqual(resentInvitation, {
+    id: pending.id,
+    email: "resend-target@example.test",
+    role: "professional",
+    createdAt: updated.createdAt.toISOString(),
+    expiresAt: updated.expiresAt.toISOString(),
+    expired: false,
+    revoked: false,
+    providerRevocationFailed: false,
+  });
+  assert.equal("tokenHash" in resentInvitation, false);
+  assert.equal("clerkInvitationId" in resentInvitation, false);
   assert.notEqual(updated.tokenHash, createHash("sha256").update(oldToken).digest("hex"));
   assert.equal(updated.tokenHash, createHash("sha256").update(newToken).digest("hex"));
   assert.equal(updated.clerkInvitationId, "new_clerk_invitation");
