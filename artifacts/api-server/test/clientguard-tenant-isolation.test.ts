@@ -1430,6 +1430,82 @@ test("activity pagination keeps page boundaries and firm isolation", async () =>
   }
 });
 
+test("activity orders events with tied timestamps by descending ID for each firm", async () => {
+  const insertedActivityIds: number[] = [];
+  const occurredAt = new Date("2099-01-01T00:00:00.000Z");
+  const tiedEvents = [
+    {
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: firms.primary.ownerId,
+      actor: "Primary Owner",
+      action: `primary tied event first ${randomUUID()}`,
+      entityType: "client",
+      entityId: firms.primary.clientId,
+      entityLabel: "Primary test client",
+    },
+    {
+      workspaceId: firms.other.workspaceId,
+      clerkUserId: firms.other.ownerId,
+      actor: "Other Firm Owner",
+      action: `other tied event first ${randomUUID()}`,
+      entityType: "client",
+      entityId: firms.other.clientId,
+      entityLabel: "Other test client",
+    },
+    {
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: firms.primary.ownerId,
+      actor: "Primary Owner",
+      action: `primary tied event second ${randomUUID()}`,
+      entityType: "client",
+      entityId: firms.primary.clientId,
+      entityLabel: "Primary test client",
+    },
+    {
+      workspaceId: firms.other.workspaceId,
+      clerkUserId: firms.other.ownerId,
+      actor: "Other Firm Owner",
+      action: `other tied event second ${randomUUID()}`,
+      entityType: "client",
+      entityId: firms.other.clientId,
+      entityLabel: "Other test client",
+    },
+  ];
+
+  try {
+    const inserted = await db
+      .insert(activitiesTable)
+      .values(tiedEvents.map((event) => ({ ...event, occurredAt })))
+      .returning({ id: activitiesTable.id, action: activitiesTable.action });
+    insertedActivityIds.push(...inserted.map(({ id }) => id));
+
+    for (const [firm, expectedPrefix] of [
+      [firms.primary, "primary tied event"],
+      [firms.other, "other tied event"],
+    ] as const) {
+      const expectedActions = inserted
+        .filter(({ action }) => action.startsWith(expectedPrefix))
+        .sort((a, b) => b.id - a.id)
+        .map(({ action }) => action);
+      const response = await request("/activity?limit=2", {
+        userId: firm.ownerId,
+      });
+
+      assert.equal(response.response.status, 200);
+      assert.deepEqual(
+        (response.body as Array<{ action: string }>).map(({ action }) => action),
+        expectedActions,
+      );
+    }
+  } finally {
+    if (insertedActivityIds.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, insertedActivityIds));
+    }
+  }
+});
+
 test("firm owners and admins can manage teammate roles with scoped audit events", async () => {
   const adminId = `member-admin-${randomUUID()}`;
   const teammateId = `member-teammate-${randomUUID()}`;
