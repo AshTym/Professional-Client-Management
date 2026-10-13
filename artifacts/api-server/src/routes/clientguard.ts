@@ -167,6 +167,63 @@ function assignmentLabels(member: typeof membershipsTable.$inferSelect): string[
   return [...new Set([member.displayName, member.email].filter((label) => label.trim()))];
 }
 
+function normalizedAssignmentLabel(label: string): string {
+  return label.trim().toLocaleLowerCase();
+}
+
+async function backfillAssignmentIdentities(workspaceId: number): Promise<void> {
+  const [members, clients, matters] = await Promise.all([
+    db.select().from(membershipsTable).where(eq(membershipsTable.workspaceId, workspaceId)),
+    db.select().from(clientsTable).where(
+      and(eq(clientsTable.workspaceId, workspaceId), isNull(clientsTable.ownerMemberId)),
+    ),
+    db.select().from(mattersTable).where(
+      and(eq(mattersTable.workspaceId, workspaceId), isNull(mattersTable.responsibleMemberId)),
+    ),
+  ]);
+  const idsByLabel = new Map<string, Set<number>>();
+  for (const member of members) {
+    for (const label of assignmentLabels(member)) {
+      const normalized = normalizedAssignmentLabel(label);
+      const ids = idsByLabel.get(normalized) ?? new Set<number>();
+      ids.add(member.id);
+      idsByLabel.set(normalized, ids);
+    }
+  }
+
+  for (const client of clients) {
+    const ids = idsByLabel.get(normalizedAssignmentLabel(client.owner));
+    if (ids?.size === 1) {
+      await db.update(clientsTable)
+        .set({ ownerMemberId: [...ids][0] })
+        .where(and(
+          eq(clientsTable.id, client.id),
+          eq(clientsTable.workspaceId, workspaceId),
+          isNull(clientsTable.ownerMemberId),
+        ));
+    }
+  }
+  for (const matter of matters) {
+    const ids = idsByLabel.get(normalizedAssignmentLabel(matter.responsible));
+    if (ids?.size === 1) {
+      await db.update(mattersTable)
+        .set({ responsibleMemberId: [...ids][0] })
+        .where(and(
+          eq(mattersTable.id, matter.id),
+          eq(mattersTable.workspaceId, workspaceId),
+          isNull(mattersTable.responsibleMemberId),
+        ));
+    }
+  }
+}
+
+function memberLabelById(members: (typeof membershipsTable.$inferSelect)[]) {
+  return new Map(members.map((member) => [
+    member.id,
+    member.displayName || member.email || "Firm teammate",
+  ]));
+}
+
 router.get("/workspace/members", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
   if (!access) return;
@@ -181,6 +238,59 @@ router.get("/workspace/members", async (req, res): Promise<void> => {
     .where(eq(membershipsTable.workspaceId, access.workspaceId))
     .orderBy(desc(membershipsTable.createdAt), desc(membershipsTable.id));
   res.json(ListWorkspaceMembersResponse.parse(members.map(memberResponse)));
+});
+
+router.get("/workspace/assignment-members", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+  const members = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.workspaceId, access.workspaceId))
+    .orderBy(asc(membershipsTable.displayName), asc(membershipsTable.id));
+  res.json(members.map((member) => ({
+    id: member.id,
+    name: member.displayName,
+    email: member.email,
+    role: member.role,
+  })));
+});
+
+router.get("/workspace/assignment-issues", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+  if (!canManageInvitations(access.role)) {
+    res.status(403).json({ error: "Only firm owners and admins can review unresolved assignments." });
+    return;
+  }
+  await backfillAssignmentIdentities(access.workspaceId);
+  const [clients, matters] = await Promise.all([
+    db.select({ id: clientsTable.id, name: clientsTable.name, label: clientsTable.owner })
+      .from(clientsTable)
+      .where(and(
+        eq(clientsTable.workspaceId, access.workspaceId),
+        isNull(clientsTable.ownerMemberId),
+      ))
+      .orderBy(asc(clientsTable.name)),
+    db.select({
+      id: mattersTable.id,
+      title: mattersTable.title,
+      reference: mattersTable.reference,
+      clientName: clientsTable.name,
+      label: mattersTable.responsible,
+    })
+      .from(mattersTable)
+      .innerJoin(clientsTable, and(
+        eq(clientsTable.id, mattersTable.clientId),
+        eq(clientsTable.workspaceId, access.workspaceId),
+      ))
+      .where(and(
+        eq(mattersTable.workspaceId, access.workspaceId),
+        isNull(mattersTable.responsibleMemberId),
+      ))
+      .orderBy(asc(mattersTable.reference)),
+  ]);
+  res.json({ clients, matters });
 });
 
 router.get("/workspace/membership-conflicts", async (req, res): Promise<void> => {
@@ -332,6 +442,7 @@ router.post(
         if (member.role === "owner") return { kind: "owner_protected" as const };
         if (member.clerkUserId === access.userId) return { kind: "self_removal" as const };
 
+      await backfillAssignmentIdentities(access.workspaceId);
         const labels = assignmentLabels(member);
         const assignedClients = await tx
           .select()
@@ -339,7 +450,7 @@ router.post(
           .where(
             and(
               eq(clientsTable.workspaceId, access.workspaceId),
-              inArray(clientsTable.owner, labels),
+            eq(clientsTable.ownerMemberId, member.id),
             ),
           )
           .for("update");
@@ -349,10 +460,25 @@ router.post(
           .where(
             and(
               eq(mattersTable.workspaceId, access.workspaceId),
-              inArray(mattersTable.responsible, labels),
+            eq(mattersTable.responsibleMemberId, member.id),
             ),
           )
           .for("update");
+      const [unresolvedClient, unresolvedMatter] = await Promise.all([
+        tx.select({ id: clientsTable.id }).from(clientsTable).where(and(
+          eq(clientsTable.workspaceId, access.workspaceId),
+          isNull(clientsTable.ownerMemberId),
+          inArray(clientsTable.owner, labels),
+        )).limit(1),
+        tx.select({ id: mattersTable.id }).from(mattersTable).where(and(
+          eq(mattersTable.workspaceId, access.workspaceId),
+          isNull(mattersTable.responsibleMemberId),
+          inArray(mattersTable.responsible, labels),
+        )).limit(1),
+      ]);
+      if (unresolvedClient.length || unresolvedMatter.length) {
+        return { kind: "unresolved_assignments" as const };
+      }
         if (
           (assignedClients.length || assignedMatters.length) &&
           body.data.replacementMemberId === undefined
@@ -388,7 +514,7 @@ router.post(
           if (assignedClients.length) {
             await tx
               .update(clientsTable)
-              .set({ owner: replacementLabel, updatedAt: new Date() })
+              .set({ owner: replacementLabel, ownerMemberId: replacement.id, updatedAt: new Date() })
               .where(
                 and(
                   eq(clientsTable.workspaceId, access.workspaceId),
@@ -402,7 +528,7 @@ router.post(
           if (assignedMatters.length) {
             await tx
               .update(mattersTable)
-              .set({ responsible: replacementLabel, updatedAt: new Date() })
+              .set({ responsible: replacementLabel, responsibleMemberId: replacement.id, updatedAt: new Date() })
               .where(
                 and(
                   eq(mattersTable.workspaceId, access.workspaceId),
@@ -516,6 +642,13 @@ router.post(
       });
       return;
     }
+    if (result.kind === "unresolved_assignments") {
+      res.status(409).json({
+        error: "Resolve legacy assignment labels in the Team page before removing this teammate.",
+        code: "unresolved_assignments",
+      });
+      return;
+    }
     if (result.kind === "self_removal") {
       res.status(409).json({
         error: "You cannot remove your own firm access through conflict review.",
@@ -583,17 +716,39 @@ router.get(
       return;
     }
 
+    await backfillAssignmentIdentities(access.workspaceId);
     const labels = assignmentLabels(member);
-    const [clients, matters] = await Promise.all([
+    const [clients, matters, unresolvedClients, unresolvedMatters] = await Promise.all([
       db
         .select({ id: clientsTable.id, name: clientsTable.name })
         .from(clientsTable)
         .where(
           and(
             eq(clientsTable.workspaceId, access.workspaceId),
-            inArray(clientsTable.owner, labels),
+            eq(clientsTable.ownerMemberId, member.id),
           ),
         )
+        .orderBy(clientsTable.name),
+      db
+        .select({ id: mattersTable.id, title: mattersTable.title, reference: mattersTable.reference, clientName: clientsTable.name })
+        .from(mattersTable)
+        .innerJoin(clientsTable, and(
+          eq(clientsTable.id, mattersTable.clientId),
+          eq(clientsTable.workspaceId, access.workspaceId),
+        ))
+        .where(and(
+          eq(mattersTable.workspaceId, access.workspaceId),
+          eq(mattersTable.responsibleMemberId, member.id),
+        ))
+        .orderBy(mattersTable.reference),
+      db
+        .select({ id: clientsTable.id, name: clientsTable.name, label: clientsTable.owner })
+        .from(clientsTable)
+        .where(and(
+          eq(clientsTable.workspaceId, access.workspaceId),
+          isNull(clientsTable.ownerMemberId),
+          inArray(clientsTable.owner, labels),
+        ))
         .orderBy(clientsTable.name),
       db
         .select({
@@ -601,6 +756,7 @@ router.get(
           title: mattersTable.title,
           reference: mattersTable.reference,
           clientName: clientsTable.name,
+          label: mattersTable.responsible,
         })
         .from(mattersTable)
         .innerJoin(
@@ -613,6 +769,7 @@ router.get(
         .where(
           and(
             eq(mattersTable.workspaceId, access.workspaceId),
+            isNull(mattersTable.responsibleMemberId),
             inArray(mattersTable.responsible, labels),
           ),
         )
@@ -620,7 +777,7 @@ router.get(
     ]);
 
     res.json(
-      GetWorkspaceMemberAssignmentsResponse.parse({ clients, matters }),
+      GetWorkspaceMemberAssignmentsResponse.parse({ clients, matters, unresolvedClients, unresolvedMatters }),
     );
   },
 );
@@ -823,6 +980,7 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  await backfillAssignmentIdentities(access.workspaceId);
   const result = await db.transaction(async (tx) => {
     const members = await tx
       .select()
@@ -843,7 +1001,7 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
       .where(
         and(
           eq(clientsTable.workspaceId, access.workspaceId),
-          inArray(clientsTable.owner, labels),
+          eq(clientsTable.ownerMemberId, member.id),
         ),
       )
       .for("update");
@@ -853,10 +1011,25 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
       .where(
         and(
           eq(mattersTable.workspaceId, access.workspaceId),
-          inArray(mattersTable.responsible, labels),
+          eq(mattersTable.responsibleMemberId, member.id),
         ),
       )
       .for("update");
+    const [unresolvedClient, unresolvedMatter] = await Promise.all([
+      tx.select({ id: clientsTable.id }).from(clientsTable).where(and(
+        eq(clientsTable.workspaceId, access.workspaceId),
+        isNull(clientsTable.ownerMemberId),
+        inArray(clientsTable.owner, labels),
+      )).limit(1),
+      tx.select({ id: mattersTable.id }).from(mattersTable).where(and(
+        eq(mattersTable.workspaceId, access.workspaceId),
+        isNull(mattersTable.responsibleMemberId),
+        inArray(mattersTable.responsible, labels),
+      )).limit(1),
+    ]);
+    if (unresolvedClient.length || unresolvedMatter.length) {
+      return "unresolved-assignments" as const;
+    }
 
     const replacementId = parsedBody.data.replacementMemberId;
     if ((clients.length || matters.length) && replacementId === undefined) {
@@ -873,7 +1046,7 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
       if (clients.length) {
         await tx
           .update(clientsTable)
-          .set({ owner: replacementLabel })
+          .set({ owner: replacementLabel, ownerMemberId: replacement.id })
           .where(
             and(
               eq(clientsTable.workspaceId, access.workspaceId),
@@ -887,7 +1060,7 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
       if (matters.length) {
         await tx
           .update(mattersTable)
-          .set({ responsible: replacementLabel })
+          .set({ responsible: replacementLabel, responsibleMemberId: replacement.id })
           .where(
             and(
               eq(mattersTable.workspaceId, access.workspaceId),
@@ -945,6 +1118,13 @@ router.delete("/workspace/members/:id", async (req, res): Promise<void> => {
   if (result === "replacement-required") {
     res.status(409).json({
       error: "Select an active firm member to take over this person's assigned clients and matters.",
+    });
+    return;
+  }
+  if (result === "unresolved-assignments") {
+    res.status(409).json({
+      error: "Resolve legacy assignment labels in the Team page before removing this teammate.",
+      code: "unresolved_assignments",
     });
     return;
   }
@@ -1520,6 +1700,7 @@ router.get("/activity/:id", async (req, res): Promise<void> => {
 router.get("/clients", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
   if (!access) return;
+  await backfillAssignmentIdentities(access.workspaceId);
   const parsed = ListClientsQueryParams.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -1537,12 +1718,12 @@ router.get("/clients", async (req, res): Promise<void> => {
       )!,
     );
   }
-  const clients = await db
-    .select()
-    .from(clientsTable)
-    .where(and(...filters))
-    .orderBy(desc(clientsTable.updatedAt));
-  const [matterRows, activityRows] = await Promise.all([
+  const [clients, matterRows, activityRows, members] = await Promise.all([
+    db
+      .select()
+      .from(clientsTable)
+      .where(and(...filters))
+      .orderBy(desc(clientsTable.updatedAt)),
     db
       .select({ clientId: mattersTable.clientId, value: count() })
       .from(mattersTable)
@@ -1561,8 +1742,13 @@ router.get("/clients", async (req, res): Promise<void> => {
         ),
       )
       .groupBy(activitiesTable.entityId),
+    db
+      .select()
+      .from(membershipsTable)
+      .where(eq(membershipsTable.workspaceId, access.workspaceId)),
   ]);
   const matterCountByClient = new Map(matterRows.map((row) => [row.clientId, row.value]));
+  const memberLabels = memberLabelById(members);
   const activityByClient = new Map(
     activityRows.map((row) => [row.clientId, row.lastActivityAt]),
   );
@@ -1570,6 +1756,9 @@ router.get("/clients", async (req, res): Promise<void> => {
     ListClientsResponse.parse(
       clients.map((client) => ({
         ...client,
+        owner: client.ownerMemberId === null
+          ? client.owner
+          : memberLabels.get(client.ownerMemberId) ?? client.owner,
         matterCount: matterCountByClient.get(client.id) ?? 0,
         lastActivityAt: activityByClient.get(client.id) ?? null,
       })),
@@ -1585,12 +1774,21 @@ router.post("/clients", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  const [membership] = await db.select().from(membershipsTable).where(and(
+    eq(membershipsTable.workspaceId, access.workspaceId),
+    eq(membershipsTable.clerkUserId, access.userId),
+  )).limit(1);
+  if (!membership) {
+    res.status(403).json({ error: "An active firm membership is required to assign this client." });
+    return;
+  }
   const [client] = await db
     .insert(clientsTable)
     .values({
       ...parsed.data,
       workspaceId: access.workspaceId,
-      owner: access.name || access.email || "Firm user",
+      owner: membership.displayName || membership.email || "Firm teammate",
+      ownerMemberId: membership.id,
     })
     .returning();
   await logActivity(access, "client", client.id, client.name, "created client");
@@ -1606,6 +1804,7 @@ router.post("/clients", async (req, res): Promise<void> => {
 router.get("/clients/:id", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
   if (!access) return;
+  await backfillAssignmentIdentities(access.workspaceId);
   const params = GetClientParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -1640,9 +1839,20 @@ router.get("/clients/:id", async (req, res): Promise<void> => {
         eq(activitiesTable.entityId, client.id),
       ),
     );
+  const [assignedMember] = client.ownerMemberId === null ? [] : await db
+    .select({ displayName: membershipsTable.displayName, email: membershipsTable.email })
+    .from(membershipsTable)
+    .where(and(
+      eq(membershipsTable.id, client.ownerMemberId),
+      eq(membershipsTable.workspaceId, access.workspaceId),
+    ))
+    .limit(1);
   res.json(
     GetClientResponse.parse({
       ...client,
+      owner: assignedMember
+        ? assignedMember.displayName || assignedMember.email || client.owner
+        : client.owner,
       matterCount: matterCount.value,
       lastActivityAt: lastActivity.value,
     }),
@@ -1662,9 +1872,24 @@ router.patch("/clients/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  let ownerLabel: string | undefined;
+  if (parsed.data.ownerMemberId !== undefined) {
+    const [member] = await db.select().from(membershipsTable).where(and(
+      eq(membershipsTable.id, parsed.data.ownerMemberId),
+      eq(membershipsTable.workspaceId, access.workspaceId),
+    )).limit(1);
+    if (!member) {
+      res.status(400).json({ error: "Choose an active teammate in this firm." });
+      return;
+    }
+    ownerLabel = member.displayName || member.email || "Firm teammate";
+  }
   const [client] = await db
     .update(clientsTable)
-    .set(parsed.data)
+    .set({
+      ...parsed.data,
+      owner: ownerLabel,
+    })
     .where(
       and(
         eq(clientsTable.id, params.data.id),
@@ -1694,6 +1919,7 @@ router.patch("/clients/:id", async (req, res): Promise<void> => {
   res.json(
     UpdateClientResponse.parse({
       ...client,
+      owner: ownerLabel ?? client.owner,
       matterCount: matterCount.value,
       lastActivityAt: lastActivity.value,
     }),
@@ -1729,6 +1955,7 @@ router.delete("/clients/:id", async (req, res): Promise<void> => {
 router.get("/matters", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
   if (!access) return;
+  await backfillAssignmentIdentities(access.workspaceId);
   const parsed = ListMattersQueryParams.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -1736,34 +1963,41 @@ router.get("/matters", async (req, res): Promise<void> => {
   }
   const filters = [eq(mattersTable.workspaceId, access.workspaceId)];
   if (parsed.data.status) filters.push(eq(mattersTable.status, parsed.data.status));
-  const rows = await db
-    .select({ matter: mattersTable, clientName: clientsTable.name })
-    .from(mattersTable)
-    .innerJoin(
-      clientsTable,
-      and(
-        eq(mattersTable.clientId, clientsTable.id),
-        eq(mattersTable.workspaceId, clientsTable.workspaceId),
-      ),
-    )
-    .where(
-      and(
-        ...filters,
-        parsed.data.search?.trim()
-          ? or(
-              ilike(mattersTable.title, `%${parsed.data.search.trim()}%`),
-              ilike(mattersTable.reference, `%${parsed.data.search.trim()}%`),
-              ilike(clientsTable.name, `%${parsed.data.search.trim()}%`),
-            )
-          : undefined,
-      ),
-    )
-    .orderBy(desc(mattersTable.updatedAt));
+  const [rows, members] = await Promise.all([
+    db
+      .select({ matter: mattersTable, clientName: clientsTable.name })
+      .from(mattersTable)
+      .innerJoin(
+        clientsTable,
+        and(
+          eq(mattersTable.clientId, clientsTable.id),
+          eq(mattersTable.workspaceId, clientsTable.workspaceId),
+        ),
+      )
+      .where(
+        and(
+          ...filters,
+          parsed.data.search?.trim()
+            ? or(
+                ilike(mattersTable.title, `%${parsed.data.search.trim()}%`),
+                ilike(mattersTable.reference, `%${parsed.data.search.trim()}%`),
+                ilike(clientsTable.name, `%${parsed.data.search.trim()}%`),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(desc(mattersTable.updatedAt)),
+    db.select().from(membershipsTable).where(eq(membershipsTable.workspaceId, access.workspaceId)),
+  ]);
+  const memberLabels = memberLabelById(members);
   res.json(
     ListMattersResponse.parse(
       rows.map(({ matter, clientName }) => ({
         ...matter,
         clientName,
+        responsible: matter.responsibleMemberId === null
+          ? matter.responsible
+          : memberLabels.get(matter.responsibleMemberId) ?? matter.responsible,
       })),
     ),
   );
@@ -1797,6 +2031,7 @@ router.post("/matters", async (req, res): Promise<void> => {
 router.get("/matters/:id", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
   if (!access) return;
+  await backfillAssignmentIdentities(access.workspaceId);
   const params = GetMatterParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -1824,7 +2059,19 @@ router.get("/matters/:id", async (req, res): Promise<void> => {
     return;
   }
   await logAuditEvent(access, "matter_record_viewed", "matter", row.matter.id, row.matter.title);
-  res.json(GetMatterResponse.parse({ ...row.matter, clientName: row.clientName }));
+  const [member] = row.matter.responsibleMemberId === null ? [] : await db
+    .select({ displayName: membershipsTable.displayName, email: membershipsTable.email })
+    .from(membershipsTable)
+    .where(and(
+      eq(membershipsTable.id, row.matter.responsibleMemberId),
+      eq(membershipsTable.workspaceId, access.workspaceId),
+    ))
+    .limit(1);
+  res.json(GetMatterResponse.parse({
+    ...row.matter,
+    clientName: row.clientName,
+    responsible: member ? member.displayName || member.email || row.matter.responsible : row.matter.responsible,
+  }));
 });
 
 router.patch("/matters/:id", async (req, res): Promise<void> => {
@@ -1839,6 +2086,18 @@ router.patch("/matters/:id", async (req, res): Promise<void> => {
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
+  }
+  let responsibleLabel: string | undefined;
+  if (parsed.data.responsibleMemberId !== undefined) {
+    const [member] = await db.select().from(membershipsTable).where(and(
+      eq(membershipsTable.id, parsed.data.responsibleMemberId),
+      eq(membershipsTable.workspaceId, access.workspaceId),
+    )).limit(1);
+    if (!member) {
+      res.status(400).json({ error: "Choose an active teammate in this firm." });
+      return;
+    }
+    responsibleLabel = member.displayName || member.email || "Firm teammate";
   }
   if (parsed.data.clientId) {
     const [client] = await db
@@ -1860,6 +2119,7 @@ router.patch("/matters/:id", async (req, res): Promise<void> => {
     .update(mattersTable)
     .set({
       ...parsed.data,
+      responsible: responsibleLabel,
       dueAt: parsed.data.dueAt === undefined ? undefined : parsed.data.dueAt,
     })
     .where(
@@ -1888,6 +2148,7 @@ router.patch("/matters/:id", async (req, res): Promise<void> => {
     UpdateMatterResponse.parse({
       ...matter,
       clientName: client?.name ?? "Unknown client",
+      responsible: responsibleLabel ?? matter.responsible,
     }),
   );
 });

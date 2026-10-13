@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   useCreateIntake: vi.fn(),
   useReviewIntake: vi.fn(),
   useOpenMatterFromIntake: vi.fn(),
+  useListWorkspaceAssignmentMembers: vi.fn(),
   downloadMattersPdf: vi.fn(),
 }));
 
@@ -127,6 +128,12 @@ describe('dashboard shortcuts and matter exports', () => {
       },
       isPending: false,
     }));
+    mocks.useListWorkspaceAssignmentMembers.mockReturnValue({
+      data: [{ id: 1, name: 'A. Morgan', email: 'morgan@example.test', role: 'professional' }],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
   });
 
   afterEach(() => {

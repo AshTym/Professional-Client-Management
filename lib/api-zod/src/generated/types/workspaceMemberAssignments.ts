@@ -7,8 +7,12 @@
  */
 import type { WorkspaceMemberAssignedClient } from './workspaceMemberAssignedClient';
 import type { WorkspaceMemberAssignedMatter } from './workspaceMemberAssignedMatter';
+import type { WorkspaceMemberAssignmentsUnresolvedClientsItem } from './workspaceMemberAssignmentsUnresolvedClientsItem';
+import type { WorkspaceMemberAssignmentsUnresolvedMattersItem } from './workspaceMemberAssignmentsUnresolvedMattersItem';
 
 export interface WorkspaceMemberAssignments {
   clients: WorkspaceMemberAssignedClient[];
   matters: WorkspaceMemberAssignedMatter[];
+  unresolvedClients: WorkspaceMemberAssignmentsUnresolvedClientsItem[];
+  unresolvedMatters: WorkspaceMemberAssignmentsUnresolvedMattersItem[];
 }

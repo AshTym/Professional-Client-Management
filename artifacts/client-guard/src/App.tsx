@@ -10,10 +10,12 @@ import {
   useWithdrawWorkspaceInvitation, useAcceptWorkspaceInvitation, useListWorkspaceMembers,
   useUpdateWorkspaceMember, useRemoveWorkspaceMember, useTransferWorkspaceOwnership,
   useGetWorkspaceMemberAssignments,
+  useListWorkspaceAssignmentMembers, useListWorkspaceAssignmentIssues,
   useListClients, useCreateClient, useGetClient, useUpdateClient, useDeleteClient,
   useListMatters, useGetMatter, useUpdateMatter, useCloseMatter, useLogMatterExportRequest,
   getHealthCheckQueryKey, getGetWorkspaceQueryKey, getGetDashboardQueryKey, getListActivityQueryKey,
   getListWorkspaceInvitationsQueryKey, getListWorkspaceMembersQueryKey,
+  getListWorkspaceAssignmentIssuesQueryKey,
   getListClientsQueryKey, getGetClientQueryKey, getListMattersQueryKey, getGetMatterQueryKey,
 } from '@workspace/api-client-react';
 import type { Client, ClientInput, Matter, WorkspaceInput, WorkspaceInvitationInput, WorkspaceMemberUpdate } from '@workspace/api-client-react';
@@ -245,15 +247,15 @@ function Modal({title,close,children}:{title:string;close:()=>void;children:Reac
 function Field({label,children}:{label:string;children:ReactNode}) {return <label className="block text-xs font-semibold text-[#506064]">{label}<div className="mt-1.5">{children}</div></label>}
 function ClientDetail() {
  const params=useRoute('/clients/:id')[1];const id=Number(params?.id);const result=useGetClient(id,{query:{queryKey:getGetClientQueryKey(id)}});
- const update=useUpdateClient();const remove=useDeleteClient();const qc=useQueryClient();const [,setLocation]=useLocation();const [editing,setEditing]=useState(false);
+ const update=useUpdateClient();const remove=useDeleteClient();const qc=useQueryClient();const [,setLocation]=useLocation();const [editing,setEditing]=useState(false);const assignmentMembers=useListWorkspaceAssignmentMembers();
  if(result.isLoading)return <Skeleton title="Loading client record" />;if(result.isError||!result.data)return <ErrorState title="Client record unavailable" retry={()=>result.refetch()} />;
  const c=result.data;
  const portalInvitation=<PortalInvitation clientId={c.id} clientName={c.name} email={c.email} />;
- function save(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);update.mutate({id,data:{name:String(f.get('name')),clientType:String(f.get('clientType')) as any,email:String(f.get('email'))||null,phone:String(f.get('phone'))||null,industry:String(f.get('industry'))||null,status:String(f.get('status')) as any}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getGetClientQueryKey(id)});qc.invalidateQueries({queryKey:getListClientsQueryKey()});qc.invalidateQueries({queryKey:getListActivityQueryKey()});setEditing(false)}});}
+ function save(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);update.mutate({id,data:{name:String(f.get('name')),clientType:String(f.get('clientType')) as any,email:String(f.get('email'))||null,phone:String(f.get('phone'))||null,industry:String(f.get('industry'))||null,status:String(f.get('status')) as any,ownerMemberId:Number(f.get('ownerMemberId'))}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getGetClientQueryKey(id)});qc.invalidateQueries({queryKey:getListClientsQueryKey()});qc.invalidateQueries({queryKey:getListActivityQueryKey()});qc.invalidateQueries({queryKey:getListWorkspaceAssignmentIssuesQueryKey()});setEditing(false)}});}
  function archive(){if(window.confirm(`Archive ${c.name}?`))remove.mutate({id},{onSuccess:()=>{qc.invalidateQueries({queryKey:getListClientsQueryKey()});qc.invalidateQueries({queryKey:getGetDashboardQueryKey()});qc.invalidateQueries({queryKey:getListActivityQueryKey()});setLocation('/clients')}});}
  return <><Link href="/clients" className="mb-6 inline-flex items-center gap-2 text-xs font-semibold text-[#6f7e7b]" data-testid="link-back-clients"><ArrowLeft className="h-4 w-4" />All clients</Link><PageHeader eyebrow={`Client record · ${c.clientType}`} title={c.name} subtitle={`Added ${formatTime(c.createdAt)} · Relationship owner ${c.owner}`} action={<div className="flex gap-2"><Button variant="outline" onClick={()=>setEditing(!editing)} testId="button-edit-client">Edit record</Button><Button variant="danger" onClick={archive} disabled={remove.isPending} testId="button-archive-client">Archive client</Button></div>} /><div className="mb-5">{portalInvitation}</div>
  <div className="grid gap-5 lg:grid-cols-[1fr_320px]"><div className="rounded-md border border-[#e0dace] bg-[#fbfaf5] p-6"><div className="flex items-start justify-between border-b border-[#eae5da] pb-5"><div><div className="mono text-[10px] uppercase tracking-[.15em] text-[#8e9690]">Relationship status</div><div className="mt-3"><StatusPill value={c.status} /></div></div><div className="grid h-12 w-12 place-items-center rounded-full bg-[#e7ece6] text-sm font-bold text-[#446b59]">{c.name.split(' ').map(s=>s[0]).slice(0,2).join('')}</div></div>
- {editing?<form onSubmit={save} className="mt-5 space-y-4"><Field label="Name"><input name="name" defaultValue={c.name} required className="field" data-testid="input-edit-client-name" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Type"><select name="clientType" defaultValue={c.clientType} className="field"><option value="individual">Individual</option><option value="business">Business</option></select></Field><Field label="Status"><select name="status" defaultValue={c.status} className="field"><option value="prospect">Prospect</option><option value="active">Active</option><option value="archived">Archived</option></select></Field></div><Field label="Email"><input name="email" defaultValue={c.email||''} className="field" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Phone"><input name="phone" defaultValue={c.phone||''} className="field" /></Field><Field label="Industry"><input name="industry" defaultValue={c.industry||''} className="field" /></Field></div><div className="flex gap-2"><Button type="submit" disabled={update.isPending} testId="button-save-client-edit">{update.isPending?'Saving…':'Save changes'}</Button><Button variant="outline" onClick={()=>setEditing(false)} testId="button-cancel-client-edit">Cancel</Button></div>{update.isError&&<p className="text-xs text-red-700">Update failed. Please retry.</p>}</form>:<div className="grid gap-x-8 gap-y-6 pt-6 sm:grid-cols-2">{[['Email',c.email||'Not provided'],['Phone',c.phone||'Not provided'],['Industry',c.industry||'Not specified'],['Client type',c.clientType]].map(([label,value])=><div key={label}><div className="text-[10px] font-bold uppercase tracking-[.12em] text-[#89918c]">{label}</div><div className="mt-2 text-sm font-medium capitalize" data-testid={`client-detail-${label.toLowerCase().replace(' ','-')}`}>{value}</div></div>)}</div>}</div>
+ {editing?<form onSubmit={save} className="mt-5 space-y-4"><Field label="Name"><input name="name" defaultValue={c.name} required className="field" data-testid="input-edit-client-name" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Type"><select name="clientType" defaultValue={c.clientType} className="field"><option value="individual">Individual</option><option value="business">Business</option></select></Field><Field label="Status"><select name="status" defaultValue={c.status} className="field"><option value="prospect">Prospect</option><option value="active">Active</option><option value="archived">Archived</option></select></Field></div><Field label="Relationship owner"><select name="ownerMemberId" defaultValue={c.ownerMemberId ?? ''} required className="field" data-testid="select-client-owner">{(assignmentMembers.data ?? []).map(member=><option key={member.id} value={member.id}>{member.name || member.email} · {member.role}</option>)}</select></Field><Field label="Email"><input name="email" defaultValue={c.email||''} className="field" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Phone"><input name="phone" defaultValue={c.phone||''} className="field" /></Field><Field label="Industry"><input name="industry" defaultValue={c.industry||''} className="field" /></Field></div><div className="flex gap-2"><Button type="submit" disabled={update.isPending || assignmentMembers.isLoading} testId="button-save-client-edit">{update.isPending?'Saving…':'Save changes'}</Button><Button variant="outline" onClick={()=>setEditing(false)} testId="button-cancel-client-edit">Cancel</Button></div>{update.isError&&<p className="text-xs text-red-700">Update failed. Please retry.</p>}</form>:<div className="grid gap-x-8 gap-y-6 pt-6 sm:grid-cols-2">{[['Email',c.email||'Not provided'],['Phone',c.phone||'Not provided'],['Industry',c.industry||'Not specified'],['Client type',c.clientType]].map(([label,value])=><div key={label}><div className="text-[10px] font-bold uppercase tracking-[.12em] text-[#89918c]">{label}</div><div className="mt-2 text-sm font-medium capitalize" data-testid={`client-detail-${label.toLowerCase().replace(' ','-')}`}>{value}</div></div>)}</div>}</div>
   <aside className="space-y-4"><div className="rounded-md border border-[#e0dace] bg-[#fbfaf5] p-5"><div className="mono text-[10px] uppercase tracking-[.14em] text-[#8a928d]">Relationship at a glance</div><Link href={`/matters?clientId=${c.id}`} className="mt-5 flex items-center justify-between border-b border-[#ede8dd] pb-4 text-[#405c60] hover:text-[#987747]" data-testid="link-client-matters"><span className="text-xs text-[#7a8783]">Matters</span><span className="inline-flex items-center gap-1 mono text-sm font-medium">{c.matterCount}<ArrowRight className="h-3 w-3" /></span></Link><div className="mt-4 flex justify-between"><span className="text-xs text-[#7a8783]">Last activity</span><span className="text-xs font-semibold">{c.lastActivityAt?formatTime(c.lastActivityAt):'—'}</span></div></div><div className="rounded-md bg-[#e8eee8] p-5"><ShieldCheck className="h-5 w-5 text-[#4b7662]" /><h3 className="serif mt-3 font-bold">Firm-scoped record</h3><p className="mt-1 text-xs leading-5 text-[#657772]">This client information is accessible only within your authorized workspace.</p></div></aside></div></>;
 }
 
@@ -349,13 +351,93 @@ export function MattersPage() {
  </>;
 }
 function MatterDetail() {
- const params=useRoute('/matters/:id')[1];const id=Number(params?.id);const result=useGetMatter(id,{query:{queryKey:getGetMatterQueryKey(id)}});const update=useUpdateMatter();const close=useCloseMatter();const qc=useQueryClient();const [,setLocation]=useLocation();const [editing,setEditing]=useState(false);const clients=useListClients();
- if(result.isLoading)return <Skeleton title="Loading matter record" />;if(result.isError||!result.data)return <ErrorState title="Matter record unavailable" retry={()=>result.refetch()} />;
- const m=result.data;
- function save(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);update.mutate({id,data:{clientId:Number(f.get('clientId')),title:String(f.get('title')),matterType:String(f.get('matterType')),responsible:String(f.get('responsible')),riskLevel:String(f.get('riskLevel')) as any,status:String(f.get('status')) as any,dueAt:String(f.get('dueAt'))||null}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getGetMatterQueryKey(id)});qc.invalidateQueries({queryKey:getListMattersQueryKey()});qc.invalidateQueries({queryKey:getListActivityQueryKey()});setEditing(false)}});}
- function closeThis(){if(window.confirm(`Close the matter “${m.title}”?`))close.mutate({id},{onSuccess:()=>{qc.invalidateQueries({queryKey:getListMattersQueryKey()});qc.invalidateQueries({queryKey:getGetDashboardQueryKey()});qc.invalidateQueries({queryKey:getListActivityQueryKey()});setLocation('/matters')}});}
-  return <><Link href="/matters" className="mb-6 inline-flex items-center gap-2 text-xs font-semibold text-[#6f7e7b]" data-testid="link-back-matters"><ArrowLeft className="h-4 w-4" />All matters</Link><PageHeader eyebrow={`Matter · ${m.reference}`} title={m.title} subtitle={<><Link href={`/clients/${m.clientId}`} className="inline-flex items-center gap-1 font-semibold text-[#405c60] hover:text-[#987747]" data-testid="link-matter-client">{m.clientName}<ArrowRight className="h-3.5 w-3.5" /></Link> · {m.matterType}</>} action={<div className="flex gap-2"><Button variant="outline" onClick={()=>setEditing(!editing)} testId="button-edit-matter">Edit matter</Button>{m.status!=='closed'&&<Button variant="danger" onClick={closeThis} disabled={close.isPending} testId="button-close-matter">{close.isPending?'Closing…':'Close matter'}</Button>}</div>} />
- <div className="grid gap-5 lg:grid-cols-[1fr_320px]"><section className="rounded-md border border-[#e0dace] bg-[#fbfaf5] p-6">{editing?<form onSubmit={save} className="space-y-4"><Field label="Matter title"><input name="title" defaultValue={m.title} required className="field" data-testid="input-edit-matter-title" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Client"><select name="clientId" defaultValue={m.clientId} className="field">{(clients.data||[]).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Matter type"><input name="matterType" defaultValue={m.matterType} className="field" /></Field></div><div className="grid gap-4 sm:grid-cols-2"><Field label="Responsible"><input name="responsible" defaultValue={m.responsible} className="field" /></Field><Field label="Due date"><input name="dueAt" type="date" defaultValue={m.dueAt?.slice(0,10)||''} className="field" /></Field></div><div className="grid gap-4 sm:grid-cols-2"><Field label="Status"><select name="status" defaultValue={m.status} className="field"><option value="open">Open</option><option value="on_hold">On hold</option><option value="closed">Closed</option></select></Field><Field label="Risk level"><select name="riskLevel" defaultValue={m.riskLevel} className="field"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></Field></div><div className="flex gap-2"><Button type="submit" disabled={update.isPending} testId="button-save-matter-edit">{update.isPending?'Saving…':'Save changes'}</Button><Button variant="outline" onClick={()=>setEditing(false)} testId="button-cancel-matter-edit">Cancel</Button></div>{update.isError&&<p className="text-xs text-red-700">Update failed. Please retry.</p>}</form>:<><div className="flex flex-wrap items-center gap-2 border-b border-[#eae5da] pb-5"><StatusPill value={m.status} /><StatusPill value={m.riskLevel} /></div><div className="grid gap-7 pt-6 sm:grid-cols-2">{[['Client',m.clientName],['Responsible professional',m.responsible],['Matter type',m.matterType],['Due date',m.dueAt?formatTime(m.dueAt):'Not set'],['Opened',formatTime(m.createdAt)],['Last updated',formatTime(m.updatedAt)]].map(([label,value])=><div key={label}><div className="text-[10px] font-bold uppercase tracking-[.12em] text-[#89918c]">{label}</div><div className="mt-2 text-sm font-medium" data-testid={`matter-detail-${label.toLowerCase().replaceAll(' ','-')}`}>{value}</div></div>)}</div></>}</section><aside className="rounded-md bg-[#294651] p-6 text-[#f3f1e9]"><div className="mono text-[9px] uppercase tracking-[.16em] text-[#c5b389]">Matter reference</div><div className="mono mt-3 text-xl">{m.reference}</div><div className="my-5 h-px bg-[#ffffff26]" /><div className="flex justify-between text-xs text-[#c8d2ce]"><span>Risk classification</span><span className="capitalize text-[#f0d79f]">{m.riskLevel}</span></div><p className="mt-5 text-xs leading-5 text-[#b9c8c3]">Matter status and ownership are maintained as part of the firm's shared audit trail.</p></aside></div></>;
+  const params = useRoute('/matters/:id')[1];
+  const id = Number(params?.id);
+  const result = useGetMatter(id, { query: { queryKey: getGetMatterQueryKey(id) } });
+  const update = useUpdateMatter();
+  const close = useCloseMatter();
+  const qc = useQueryClient();
+  const [, setLocation] = useLocation();
+  const [editing, setEditing] = useState(false);
+  const clients = useListClients();
+  const assignmentMembers = useListWorkspaceAssignmentMembers();
+  if (result.isLoading) return <Skeleton title="Loading matter record" />;
+  if (result.isError || !result.data) return <ErrorState title="Matter record unavailable" retry={() => result.refetch()} />;
+  const m = result.data;
+
+  function save(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const responsibleMemberId = Number(f.get('responsibleMemberId'));
+    const member = assignmentMembers.data?.find(candidate => candidate.id === responsibleMemberId);
+    if (!member) return;
+    update.mutate({
+      id,
+      data: {
+        clientId: Number(f.get('clientId')),
+        title: String(f.get('title')),
+        matterType: String(f.get('matterType')),
+        responsible: member.name || member.email,
+        responsibleMemberId,
+        riskLevel: String(f.get('riskLevel')) as any,
+        status: String(f.get('status')) as any,
+        dueAt: String(f.get('dueAt')) || null,
+      },
+    }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetMatterQueryKey(id) });
+        qc.invalidateQueries({ queryKey: getListMattersQueryKey() });
+        qc.invalidateQueries({ queryKey: getListActivityQueryKey() });
+        qc.invalidateQueries({ queryKey: getListWorkspaceAssignmentIssuesQueryKey() });
+        setEditing(false);
+      },
+    });
+  }
+  function closeThis() {
+    if (window.confirm(`Close the matter “${m.title}”?`)) close.mutate({ id }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListMattersQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+        qc.invalidateQueries({ queryKey: getListActivityQueryKey() });
+        setLocation('/matters');
+      },
+    });
+  }
+
+  return <>
+    <Link href="/matters" className="mb-6 inline-flex items-center gap-2 text-xs font-semibold text-[#6f7e7b]" data-testid="link-back-matters"><ArrowLeft className="h-4 w-4" />All matters</Link>
+    <PageHeader eyebrow={`Matter · ${m.reference}`} title={m.title} subtitle={<><Link href={`/clients/${m.clientId}`} className="inline-flex items-center gap-1 font-semibold text-[#405c60] hover:text-[#987747]" data-testid="link-matter-client">{m.clientName}<ArrowRight className="h-3.5 w-3.5" /></Link> · {m.matterType}</>} action={<div className="flex gap-2"><Button variant="outline" onClick={() => setEditing(!editing)} testId="button-edit-matter">Edit matter</Button>{m.status !== 'closed' && <Button variant="danger" onClick={closeThis} disabled={close.isPending} testId="button-close-matter">{close.isPending ? 'Closing…' : 'Close matter'}</Button>}</div>} />
+    <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
+      <section className="rounded-md border border-[#e0dace] bg-[#fbfaf5] p-6">
+        {editing ? <form onSubmit={save} className="space-y-4">
+          <Field label="Matter title"><input name="title" defaultValue={m.title} required className="field" data-testid="input-edit-matter-title" /></Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Client"><select name="clientId" defaultValue={m.clientId} className="field">{(clients.data || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+            <Field label="Matter type"><input name="matterType" defaultValue={m.matterType} className="field" /></Field>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Responsible teammate">
+              <select name="responsibleMemberId" defaultValue={m.responsibleMemberId ?? ''} required className="field" data-testid="select-matter-responsible">
+                <option value="">Select an active teammate</option>
+                {(assignmentMembers.data || []).map(member => <option key={member.id} value={member.id}>{member.name || member.email} · {member.role}</option>)}
+              </select>
+            </Field>
+            <Field label="Due date"><input name="dueAt" type="date" defaultValue={m.dueAt?.slice(0, 10) || ''} className="field" /></Field>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Status"><select name="status" defaultValue={m.status} className="field"><option value="open">Open</option><option value="on_hold">On hold</option><option value="closed">Closed</option></select></Field>
+            <Field label="Risk level"><select name="riskLevel" defaultValue={m.riskLevel} className="field"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></Field>
+          </div>
+          <div className="flex gap-2"><Button type="submit" disabled={update.isPending || assignmentMembers.isLoading} testId="button-save-matter-edit">{update.isPending ? 'Saving…' : 'Save changes'}</Button><Button variant="outline" onClick={() => setEditing(false)} testId="button-cancel-matter-edit">Cancel</Button></div>
+          {update.isError && <p className="text-xs text-red-700">Update failed. Please retry.</p>}
+        </form> : <>
+          <div className="flex flex-wrap items-center gap-2 border-b border-[#eae5da] pb-5"><StatusPill value={m.status} /><StatusPill value={m.riskLevel} /></div>
+          <div className="grid gap-7 pt-6 sm:grid-cols-2">{[['Client', m.clientName], ['Responsible professional', m.responsible], ['Matter type', m.matterType], ['Due date', m.dueAt ? formatTime(m.dueAt) : 'Not set'], ['Opened', formatTime(m.createdAt)], ['Last updated', formatTime(m.updatedAt)]].map(([label, value]) => <div key={label}><div className="text-[10px] font-bold uppercase tracking-[.12em] text-[#89918c]">{label}</div><div className="mt-2 text-sm font-medium" data-testid={`matter-detail-${label.toLowerCase().replaceAll(' ', '-')}`}>{value}</div></div>)}</div>
+        </>}
+      </section>
+      <aside className="rounded-md bg-[#294651] p-6 text-[#f3f1e9]"><div className="mono text-[9px] uppercase tracking-[.16em] text-[#c5b389]">Matter reference</div><div className="mono mt-3 text-xl">{m.reference}</div><div className="my-5 h-px bg-[#ffffff26]" /><div className="flex justify-between text-xs text-[#c8d2ce]"><span>Risk classification</span><span className="capitalize text-[#f0d79f]">{m.riskLevel}</span></div><p className="mt-5 text-xs leading-5 text-[#b9c8c3]">Matter status and ownership are maintained as part of the firm's shared audit trail.</p></aside>
+    </div>
+  </>;
 }
 
 function ActivityPage() {
@@ -385,6 +467,7 @@ function TeamPage() {
   const updateMember = useUpdateWorkspaceMember();
   const removeMember = useRemoveWorkspaceMember();
   const transferOwnership = useTransferWorkspaceOwnership();
+  const assignmentIssues = useListWorkspaceAssignmentIssues({ query: { staleTime: 0 } });
   const workspace = useGetWorkspace();
   const qc = useQueryClient();
   const [invitationActionMessage, setInvitationActionMessage] = useState('');
@@ -404,6 +487,7 @@ function TeamPage() {
       qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
       qc.invalidateQueries({ queryKey: getListClientsQueryKey() }),
       qc.invalidateQueries({ queryKey: getListMattersQueryKey() }),
+      qc.invalidateQueries({ queryKey: getListWorkspaceAssignmentIssuesQueryKey() }),
       qc.invalidateQueries({
         predicate: query => {
           const key = query.queryKey[0];
@@ -492,6 +576,14 @@ function TeamPage() {
 
   return <>
     <PageHeader eyebrow="Firm access" title="Your team" subtitle="Invite colleagues to this firm's shared workspace and set their starting role." />
+    {assignmentIssues.isError ? <div className="mb-6 rounded border border-[#ead3ce] bg-[#fbefed] p-4 text-sm text-[#9b4941]" role="alert">Legacy assignments could not be checked. <button className="underline" onClick={() => assignmentIssues.refetch()}>Try again</button></div> : assignmentIssues.data && (assignmentIssues.data.clients.length > 0 || assignmentIssues.data.matters.length > 0) && <section className="mb-6 rounded-md border border-[#e5d4b1] bg-[#fbf5e8] p-5" data-testid="panel-unresolved-assignments">
+      <h2 className="serif text-lg font-bold text-[#725a31]">Legacy assignments need review</h2>
+      <p className="mt-1 text-xs leading-5 text-[#766b55]">These saved labels did not uniquely identify a current teammate. Open each record and select the right teammate before removing anyone whose work may be affected.</p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {assignmentIssues.data.clients.map(item => <Link key={`client-${item.id}`} href={`/clients/${item.id}`} className="rounded border border-[#e6d8ba] bg-[#fffaf0] p-3 text-xs hover:bg-white" data-testid={`unresolved-client-${item.id}`}><span className="font-semibold">{item.name}</span><span className="mt-1 block text-[#806b44]">Saved owner label: {item.label}</span></Link>)}
+        {assignmentIssues.data.matters.map(item => <Link key={`matter-${item.id}`} href={`/matters/${item.id}`} className="rounded border border-[#e6d8ba] bg-[#fffaf0] p-3 text-xs hover:bg-white" data-testid={`unresolved-matter-${item.id}`}><span className="font-semibold">{item.reference} · {item.title}</span><span className="mt-1 block text-[#806b44]">Client: {item.clientName} · Saved teammate label: {item.label}</span></Link>)}
+      </div>
+    </section>}
     <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
       <section className="rounded-md border border-[#e0dace] bg-[#fbfaf5] p-5 sm:p-6">
         <div className="flex items-center gap-3 border-b border-[#e9e4d9] pb-4">
@@ -607,6 +699,13 @@ function TeamPage() {
           assignments.isError ? <div className="rounded-md border border-[#ead3ce] bg-[#fbefed] p-4 text-sm text-[#9b4941]" role="alert">
             Assigned work could not be loaded. <button onClick={() => assignments.refetch()} className="font-semibold underline" data-testid="button-retry-member-assignments">Try again</button>
           </div> : <>
+            {!!((assignments.data?.unresolvedClients.length ?? 0) + (assignments.data?.unresolvedMatters.length ?? 0)) && <div className="rounded border border-[#e5d4b1] bg-[#fbf5e8] p-3 text-xs text-[#725a31]" role="alert" data-testid="member-unresolved-assignments">
+              Some legacy labels could belong to this teammate but are ambiguous. Resolve these records before removing access:
+              <div className="mt-2 flex flex-wrap gap-3">
+                {assignments.data?.unresolvedClients.map(item => <Link key={`client-${item.id}`} href={`/clients/${item.id}`} className="font-semibold underline">{item.name} · “{item.label}”</Link>)}
+                {assignments.data?.unresolvedMatters.map(item => <Link key={`matter-${item.id}`} href={`/matters/${item.id}`} className="font-semibold underline">{item.reference} · “{item.label}”</Link>)}
+              </div>
+            </div>}
             <div className="rounded-md border border-[#e4dfd4] bg-[#f8f6ef] p-4" data-testid="member-assignment-summary">
               <div className="text-xs font-semibold text-[#40565a]">Clients ({assignments.data?.clients.length ?? 0})</div>
               {assignments.data?.clients.length ? <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-[#657572]">
@@ -639,7 +738,7 @@ function TeamPage() {
           <Button variant="outline" disabled={removeMember.isPending} onClick={() => setRemovingMemberId(null)} testId="button-cancel-remove-member">Cancel</Button>
           <Button
             variant="danger"
-            disabled={assignments.isLoading || assignments.isError || removeMember.isPending || (
+            disabled={assignments.isLoading || assignments.isError || removeMember.isPending || !!((assignments.data?.unresolvedClients.length ?? 0) + (assignments.data?.unresolvedMatters.length ?? 0)) || (
               !!((assignments.data?.clients.length ?? 0) + (assignments.data?.matters.length ?? 0)) &&
               (replacementMemberId === null || !(members.data ?? []).some(member => member.id === replacementMemberId && member.id !== removingMember.id))
             )}

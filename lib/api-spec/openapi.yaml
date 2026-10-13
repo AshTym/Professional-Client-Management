@@ -243,6 +243,34 @@ paths:
           description: Only owners and admins can view member assignments
         "404":
           description: Member not found in this firm
+  /workspace/assignment-members:
+    get:
+      operationId: listWorkspaceAssignmentMembers
+      tags: [members]
+      summary: List active firm members who can be assigned to client and matter work
+      responses:
+        "200":
+          description: Active member choices in the current firm
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkspaceAssignmentMember"
+  /workspace/assignment-issues:
+    get:
+      operationId: listWorkspaceAssignmentIssues
+      tags: [members]
+      summary: List legacy client and matter assignments that need an admin to identify a teammate
+      responses:
+        "200":
+          description: Legacy labels that could not be safely linked to one active member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAssignmentIssues"
+        "403":
+          description: Only owners and admins can review unresolved assignments
   /workspace/members/{id}/transfer-ownership:
     parameters:
       - name: id
@@ -1554,6 +1582,38 @@ components:
         name: { type: string }
         role: { type: string }
         createdAt: { type: string, format: date-time }
+    WorkspaceAssignmentMember:
+      type: object
+      required: [id, name, email, role]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string }
+    WorkspaceAssignmentIssues:
+      type: object
+      required: [clients, matters]
+      properties:
+        clients:
+          type: array
+          items:
+            type: object
+            required: [id, name, label]
+            properties:
+              id: { type: integer }
+              name: { type: string }
+              label: { type: string }
+        matters:
+          type: array
+          items:
+            type: object
+            required: [id, title, reference, clientName, label]
+            properties:
+              id: { type: integer }
+              title: { type: string }
+              reference: { type: string }
+              clientName: { type: string }
+              label: { type: string }
     WorkspaceMembershipConflict:
       type: object
       required:
@@ -1620,7 +1680,7 @@ components:
         replacementMemberId: { type: integer, minimum: 1 }
     WorkspaceMemberAssignments:
       type: object
-      required: [clients, matters]
+      required: [clients, matters, unresolvedClients, unresolvedMatters]
       properties:
         clients:
           type: array
@@ -1630,6 +1690,26 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceMemberAssignedMatter"
+        unresolvedClients:
+          type: array
+          items:
+            type: object
+            required: [id, name, label]
+            properties:
+              id: { type: integer }
+              name: { type: string }
+              label: { type: string }
+        unresolvedMatters:
+          type: array
+          items:
+            type: object
+            required: [id, title, reference, clientName, label]
+            properties:
+              id: { type: integer }
+              title: { type: string }
+              reference: { type: string }
+              clientName: { type: string }
+              label: { type: string }
     WorkspaceMemberAssignedClient:
       type: object
       required: [id, name]
@@ -1659,7 +1739,7 @@ components:
         token: { type: string, minLength: 20, maxLength: 200 }
     Client:
       type: object
-      required: [id, name, clientType, email, phone, industry, status, owner, matterCount, lastActivityAt, createdAt]
+      required: [id, name, clientType, email, phone, industry, status, owner, ownerMemberId, matterCount, lastActivityAt, createdAt]
       properties:
         id: { type: integer }
         name: { type: string }
@@ -1673,6 +1753,7 @@ components:
           type: string
           enum: [prospect, active, archived]
         owner: { type: string }
+        ownerMemberId: { type: ["integer", "null"] }
         matterCount: { type: integer }
         lastActivityAt: { type: ["string", "null"], format: date-time }
         createdAt: { type: string, format: date-time }
@@ -1704,9 +1785,10 @@ components:
         status:
           type: string
           enum: [prospect, active, archived]
+        ownerMemberId: { type: integer, minimum: 1 }
     Matter:
       type: object
-      required: [id, clientId, clientName, title, reference, matterType, status, riskLevel, responsible, dueAt, createdAt, updatedAt]
+      required: [id, clientId, clientName, title, reference, matterType, status, riskLevel, responsible, responsibleMemberId, dueAt, createdAt, updatedAt]
       properties:
         id: { type: integer }
         clientId: { type: integer }
@@ -1721,12 +1803,13 @@ components:
           type: string
           enum: [low, medium, high]
         responsible: { type: string }
+        responsibleMemberId: { type: ["integer", "null"] }
         dueAt: { type: ["string", "null"], format: date-time }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     MatterInput:
       type: object
-      required: [clientId, title, matterType, responsible]
+      required: [clientId, title, matterType, responsibleMemberId]
       properties:
         clientId: { type: integer, minimum: 1 }
         title: { type: string, minLength: 1, maxLength: 200 }
@@ -1738,6 +1821,7 @@ components:
           type: string
           enum: [low, medium, high]
         responsible: { type: string, minLength: 1, maxLength: 160 }
+        responsibleMemberId: { type: integer, minimum: 1 }
         dueAt: { type: ["string", "null"], format: date-time }
     MatterUpdate:
       type: object
@@ -1753,6 +1837,7 @@ components:
           type: string
           enum: [low, medium, high]
         responsible: { type: string, minLength: 1, maxLength: 160 }
+        responsibleMemberId: { type: integer, minimum: 1 }
         dueAt: { type: ["string", "null"], format: date-time }
     Activity:
       type: object
@@ -2096,7 +2181,7 @@ components:
           items: { $ref: "#/components/schemas/IntakeCase" }
     IntakeInput:
       type: object
-      required: [clientName, clientType, matterTitle, matterType, responsible, partyNames, answers]
+      required: [clientName, clientType, matterTitle, matterType, responsibleMemberId, partyNames, answers]
       properties:
         clientId: { type: ["integer", "null"], minimum: 1 }
         clientName: { type: string, minLength: 1, maxLength: 200 }
@@ -2107,6 +2192,7 @@ components:
         matterTitle: { type: string, minLength: 1, maxLength: 240 }
         matterType: { type: string, minLength: 1, maxLength: 160 }
         responsible: { type: string, minLength: 1, maxLength: 160 }
+        responsibleMemberId: { type: integer, minimum: 1 }
         dueAt: { type: ["string", "null"], format: date-time }
         partyNames:
           type: array

@@ -13,6 +13,7 @@ import {
   intakesTable,
   legalHoldsTable,
   mattersTable,
+  membershipsTable,
   portalAccessTable,
   portalMessagesTable,
   portalRequestsTable,
@@ -297,6 +298,18 @@ router.post("/intakes", async (req, res): Promise<void> => {
     return;
   }
   const input = parsed.data;
+  const [responsibleMember] = await db
+    .select()
+    .from(membershipsTable)
+    .where(and(
+      eq(membershipsTable.id, input.responsibleMemberId),
+      eq(membershipsTable.workspaceId, firm.workspaceId),
+    ))
+    .limit(1);
+  if (!responsibleMember) {
+    res.status(400).json({ error: "Choose an active teammate in this firm." });
+    return;
+  }
   if (input.clientId) {
     const [client] = await db
       .select({ id: clientsTable.id, name: clientsTable.name })
@@ -330,7 +343,8 @@ router.post("/intakes", async (req, res): Promise<void> => {
       industry: input.industry ?? null,
       matterTitle: input.matterTitle.trim(),
       matterType: input.matterType.trim(),
-      responsible: input.responsible.trim(),
+      responsible: responsibleMember.displayName || responsibleMember.email || "Firm teammate",
+      responsibleMemberId: responsibleMember.id,
       dueAt: input.dueAt ? new Date(input.dueAt) : null,
       partyNames: [...new Set(parties.map((name) => name.trim()).filter(Boolean))],
       answers: input.answers,
@@ -413,6 +427,30 @@ router.post("/intakes/:id/open-matter", async (req, res): Promise<void> => {
     if (intake.status !== "cleared" || intake.openedMatterId) return { kind: "not-cleared" as const };
 
     let clientId = intake.clientId;
+    const [responsibleMember] = intake.responsibleMemberId === null ? [] : await tx
+      .select()
+      .from(membershipsTable)
+      .where(and(
+        eq(membershipsTable.id, intake.responsibleMemberId),
+        eq(membershipsTable.workspaceId, firm.workspaceId),
+      ))
+      .limit(1);
+    let resolvedMember = responsibleMember;
+    if (!resolvedMember) {
+      const candidates = await tx
+        .select()
+        .from(membershipsTable)
+        .where(eq(membershipsTable.workspaceId, firm.workspaceId));
+      const label = intake.responsible.trim().toLocaleLowerCase();
+      const matches = candidates.filter((candidate) =>
+        [candidate.displayName, candidate.email]
+          .some((value) => value.trim().toLocaleLowerCase() === label),
+      );
+      if (matches.length === 1) resolvedMember = matches[0];
+    }
+    const responsibleLabel = resolvedMember
+      ? resolvedMember.displayName || resolvedMember.email || intake.responsible
+      : intake.responsible;
     if (clientId) {
       const [existing] = await tx
         .select({ id: clientsTable.id })
@@ -430,7 +468,8 @@ router.post("/intakes/:id/open-matter", async (req, res): Promise<void> => {
           email: intake.email,
           phone: intake.phone,
           industry: intake.industry,
-          owner: intake.responsible,
+          owner: responsibleLabel,
+          ownerMemberId: resolvedMember?.id ?? null,
           status: "prospect",
         })
         .returning();
@@ -445,7 +484,8 @@ router.post("/intakes/:id/open-matter", async (req, res): Promise<void> => {
         title: intake.matterTitle,
         reference,
         matterType: intake.matterType,
-        responsible: intake.responsible,
+        responsible: responsibleLabel,
+        responsibleMemberId: resolvedMember?.id ?? null,
         dueAt: intake.dueAt,
       })
       .returning();

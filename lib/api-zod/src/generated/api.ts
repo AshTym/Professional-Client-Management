@@ -222,6 +222,49 @@ export const GetWorkspaceMemberAssignmentsResponse = zod.object({
   "title": zod.string(),
   "reference": zod.string(),
   "clientName": zod.string()
+})),
+  "unresolvedClients": zod.array(zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "label": zod.string()
+})),
+  "unresolvedMatters": zod.array(zod.object({
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "reference": zod.string(),
+  "clientName": zod.string(),
+  "label": zod.string()
+}))
+})
+
+
+/**
+ * @summary List active firm members who can be assigned to client and matter work
+ */
+export const ListWorkspaceAssignmentMembersResponseItem = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.string()
+})
+export const ListWorkspaceAssignmentMembersResponse = zod.array(ListWorkspaceAssignmentMembersResponseItem)
+
+
+/**
+ * @summary List legacy client and matter assignments that need an admin to identify a teammate
+ */
+export const ListWorkspaceAssignmentIssuesResponse = zod.object({
+  "clients": zod.array(zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "label": zod.string()
+})),
+  "matters": zod.array(zod.object({
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "reference": zod.string(),
+  "clientName": zod.string(),
+  "label": zod.string()
 }))
 })
 
@@ -391,6 +434,7 @@ export const ListClientsResponseItem = zod.object({
   "industry": zod.string().nullable(),
   "status": zod.enum(['prospect', 'active', 'archived']),
   "owner": zod.string(),
+  "ownerMemberId": zod.number().int().nullable(),
   "matterCount": zod.number().int(),
   "lastActivityAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date()
@@ -423,6 +467,7 @@ export const CreateClientResponse = zod.object({
   "industry": zod.string().nullable(),
   "status": zod.enum(['prospect', 'active', 'archived']),
   "owner": zod.string(),
+  "ownerMemberId": zod.number().int().nullable(),
   "matterCount": zod.number().int(),
   "lastActivityAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date()
@@ -445,6 +490,7 @@ export const GetClientResponse = zod.object({
   "industry": zod.string().nullable(),
   "status": zod.enum(['prospect', 'active', 'archived']),
   "owner": zod.string(),
+  "ownerMemberId": zod.number().int().nullable(),
   "matterCount": zod.number().int(),
   "lastActivityAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date()
@@ -462,13 +508,15 @@ export const updateClientBodyNameMax = 160;
 
 
 
+
 export const UpdateClientBody = zod.object({
   "name": zod.string().min(1).max(updateClientBodyNameMax).optional(),
   "clientType": zod.enum(['individual', 'business']).optional(),
   "email": zod.string().email().nullish(),
   "phone": zod.string().nullish(),
   "industry": zod.string().nullish(),
-  "status": zod.enum(['prospect', 'active', 'archived']).optional()
+  "status": zod.enum(['prospect', 'active', 'archived']).optional(),
+  "ownerMemberId": zod.number().int().min(1).optional()
 })
 
 export const UpdateClientResponse = zod.object({
@@ -480,6 +528,7 @@ export const UpdateClientResponse = zod.object({
   "industry": zod.string().nullable(),
   "status": zod.enum(['prospect', 'active', 'archived']),
   "owner": zod.string(),
+  "ownerMemberId": zod.number().int().nullable(),
   "matterCount": zod.number().int(),
   "lastActivityAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date()
@@ -514,6 +563,7 @@ export const ListMattersResponseItem = zod.object({
   "status": zod.enum(['open', 'on_hold', 'closed']),
   "riskLevel": zod.enum(['low', 'medium', 'high']),
   "responsible": zod.string(),
+  "responsibleMemberId": zod.number().int().nullable(),
   "dueAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -533,13 +583,15 @@ export const createMatterBodyResponsibleMax = 160;
 
 
 
+
 export const CreateMatterBody = zod.object({
   "clientId": zod.number().int().min(1),
   "title": zod.string().min(1).max(createMatterBodyTitleMax),
   "matterType": zod.string().min(1).max(createMatterBodyMatterTypeMax),
   "status": zod.enum(['open', 'on_hold', 'closed']).optional(),
   "riskLevel": zod.enum(['low', 'medium', 'high']).optional(),
-  "responsible": zod.string().min(1).max(createMatterBodyResponsibleMax),
+  "responsible": zod.string().min(1).max(createMatterBodyResponsibleMax).optional(),
+  "responsibleMemberId": zod.number().int().min(1),
   "dueAt": zod.coerce.date().nullish()
 })
 
@@ -553,6 +605,7 @@ export const CreateMatterResponse = zod.object({
   "status": zod.enum(['open', 'on_hold', 'closed']),
   "riskLevel": zod.enum(['low', 'medium', 'high']),
   "responsible": zod.string(),
+  "responsibleMemberId": zod.number().int().nullable(),
   "dueAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -576,6 +629,7 @@ export const GetMatterResponse = zod.object({
   "status": zod.enum(['open', 'on_hold', 'closed']),
   "riskLevel": zod.enum(['low', 'medium', 'high']),
   "responsible": zod.string(),
+  "responsibleMemberId": zod.number().int().nullable(),
   "dueAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -598,6 +652,7 @@ export const updateMatterBodyResponsibleMax = 160;
 
 
 
+
 export const UpdateMatterBody = zod.object({
   "clientId": zod.number().int().min(1).optional(),
   "title": zod.string().min(1).max(updateMatterBodyTitleMax).optional(),
@@ -605,6 +660,7 @@ export const UpdateMatterBody = zod.object({
   "status": zod.enum(['open', 'on_hold', 'closed']).optional(),
   "riskLevel": zod.enum(['low', 'medium', 'high']).optional(),
   "responsible": zod.string().min(1).max(updateMatterBodyResponsibleMax).optional(),
+  "responsibleMemberId": zod.number().int().min(1).optional(),
   "dueAt": zod.coerce.date().nullish()
 })
 
@@ -618,6 +674,7 @@ export const UpdateMatterResponse = zod.object({
   "status": zod.enum(['open', 'on_hold', 'closed']),
   "riskLevel": zod.enum(['low', 'medium', 'high']),
   "responsible": zod.string(),
+  "responsibleMemberId": zod.number().int().nullable(),
   "dueAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -1234,6 +1291,7 @@ export const createIntakeBodyMatterTypeMax = 160;
 
 export const createIntakeBodyResponsibleMax = 160;
 
+
 export const createIntakeBodyPartyNamesItemMax = 200;
 
 export const createIntakeBodyPartyNamesMax = 100;
@@ -1251,7 +1309,8 @@ export const CreateIntakeBody = zod.object({
   "industry": zod.string().max(createIntakeBodyIndustryMax).nullish(),
   "matterTitle": zod.string().min(1).max(createIntakeBodyMatterTitleMax),
   "matterType": zod.string().min(1).max(createIntakeBodyMatterTypeMax),
-  "responsible": zod.string().min(1).max(createIntakeBodyResponsibleMax),
+  "responsible": zod.string().min(1).max(createIntakeBodyResponsibleMax).optional(),
+  "responsibleMemberId": zod.number().int().min(1),
   "dueAt": zod.coerce.date().nullish(),
   "partyNames": zod.array(zod.string().min(1).max(createIntakeBodyPartyNamesItemMax)).max(createIntakeBodyPartyNamesMax),
   "answers": zod.record(zod.string(), zod.string().max(createIntakeBodyAnswersMaxOne))
@@ -1349,6 +1408,7 @@ export const OpenMatterFromIntakeResponse = zod.object({
   "status": zod.enum(['open', 'on_hold', 'closed']),
   "riskLevel": zod.enum(['low', 'medium', 'high']),
   "responsible": zod.string(),
+  "responsibleMemberId": zod.number().int().nullable(),
   "dueAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()

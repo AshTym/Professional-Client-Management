@@ -28,6 +28,8 @@ export interface MatterUpdate {
      * @maxLength 160
      */
   responsible?: string;
+  /** @minimum 1 */
+  responsibleMemberId?: number;
   /** @nullable */
   dueAt?: Date | null;
 }

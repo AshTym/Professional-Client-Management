@@ -19,6 +19,8 @@ export interface Matter {
   riskLevel: MatterRiskLevel;
   responsible: string;
   /** @nullable */
+  responsibleMemberId: number | null;
+  /** @nullable */
   dueAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

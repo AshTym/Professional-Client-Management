@@ -71,6 +71,7 @@ before(async () => {
       industry text,
       status text NOT NULL DEFAULT 'prospect',
       owner text NOT NULL,
+      owner_member_id integer REFERENCES "${schemaName}".clientguard_memberships(id) ON DELETE SET NULL,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -84,6 +85,7 @@ before(async () => {
       status text NOT NULL DEFAULT 'open',
       risk_level text NOT NULL DEFAULT 'medium',
       responsible text NOT NULL,
+      responsible_member_id integer REFERENCES "${schemaName}".clientguard_memberships(id) ON DELETE SET NULL,
       due_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()

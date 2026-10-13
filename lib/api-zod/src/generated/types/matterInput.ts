@@ -27,7 +27,9 @@ export interface MatterInput {
      * @minLength 1
      * @maxLength 160
      */
-  responsible: string;
+  responsible?: string;
+  /** @minimum 1 */
+  responsibleMemberId: number;
   /** @nullable */
   dueAt?: Date | null;
 }

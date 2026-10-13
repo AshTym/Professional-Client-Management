@@ -22,4 +22,6 @@ export interface ClientUpdate {
   /** @nullable */
   industry?: string | null;
   status?: ClientUpdateStatus;
+  /** @minimum 1 */
+  ownerMemberId?: number;
 }

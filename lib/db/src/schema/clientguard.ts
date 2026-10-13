@@ -82,6 +82,10 @@ export const clientsTable = pgTable(
     industry: text("industry"),
     status: text("status").notNull().default("prospect"),
     owner: text("owner").notNull(),
+    ownerMemberId: integer("owner_member_id").references(
+      () => membershipsTable.id,
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -119,6 +123,10 @@ export const mattersTable = pgTable(
     status: text("status").notNull().default("open"),
     riskLevel: text("risk_level").notNull().default("medium"),
     responsible: text("responsible").notNull(),
+    responsibleMemberId: integer("responsible_member_id").references(
+      () => membershipsTable.id,
+      { onDelete: "set null" },
+    ),
     dueAt: timestamp("due_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

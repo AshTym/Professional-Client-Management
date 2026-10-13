@@ -91,6 +91,8 @@ import type {
   SendReviewedUpdateEmailInput,
   TimeEntry,
   TimeEntryInput,
+  WorkspaceAssignmentIssues,
+  WorkspaceAssignmentMember,
   WorkspaceContext,
   WorkspaceInput,
   WorkspaceInvitation,
@@ -1169,6 +1171,208 @@ export function useGetWorkspaceMemberAssignments<TData = Awaited<ReturnType<type
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetWorkspaceMemberAssignmentsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListWorkspaceAssignmentMembersUrl = () => {
+
+
+
+
+  return `/api/workspace/assignment-members`
+}
+
+/**
+ * @summary List active firm members who can be assigned to client and matter work
+ */
+export const listWorkspaceAssignmentMembers = async ( options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceAssignmentMember[]> => {
+
+  return customFetch<WorkspaceAssignmentMember[]>(getListWorkspaceAssignmentMembersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListWorkspaceAssignmentMembersQueryKey = () => {
+    return [
+    `/api/workspace/assignment-members`
+    ] as const;
+    }
+
+
+export const getListWorkspaceAssignmentMembersQueryOptions = <TData = Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListWorkspaceAssignmentMembersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>> = ({ signal }) => listWorkspaceAssignmentMembers({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListWorkspaceAssignmentMembersQueryResult = NonNullable<Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>>
+export type ListWorkspaceAssignmentMembersQueryError = ErrorType<unknown>
+
+
+export function useListWorkspaceAssignmentMembers<TData = Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>,
+          TError,
+          Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListWorkspaceAssignmentMembers<TData = Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>,
+          TError,
+          Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListWorkspaceAssignmentMembers<TData = Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List active firm members who can be assigned to client and matter work
+ */
+
+export function useListWorkspaceAssignmentMembers<TData = Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceAssignmentMembers>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListWorkspaceAssignmentMembersQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListWorkspaceAssignmentIssuesUrl = () => {
+
+
+
+
+  return `/api/workspace/assignment-issues`
+}
+
+/**
+ * @summary List legacy client and matter assignments that need an admin to identify a teammate
+ */
+export const listWorkspaceAssignmentIssues = async ( options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceAssignmentIssues> => {
+
+  return customFetch<WorkspaceAssignmentIssues>(getListWorkspaceAssignmentIssuesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListWorkspaceAssignmentIssuesQueryKey = () => {
+    return [
+    `/api/workspace/assignment-issues`
+    ] as const;
+    }
+
+
+export const getListWorkspaceAssignmentIssuesQueryOptions = <TData = Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>, TError = ErrorType<void>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListWorkspaceAssignmentIssuesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>> = ({ signal }) => listWorkspaceAssignmentIssues({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListWorkspaceAssignmentIssuesQueryResult = NonNullable<Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>>
+export type ListWorkspaceAssignmentIssuesQueryError = ErrorType<void>
+
+
+export function useListWorkspaceAssignmentIssues<TData = Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>, TError = ErrorType<void>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>,
+          TError,
+          Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListWorkspaceAssignmentIssues<TData = Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>,
+          TError,
+          Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListWorkspaceAssignmentIssues<TData = Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List legacy client and matter assignments that need an admin to identify a teammate
+ */
+
+export function useListWorkspaceAssignmentIssues<TData = Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listWorkspaceAssignmentIssues>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListWorkspaceAssignmentIssuesQueryOptions(options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

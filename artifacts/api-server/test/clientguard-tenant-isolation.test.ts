@@ -104,6 +104,7 @@ before(async () => {
       industry text,
       status text NOT NULL DEFAULT 'prospect',
       owner text NOT NULL,
+      owner_member_id integer REFERENCES "${schemaName}".clientguard_memberships(id) ON DELETE SET NULL,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -117,6 +118,7 @@ before(async () => {
       status text NOT NULL DEFAULT 'open',
       risk_level text NOT NULL DEFAULT 'medium',
       responsible text NOT NULL,
+      responsible_member_id integer REFERENCES "${schemaName}".clientguard_memberships(id) ON DELETE SET NULL,
       due_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
@@ -266,6 +268,7 @@ before(async () => {
       matter_title text NOT NULL,
       matter_type text NOT NULL,
       responsible text NOT NULL,
+      responsible_member_id integer REFERENCES "${schemaName}".clientguard_memberships(id) ON DELETE SET NULL,
       due_at timestamptz,
       party_names jsonb NOT NULL DEFAULT '[]',
       answers jsonb NOT NULL DEFAULT '{}',
@@ -3146,7 +3149,13 @@ test("member assignments are listed and reassigned with removal in one audited c
       reference: matter.reference,
       clientName: client.name,
     }],
+    unresolvedClients: [],
+    unresolvedMatters: [],
   });
+  const [backfilledClient] = await db.select().from(clientsTable).where(eq(clientsTable.id, client.id));
+  const [backfilledMatter] = await db.select().from(mattersTable).where(eq(mattersTable.id, matter.id));
+  assert.equal(backfilledClient.ownerMemberId, departing.id);
+  assert.equal(backfilledMatter.responsibleMemberId, departing.id);
   const [viewer] = await db
     .select()
     .from(membershipsTable)
@@ -3177,7 +3186,9 @@ test("member assignments are listed and reassigned with removal in one audited c
     .from(membershipsTable)
     .where(eq(membershipsTable.id, departing.id));
   assert.equal(updatedClient.owner, replacementName);
+  assert.equal(updatedClient.ownerMemberId, replacement.id);
   assert.equal(updatedMatter.responsible, replacementName);
+  assert.equal(updatedMatter.responsibleMemberId, replacement.id);
   assert.equal(remainingMembership.length, 0);
 
   const activity = await db
@@ -3193,6 +3204,167 @@ test("member assignments are listed and reassigned with removal in one audited c
   assert.ok(reassignmentEvents.some((event) => event.entityType === "client"));
   assert.ok(reassignmentEvents.some((event) => event.entityType === "matter"));
   assert.ok(activity.some((event) => event.action === `removed ${departingName} from the firm workspace`));
+});
+
+test("duplicate teammate names leave legacy assignment labels visible and block unsafe removal", async () => {
+  const suffix = randomUUID();
+  const duplicateName = `Shared Name ${suffix}`;
+  const [first, second] = await db.insert(membershipsTable).values([
+    {
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: `duplicate-a-${suffix}`,
+      email: `duplicate-a-${suffix}@example.test`,
+      displayName: duplicateName,
+      role: "professional",
+    },
+    {
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: `duplicate-b-${suffix}`,
+      email: `duplicate-b-${suffix}@example.test`,
+      displayName: duplicateName,
+      role: "professional",
+    },
+  ]).returning();
+  const [replacement] = await db.insert(membershipsTable).values({
+    workspaceId: firms.primary.workspaceId,
+    clerkUserId: `duplicate-replacement-${suffix}`,
+    email: `duplicate-replacement-${suffix}@example.test`,
+    displayName: `Replacement ${suffix}`,
+    role: "professional",
+  }).returning();
+  const [client] = await db.insert(clientsTable).values({
+    workspaceId: firms.primary.workspaceId,
+    name: `Ambiguous Client ${suffix}`,
+    owner: duplicateName,
+  }).returning();
+  const [matter] = await db.insert(mattersTable).values({
+    workspaceId: firms.primary.workspaceId,
+    clientId: client.id,
+    title: `Ambiguous Matter ${suffix}`,
+    reference: `AMBIGUOUS-${suffix}`,
+    matterType: "advisory",
+    responsible: duplicateName,
+  }).returning();
+
+  const issues = await request("/workspace/assignment-issues", {
+    userId: firms.primary.ownerId,
+  });
+  assert.equal(issues.response.status, 200);
+  assert.ok(issues.body.clients.some((issue: { id: number; label: string }) =>
+    issue.id === client.id && issue.label === duplicateName));
+  assert.ok(issues.body.matters.some((issue: { id: number; label: string }) =>
+    issue.id === matter.id && issue.label === duplicateName));
+
+  const preview = await request(`/workspace/members/${first.id}/assignments`, {
+    userId: firms.primary.ownerId,
+  });
+  assert.equal(preview.response.status, 200);
+  assert.deepEqual(preview.body.clients, []);
+  assert.deepEqual(preview.body.matters, []);
+  assert.deepEqual(preview.body.unresolvedClients, [
+    { id: client.id, name: client.name, label: duplicateName },
+  ]);
+  assert.deepEqual(preview.body.unresolvedMatters, [{
+    id: matter.id,
+    title: matter.title,
+    reference: matter.reference,
+    clientName: client.name,
+    label: duplicateName,
+  }]);
+
+  const removal = await request(`/workspace/members/${first.id}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+    body: { replacementMemberId: replacement.id },
+  });
+  assert.equal(removal.response.status, 409);
+  assert.equal(removal.body.code, "unresolved_assignments");
+  const remaining = await db.select().from(membershipsTable).where(eq(membershipsTable.id, first.id));
+  assert.equal(remaining.length, 1);
+  assert.equal(second.displayName, duplicateName);
+});
+
+test("renamed members keep their client and matter assignments and can transfer them safely", async () => {
+  const suffix = randomUUID();
+  const [member, replacement] = await db.insert(membershipsTable).values([
+    {
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: `renamed-${suffix}`,
+      email: `renamed-${suffix}@example.test`,
+      displayName: `Old Name ${suffix}`,
+      role: "professional",
+    },
+    {
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: `renamed-replacement-${suffix}`,
+      email: `renamed-replacement-${suffix}@example.test`,
+      displayName: `New Owner ${suffix}`,
+      role: "professional",
+    },
+  ]).returning();
+  const [client] = await db.insert(clientsTable).values({
+    workspaceId: firms.primary.workspaceId,
+    name: `Renamed Client ${suffix}`,
+    owner: member.displayName,
+    ownerMemberId: member.id,
+  }).returning();
+  const [matter] = await db.insert(mattersTable).values({
+    workspaceId: firms.primary.workspaceId,
+    clientId: client.id,
+    title: `Renamed Matter ${suffix}`,
+    reference: `RENAMED-${suffix}`,
+    matterType: "advisory",
+    responsible: member.displayName,
+    responsibleMemberId: member.id,
+  }).returning();
+  const renamed = `Updated Name ${suffix}`;
+  await db.update(membershipsTable).set({ displayName: renamed }).where(eq(membershipsTable.id, member.id));
+
+  const clientList = await request("/clients", { userId: firms.primary.ownerId });
+  const matterList = await request("/matters", { userId: firms.primary.ownerId });
+  assert.equal(clientList.body.find((row: { id: number }) => row.id === client.id).owner, renamed);
+  assert.equal(matterList.body.find((row: { id: number }) => row.id === matter.id).responsible, renamed);
+  const preview = await request(`/workspace/members/${member.id}/assignments`, {
+    userId: firms.primary.ownerId,
+  });
+  assert.ok(preview.body.clients.some((row: { id: number }) => row.id === client.id));
+  assert.ok(preview.body.matters.some((row: { id: number }) => row.id === matter.id));
+
+  const clientEdit = await request(`/clients/${client.id}`, {
+    userId: firms.primary.ownerId,
+    method: "PATCH",
+    body: { ownerMemberId: replacement.id },
+  });
+  const matterEdit = await request(`/matters/${matter.id}`, {
+    userId: firms.primary.ownerId,
+    method: "PATCH",
+    body: { responsibleMemberId: replacement.id },
+  });
+  assert.equal(clientEdit.response.status, 200);
+  assert.equal(matterEdit.response.status, 200);
+  assert.equal(clientEdit.body.ownerMemberId, replacement.id);
+  assert.equal(matterEdit.body.responsibleMemberId, replacement.id);
+  await request(`/clients/${client.id}`, {
+    userId: firms.primary.ownerId,
+    method: "PATCH",
+    body: { ownerMemberId: member.id },
+  });
+  await request(`/matters/${matter.id}`, {
+    userId: firms.primary.ownerId,
+    method: "PATCH",
+    body: { responsibleMemberId: member.id },
+  });
+
+  const removal = await request(`/workspace/members/${member.id}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+    body: { replacementMemberId: replacement.id },
+  });
+  assert.equal(removal.response.status, 204);
+  const [updatedClient] = await db.select().from(clientsTable).where(eq(clientsTable.id, client.id));
+  const [updatedMatter] = await db.select().from(mattersTable).where(eq(mattersTable.id, matter.id));
+  assert.equal(updatedClient.ownerMemberId, replacement.id);
+  assert.equal(updatedMatter.responsibleMemberId, replacement.id);
 });
 
 test("member access is not removed when assigned work has no replacement", async () => {

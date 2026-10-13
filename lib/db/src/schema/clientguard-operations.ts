@@ -9,7 +9,12 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { clientsTable, mattersTable, workspacesTable } from "./clientguard";
+import {
+  clientsTable,
+  mattersTable,
+  membershipsTable,
+  workspacesTable,
+} from "./clientguard";
 import { updateDraftsTable } from "./clientguard-workflows";
 import { z } from "zod/v4";
 
@@ -67,6 +72,10 @@ export const intakesTable = pgTable(
     matterTitle: text("matter_title").notNull(),
     matterType: text("matter_type").notNull(),
     responsible: text("responsible").notNull(),
+    responsibleMemberId: integer("responsible_member_id").references(
+      () => membershipsTable.id,
+      { onDelete: "set null" },
+    ),
     dueAt: timestamp("due_at", { withTimezone: true }),
     partyNames: jsonb("party_names").$type<string[]>().notNull().default([]),
     answers: jsonb("answers")

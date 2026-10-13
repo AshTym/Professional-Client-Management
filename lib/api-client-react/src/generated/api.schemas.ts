@@ -93,6 +93,32 @@ export interface WorkspaceMember {
   createdAt: string;
 }
 
+export interface WorkspaceAssignmentMember {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+}
+
+export type WorkspaceAssignmentIssuesClientsItem = {
+  id: number;
+  name: string;
+  label: string;
+};
+
+export type WorkspaceAssignmentIssuesMattersItem = {
+  id: number;
+  title: string;
+  reference: string;
+  clientName: string;
+  label: string;
+};
+
+export interface WorkspaceAssignmentIssues {
+  clients: WorkspaceAssignmentIssuesClientsItem[];
+  matters: WorkspaceAssignmentIssuesMattersItem[];
+}
+
 /**
  * @nullable
  */
@@ -176,6 +202,20 @@ export interface WorkspaceMemberRemoval {
   replacementMemberId?: number;
 }
 
+export type WorkspaceMemberAssignmentsUnresolvedClientsItem = {
+  id: number;
+  name: string;
+  label: string;
+};
+
+export type WorkspaceMemberAssignmentsUnresolvedMattersItem = {
+  id: number;
+  title: string;
+  reference: string;
+  clientName: string;
+  label: string;
+};
+
 export interface WorkspaceMemberAssignedClient {
   id: number;
   name: string;
@@ -191,6 +231,8 @@ export interface WorkspaceMemberAssignedMatter {
 export interface WorkspaceMemberAssignments {
   clients: WorkspaceMemberAssignedClient[];
   matters: WorkspaceMemberAssignedMatter[];
+  unresolvedClients: WorkspaceMemberAssignmentsUnresolvedClientsItem[];
+  unresolvedMatters: WorkspaceMemberAssignmentsUnresolvedMattersItem[];
 }
 
 export type WorkspaceInvitationInputRole = typeof WorkspaceInvitationInputRole[keyof typeof WorkspaceInvitationInputRole];
@@ -246,6 +288,8 @@ export interface Client {
   industry: string | null;
   status: ClientStatus;
   owner: string;
+  /** @nullable */
+  ownerMemberId: number | null;
   matterCount: number;
   /** @nullable */
   lastActivityAt: string | null;
@@ -316,6 +360,8 @@ export interface ClientUpdate {
   /** @nullable */
   industry?: string | null;
   status?: ClientUpdateStatus;
+  /** @minimum 1 */
+  ownerMemberId?: number;
 }
 
 export type MatterStatus = typeof MatterStatus[keyof typeof MatterStatus];
@@ -346,6 +392,8 @@ export interface Matter {
   status: MatterStatus;
   riskLevel: MatterRiskLevel;
   responsible: string;
+  /** @nullable */
+  responsibleMemberId: number | null;
   /** @nullable */
   dueAt: string | null;
   createdAt: string;
@@ -389,7 +437,9 @@ export interface MatterInput {
      * @minLength 1
      * @maxLength 160
      */
-  responsible: string;
+  responsible?: string;
+  /** @minimum 1 */
+  responsibleMemberId: number;
   /** @nullable */
   dueAt?: string | null;
 }
@@ -432,6 +482,8 @@ export interface MatterUpdate {
      * @maxLength 160
      */
   responsible?: string;
+  /** @minimum 1 */
+  responsibleMemberId?: number;
   /** @nullable */
   dueAt?: string | null;
 }
@@ -1029,7 +1081,9 @@ export interface IntakeInput {
      * @minLength 1
      * @maxLength 160
      */
-  responsible: string;
+  responsible?: string;
+  /** @minimum 1 */
+  responsibleMemberId: number;
   /** @nullable */
   dueAt?: string | null;
   /**

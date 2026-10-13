@@ -20,6 +20,8 @@ export interface Client {
   industry: string | null;
   status: ClientStatus;
   owner: string;
+  /** @nullable */
+  ownerMemberId: number | null;
   matterCount: number;
   /** @nullable */
   lastActivityAt: Date | null;
