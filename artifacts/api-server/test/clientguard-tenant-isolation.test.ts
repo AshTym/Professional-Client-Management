@@ -1347,6 +1347,65 @@ test("signed-in users without a firm cannot list or create invitations", async (
   assert.deepEqual(after, before);
 });
 
+test("firm viewers and professionals cannot list or create invitations", async (t) => {
+  const members = await db
+    .select({
+      clerkUserId: membershipsTable.clerkUserId,
+      role: membershipsTable.role,
+    })
+    .from(membershipsTable)
+    .where(
+      inArray(membershipsTable.role, ["viewer", "professional"]),
+    );
+  const ordinaryMembers = members.filter((member) =>
+    ["viewer", "professional"].includes(member.role),
+  );
+  assert.deepEqual(
+    ordinaryMembers.map((member) => member.role).sort(),
+    ["professional", "viewer"],
+  );
+
+  const before = await db
+    .select({ id: invitationsTable.id })
+    .from(invitationsTable)
+    .orderBy(asc(invitationsTable.id));
+  const createInvitation = t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async () => ({ id: "unexpected_clerk_invitation" }) as never,
+  );
+
+  for (const member of ordinaryMembers) {
+    const listed = await request("/workspace/invitations", {
+      userId: member.clerkUserId,
+    });
+    assert.equal(listed.response.status, 403);
+    assert.deepEqual(listed.body, {
+      error: "Only firm owners and admins can view invitations.",
+    });
+
+    const created = await request("/workspace/invitations", {
+      userId: member.clerkUserId,
+      method: "POST",
+      body: {
+        email: `${member.role}-${randomUUID()}@example.test`,
+        role: "assistant",
+      },
+    });
+    assert.equal(created.response.status, 403);
+    assert.deepEqual(created.body, {
+      error: "Only firm owners and admins can invite teammates.",
+    });
+  }
+
+  assert.equal(createInvitation.mock.callCount(), 0);
+  const after = await db
+    .select({ id: invitationsTable.id })
+    .from(invitationsTable)
+    .orderBy(asc(invitationsTable.id));
+  assert.deepEqual(after, before);
+});
+
 test("signed-in users without a firm cannot resend or withdraw invitations", async (t) => {
   const userId = `no-firm-invitation-actions-${randomUUID()}`;
   const token = randomUUID();
