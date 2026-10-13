@@ -3126,6 +3126,45 @@ test("owners can email an invitation with the selected workspace role", async (t
   assert.equal(createInvitation.mock.callCount(), 1);
 });
 
+test("accepted invitations are excluded while pending invitations remain listed", async () => {
+  const acceptedAt = new Date();
+  const invitationToken = () => createHash("sha256").update(randomUUID()).digest("hex");
+  const [accepted, pending] = await db
+    .insert(invitationsTable)
+    .values([
+      {
+        workspaceId: firms.primary.workspaceId,
+        email: `accepted-invitation-${randomUUID()}@example.test`,
+        role: "assistant",
+        invitedByClerkUserId: firms.primary.ownerId,
+        clerkInvitationId: `accepted-clerk-invitation-${randomUUID()}`,
+        tokenHash: invitationToken(),
+        expiresAt: new Date(Date.now() + 60_000),
+        acceptedAt,
+        acceptedByClerkUserId: `accepted-user-${randomUUID()}`,
+      },
+      {
+        workspaceId: firms.primary.workspaceId,
+        email: `pending-invitation-${randomUUID()}@example.test`,
+        role: "assistant",
+        invitedByClerkUserId: firms.primary.ownerId,
+        clerkInvitationId: `pending-clerk-invitation-${randomUUID()}`,
+        tokenHash: invitationToken(),
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    ])
+    .returning();
+
+  const listed = await request("/workspace/invitations", {
+    userId: firms.primary.ownerId,
+  });
+
+  assert.equal(listed.response.status, 200);
+  const listedIds = (listed.body as Array<{ id: number }>).map(({ id }) => id);
+  assert.equal(listedIds.includes(accepted.id), false);
+  assert.equal(listedIds.includes(pending.id), true);
+});
+
 test("a new invitation can be created after an older invitation expires", async (t) => {
   const email = `expired-then-created-${randomUUID()}@example.test`;
   const oldToken = randomUUID();
