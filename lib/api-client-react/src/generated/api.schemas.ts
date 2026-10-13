@@ -1341,6 +1341,7 @@ export interface MatterExportAuditInput {
      * @items.minimum 1
      */
   matterIds: number[];
+  exportRequestId: string;
 }
 
 export interface RetentionSettings {

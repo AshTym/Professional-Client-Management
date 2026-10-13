@@ -6587,7 +6587,7 @@ export const getLogMatterExportRequestUrl = () => {
 }
 
 /**
- * The client calls this after generating the PDF and initiating the browser download. The server records firm-scoped activity and audit events without storing PDF contents.
+ * The client calls this after generating the PDF and initiating the browser download. Reuse exportRequestId when retrying the same completed export so the server records only one firm-scoped activity and audit event without storing PDF contents.
  * @summary Record a successfully generated matter PDF export
  */
 export const logMatterExportRequest = async (matterExportAuditInput: MatterExportAuditInput, options?: Parameters<typeof customFetch>[1]): Promise<void> => {

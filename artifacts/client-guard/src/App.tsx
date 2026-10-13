@@ -285,8 +285,10 @@ export function MattersPage() {
  const [clientId,setClientId]=useState<number|null>(()=>{const raw=new URLSearchParams(window.location.search).get('clientId');const parsed=Number(raw);return raw&&Number.isSafeInteger(parsed)&&parsed>0?parsed:null;});
  const [selectedIds,setSelectedIds]=useState<Set<number>>(()=>new Set());
  const [pendingAllMattersExport,setPendingAllMattersExport]=useState<Matter[]|null>(null);
+  const [pendingExportRecord,setPendingExportRecord]=useState<{scope:'selected'|'all';matterIds:number[];exportRequestId:string}|null>(null);
  const [pdfError,setPdfError]=useState('');
  const [isExportingPdf,setIsExportingPdf]=useState(false);
+  const [isRetryingExportRecord,setIsRetryingExportRecord]=useState(false);
  const list=useListMatters();
  const logExport=useLogMatterExportRequest();
  const clients=useListClients();
@@ -315,14 +317,17 @@ export function MattersPage() {
  async function downloadPdf(records: Matter[], scope:'selected'|'all'){
   if(!records.length)return;
   setPdfError('');
+   setPendingExportRecord(null);
   setIsExportingPdf(true);
   try{
    const {downloadMattersPdf}=await import('./lib/matters-pdf');
    downloadMattersPdf(records,scope);
+    const exportRequest={scope,matterIds:records.map(record=>record.id),exportRequestId:crypto.randomUUID()};
     try{
-      await logExport.mutateAsync({data:{scope,matterIds:records.map(record=>record.id)}});
+       await logExport.mutateAsync({data:exportRequest});
     }catch{
-      setPdfError('The PDF was downloaded, but the export could not be recorded in the audit trail. Contact your firm administrator before retrying.');
+       setPendingExportRecord(exportRequest);
+       setPdfError('The PDF was downloaded, but its audit-trail entry could not be recorded. Retry recording it without downloading the PDF again.');
       return;
     }
     void Promise.all([
@@ -335,6 +340,23 @@ export function MattersPage() {
    setIsExportingPdf(false);
   }
  }
+  async function retryExportRecord(){
+   if(!pendingExportRecord)return;
+   setIsRetryingExportRecord(true);
+   try{
+    await logExport.mutateAsync({data:pendingExportRecord});
+    setPendingExportRecord(null);
+    setPdfError('');
+    void Promise.all([
+     qc.invalidateQueries({queryKey:getListActivityQueryKey()}),
+     qc.invalidateQueries({queryKey:getGetDashboardQueryKey()}),
+    ]);
+   }catch{
+    setPdfError('The export entry could not be recorded yet. You can retry without downloading the PDF again.');
+   }finally{
+    setIsRetryingExportRecord(false);
+   }
+  }
  return <>
   <PageHeader eyebrow="Active work" title="Matters" subtitle="Keep each engagement, owner, and next date in view." action={<Button onClick={()=>setLocation('/intake?create=1')} testId="button-new-matter"><Plus className="h-4 w-4" />Start matter intake</Button>} />
   <div className="mb-5 flex flex-col gap-3 sm:flex-row">
@@ -352,11 +374,11 @@ export function MattersPage() {
       {selectedIds.size>0&&<button type="button" onClick={()=>setSelectedIds(new Set())} className="font-semibold text-[#405c60] underline underline-offset-2" data-testid="button-clear-matter-selection">Clear selection</button>}
      </div>
      <div className="flex flex-wrap gap-2">
-      <Button variant="outline" onClick={()=>downloadPdf(selectedMatters,'selected')} disabled={!selectedMatters.length||isExportingPdf} testId="button-download-selected-matters"><Download className="h-4 w-4" />{isExportingPdf?'Preparing PDF…':`Download selected PDF (${selectedMatters.length})`}</Button>
-      <Button onClick={()=>setPendingAllMattersExport([...(list.data||[])])} disabled={!list.data?.length||isExportingPdf} testId="button-download-all-matters"><Download className="h-4 w-4" />{isExportingPdf?'Preparing PDF…':`Download all matters PDF (${list.data.length})`}</Button>
+       <Button variant="outline" onClick={()=>downloadPdf(selectedMatters,'selected')} disabled={!selectedMatters.length||isExportingPdf||isRetryingExportRecord} testId="button-download-selected-matters"><Download className="h-4 w-4" />{isExportingPdf?'Preparing PDF…':`Download selected PDF (${selectedMatters.length})`}</Button>
+       <Button onClick={()=>setPendingAllMattersExport([...(list.data||[])])} disabled={!list.data?.length||isExportingPdf||isRetryingExportRecord} testId="button-download-all-matters"><Download className="h-4 w-4" />{isExportingPdf?'Preparing PDF…':`Download all matters PDF (${list.data.length})`}</Button>
      </div>
     </div>
-    {pdfError&&<p role="alert" className="mt-3 text-xs text-[#9b4941]" data-testid="status-matter-pdf-error">{pdfError}</p>}
+     {pdfError&&<div role="alert" className="mt-3 flex flex-wrap items-center gap-3 text-xs text-[#9b4941]" data-testid="status-matter-pdf-error"><p>{pdfError}</p>{pendingExportRecord&&<Button variant="outline" onClick={retryExportRecord} disabled={isRetryingExportRecord} testId="button-retry-matter-export-record">{isRetryingExportRecord?'Recording export…':'Retry recording export'}</Button>}</div>}
    </div>}
     {!filteredMatters.length?<EmptyState title={search||status||dueFilter||clientId!==null?'No matching matters':'No matters on file'} detail={search||status||dueFilter||clientId!==null?'Try adjusting the search or filters.':'Start a client intake, complete the conflict review, then open the matter.'} action={<Button onClick={()=>setLocation('/intake?create=1')} testId="button-empty-add-matter"><Plus className="h-4 w-4" />Start intake</Button>} />:
     <div className="overflow-hidden rounded-md border border-[#e0dace] bg-[#fbfaf5]">

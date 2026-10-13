@@ -1399,7 +1399,7 @@ paths:
       operationId: logMatterExportRequest
       tags: [governance]
       summary: Record a successfully generated matter PDF export
-      description: The client calls this after generating the PDF and initiating the browser download. The server records firm-scoped activity and audit events without storing PDF contents.
+      description: The client calls this after generating the PDF and initiating the browser download. Reuse exportRequestId when retrying the same completed export so the server records only one firm-scoped activity and audit event without storing PDF contents.
       requestBody:
         required: true
         content:
@@ -2870,7 +2870,7 @@ components:
         occurredAt: { type: string, format: date-time }
     MatterExportAuditInput:
       type: object
-      required: [scope, matterIds]
+      required: [scope, matterIds, exportRequestId]
       properties:
         scope: { type: string, enum: [selected, all] }
         matterIds:
@@ -2878,6 +2878,7 @@ components:
           minItems: 1
           maxItems: 2000
           items: { type: integer, minimum: 1 }
+        exportRequestId: { type: string, format: uuid }
     RetentionSettings:
       type: object
       required: [matterRetentionDays, auditRetentionDays]

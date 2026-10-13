@@ -1431,12 +1431,62 @@ test("successful matter exports are recorded in the activity feed for only the e
     })
     .returning();
   try {
+    const exportRequestId = randomUUID();
     const exported = await request("/audit/exports", {
       userId: firms.primary.ownerId,
       method: "POST",
-      body: { scope: "selected", matterIds: [firms.primary.matterId] },
+      body: {
+        scope: "selected",
+        matterIds: [firms.primary.matterId],
+        exportRequestId,
+      },
     });
     assert.equal(exported.response.status, 204);
+
+    const retriedExport = await request("/audit/exports", {
+      userId: firms.primary.ownerId,
+      method: "POST",
+      body: {
+        scope: "selected",
+        matterIds: [firms.primary.matterId],
+        exportRequestId,
+      },
+    });
+    assert.equal(retriedExport.response.status, 204);
+    const concurrentRetries = await Promise.all([
+      request("/audit/exports", {
+        userId: firms.primary.ownerId,
+        method: "POST",
+        body: {
+          scope: "selected",
+          matterIds: [firms.primary.matterId],
+          exportRequestId,
+        },
+      }),
+      request("/audit/exports", {
+        userId: firms.primary.ownerId,
+        method: "POST",
+        body: {
+          scope: "selected",
+          matterIds: [firms.primary.matterId],
+          exportRequestId,
+        },
+      }),
+    ]);
+    assert.deepEqual(
+      concurrentRetries.map((retry) => retry.response.status),
+      [204, 204],
+    );
+    const reusedRequestId = await request("/audit/exports", {
+      userId: firms.primary.ownerId,
+      method: "POST",
+      body: {
+        scope: "selected",
+        matterIds: [additionalMatter.id],
+        exportRequestId,
+      },
+    });
+    assert.equal(reusedRequestId.response.status, 409);
 
     const activity = await request("/activity", {
       userId: firms.primary.ownerId,
@@ -1469,7 +1519,11 @@ test("successful matter exports are recorded in the activity feed for only the e
     const partialAllExport = await request("/audit/exports", {
       userId: firms.primary.ownerId,
       method: "POST",
-      body: { scope: "all", matterIds: [firms.primary.matterId] },
+      body: {
+        scope: "all",
+        matterIds: [firms.primary.matterId],
+        exportRequestId: randomUUID(),
+      },
     });
     assert.equal(partialAllExport.response.status, 400);
 
@@ -1479,6 +1533,7 @@ test("successful matter exports are recorded in the activity feed for only the e
       body: {
         scope: "all",
         matterIds: [firms.primary.matterId, additionalMatter.id],
+        exportRequestId: randomUUID(),
       },
     });
     assert.equal(allMattersExport.response.status, 204);
@@ -1497,7 +1552,11 @@ test("successful matter exports are recorded in the activity feed for only the e
     const crossFirmExport = await request("/audit/exports", {
       userId: firms.primary.ownerId,
       method: "POST",
-      body: { scope: "all", matterIds: [firms.other.matterId] },
+      body: {
+        scope: "all",
+        matterIds: [firms.other.matterId],
+        exportRequestId: randomUUID(),
+      },
     });
     assert.equal(crossFirmExport.response.status, 404);
     const activityAfterRejectedExport = await request("/activity", {

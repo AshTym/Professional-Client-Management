@@ -1,6 +1,6 @@
 import { clerkClient } from "@clerk/express";
-import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { createHash, randomUUID } from "node:crypto";
 import { pipeline } from "node:stream/promises";
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
@@ -1259,7 +1259,25 @@ router.post("/audit/exports", async (req, res): Promise<void> => {
   }
   const actor = access.name || access.email || "Firm user";
   const countLabel = `${ids.length} ${ids.length === 1 ? "record" : "records"}`;
-  await db.transaction(async (tx) => {
+  const requestFingerprint = createHash("sha256")
+    .update(JSON.stringify({
+      scope: parsed.data.scope,
+      matterIds: [...ids].sort((left, right) => left - right),
+    }))
+    .digest("hex");
+  const recorded = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`clientguard:export:${access.workspaceId}:${parsed.data.exportRequestId}`}))`);
+    const [existing] = await tx.select({ details: auditEventsTable.details })
+      .from(auditEventsTable)
+      .where(and(
+        eq(auditEventsTable.workspaceId, access.workspaceId),
+        eq(auditEventsTable.action, "matter_pdf_exported"),
+        sql`${auditEventsTable.details}->>'exportRequestId' = ${parsed.data.exportRequestId}`,
+      ))
+      .limit(1);
+    if (existing) {
+      return existing.details.requestFingerprint === requestFingerprint;
+    }
     await tx.insert(auditEventsTable).values({
       workspaceId: access.workspaceId,
       clerkUserId: access.userId,
@@ -1268,7 +1286,13 @@ router.post("/audit/exports", async (req, res): Promise<void> => {
       entityType: "matter_export",
       entityId: null,
       entityLabel: "Matter PDF export",
-      details: { scope: parsed.data.scope, matterCount: ids.length, format: "pdf" },
+      details: {
+        scope: parsed.data.scope,
+        matterCount: ids.length,
+        format: "pdf",
+        exportRequestId: parsed.data.exportRequestId,
+        requestFingerprint,
+      },
     });
     await tx.insert(activitiesTable).values({
       workspaceId: access.workspaceId,
@@ -1279,7 +1303,12 @@ router.post("/audit/exports", async (req, res): Promise<void> => {
       entityId: access.workspaceId,
       entityLabel: "Matter PDF",
     });
+    return true;
   });
+  if (!recorded) {
+    res.status(409).json({ error: "This export request ID was already used for a different export." });
+    return;
+  }
   res.sendStatus(204);
 });
 

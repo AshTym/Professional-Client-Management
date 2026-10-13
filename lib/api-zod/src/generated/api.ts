@@ -1844,7 +1844,7 @@ export const ListAuditEventsResponse = zod.array(ListAuditEventsResponseItem)
 
 
 /**
- * The client calls this after generating the PDF and initiating the browser download. The server records firm-scoped activity and audit events without storing PDF contents.
+ * The client calls this after generating the PDF and initiating the browser download. Reuse exportRequestId when retrying the same completed export so the server records only one firm-scoped activity and audit event without storing PDF contents.
  * @summary Record a successfully generated matter PDF export
  */
 
@@ -1854,7 +1854,8 @@ export const logMatterExportRequestBodyMatterIdsMax = 2000;
 
 export const LogMatterExportRequestBody = zod.object({
   "scope": zod.enum(['selected', 'all']),
-  "matterIds": zod.array(zod.number().int().min(1)).min(1).max(logMatterExportRequestBodyMatterIdsMax)
+  "matterIds": zod.array(zod.number().int().min(1)).min(1).max(logMatterExportRequestBodyMatterIdsMax),
+  "exportRequestId": zod.string().uuid()
 })
 
 export const LogMatterExportRequestResponse = zod.void()
