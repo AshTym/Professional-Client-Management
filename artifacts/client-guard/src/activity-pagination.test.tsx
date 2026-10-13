@@ -9,6 +9,7 @@ const apiMocks = vi.hoisted(() => ({
   useListClients: vi.fn(),
   useListMatters: vi.fn(),
   exportActivity: vi.fn(),
+  eventTotal: 41,
 }));
 const originalCreateObjectURL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
 const originalRevokeObjectURL = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL');
@@ -49,9 +50,12 @@ function renderActivityPage() {
 describe('activity pagination', () => {
   beforeEach(() => {
     apiMocks.exportActivity.mockReset().mockResolvedValue('');
+    apiMocks.eventTotal = 41;
     apiMocks.useListActivity.mockImplementation(({ limit, offset }) => ({
-      data: Array.from({ length: offset === 0 ? limit : 1 }, (_, index) =>
-        event(offset + index + 1),
+      data: Array.from(
+        { length: Math.min(limit, Math.max(0, apiMocks.eventTotal - offset)) },
+        (_, index) =>
+          event(offset + index + 1),
       ),
       isLoading: false,
       isError: false,
@@ -150,6 +154,40 @@ describe('activity pagination', () => {
       expect.objectContaining({ limit: 41, offset: 0 }),
     );
   });
+
+  it.each([20, 40, 80])(
+    'shows the end of history without an extra page when exactly %i events fill a page',
+    (pageSize) => {
+      apiMocks.eventTotal = pageSize;
+      renderActivityPage();
+
+      if (pageSize !== 40) {
+        fireEvent.change(screen.getByTestId('select-activity-limit'), {
+          target: { value: String(pageSize) },
+        });
+      }
+
+      expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
+        expect.objectContaining({ limit: pageSize + 1, offset: 0 }),
+      );
+      expect(screen.getByTestId('text-activity-count').textContent).toBe(
+        `Events 1–${pageSize}`,
+      );
+      expect(screen.getByTestId('text-activity-page-status').textContent).toBe(
+        'End of activity history · Page 1',
+      );
+      expect(screen.getByTestId('button-activity-next').hasAttribute('disabled')).toBe(true);
+
+      fireEvent.click(screen.getByTestId('button-activity-next'));
+
+      expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
+        expect.objectContaining({ limit: pageSize + 1, offset: 0 }),
+      );
+      expect(screen.getByTestId('text-activity-count').textContent).toBe(
+        `Events 1–${pageSize}`,
+      );
+    },
+  );
 
   it('resets to the first page when the page size changes', () => {
     renderActivityPage();
