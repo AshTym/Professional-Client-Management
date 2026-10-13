@@ -1347,6 +1347,64 @@ test("signed-in users without a firm cannot list or create invitations", async (
   assert.deepEqual(after, before);
 });
 
+test("signed-in users without a firm cannot resend or withdraw invitations", async (t) => {
+  const userId = `no-firm-invitation-actions-${randomUUID()}`;
+  const token = randomUUID();
+  const [pending] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email: `protected-invitation-${randomUUID()}@example.test`,
+      role: "assistant",
+      invitedByClerkUserId: firms.primary.ownerId,
+      clerkInvitationId: `protected-clerk-invitation-${randomUUID()}`,
+      tokenHash: createHash("sha256").update(token).digest("hex"),
+      expiresAt: new Date(Date.now() + 60_000),
+    })
+    .returning();
+  const createInvitation = t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async () => ({ id: "unexpected_clerk_invitation" }) as never,
+  );
+  const revokeInvitation = t.mock.method(
+    clerkClient.invitations,
+    "revokeInvitation",
+    async () => ({ id: pending.clerkInvitationId }) as never,
+  );
+
+  const before = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, pending.id));
+  const attempts = await Promise.all([
+    request(`/workspace/invitations/${pending.id}/resend`, {
+      userId,
+      method: "POST",
+    }),
+    request(`/workspace/invitations/${pending.id}`, {
+      userId,
+      method: "DELETE",
+    }),
+  ]);
+
+  for (const { response, body } of attempts) {
+    assert.equal(response.status, 403);
+    assert.deepEqual(body, {
+      error: "You do not have access to a firm workspace.",
+      code: "firm_authorization_required",
+    });
+  }
+  assert.equal(createInvitation.mock.callCount(), 0);
+  assert.equal(revokeInvitation.mock.callCount(), 0);
+
+  const after = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, pending.id));
+  assert.deepEqual(after, before);
+});
+
 test("owners can email an invitation with the selected workspace role", async (t) => {
   const createInvitation = t.mock.method(
     clerkClient.invitations,
