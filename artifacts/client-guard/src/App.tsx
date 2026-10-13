@@ -256,7 +256,7 @@ function ClientDetail() {
   <aside className="space-y-4"><div className="rounded-md border border-[#e0dace] bg-[#fbfaf5] p-5"><div className="mono text-[10px] uppercase tracking-[.14em] text-[#8a928d]">Relationship at a glance</div><Link href={`/matters?clientId=${c.id}`} className="mt-5 flex items-center justify-between border-b border-[#ede8dd] pb-4 text-[#405c60] hover:text-[#987747]" data-testid="link-client-matters"><span className="text-xs text-[#7a8783]">Matters</span><span className="inline-flex items-center gap-1 mono text-sm font-medium">{c.matterCount}<ArrowRight className="h-3 w-3" /></span></Link><div className="mt-4 flex justify-between"><span className="text-xs text-[#7a8783]">Last activity</span><span className="text-xs font-semibold">{c.lastActivityAt?formatTime(c.lastActivityAt):'—'}</span></div></div><div className="rounded-md bg-[#e8eee8] p-5"><ShieldCheck className="h-5 w-5 text-[#4b7662]" /><h3 className="serif mt-3 font-bold">Firm-scoped record</h3><p className="mt-1 text-xs leading-5 text-[#657772]">This client information is accessible only within your authorized workspace.</p></div></aside></div></>;
 }
 
-function MattersPage() {
+export function MattersPage() {
   const qc=useQueryClient();
  const [search,setSearch]=useState('');
  const [status,setStatus]=useState(()=>{const initial=new URLSearchParams(window.location.search).get('status')||'';return ['open','on_hold','closed'].includes(initial)?initial:'';});
