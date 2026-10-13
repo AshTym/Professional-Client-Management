@@ -681,6 +681,122 @@ test("concurrent workspace setup requests create one firm for the signed-in owne
   assert.equal(setupActivities[0].action, "created the firm workspace");
 });
 
+test("workspace setup returns a stable conflict when another writer adds the membership first", async () => {
+  const userId = `workspace-setup-race-${randomUUID()}`;
+  const attemptedWorkspaceName = `Losing Workspace ${randomUUID()}`;
+  const competingWorkspaceName = `Winning Workspace ${randomUUID()}`;
+  const functionName = `pause_workspace_setup_${randomUUID().replaceAll("-", "")}`;
+  const triggerName = `pause_workspace_setup_${randomUUID().replaceAll("-", "")}`;
+  const advisoryLockKey = 918273645;
+  const lockClient = await bootstrapPool!.connect();
+  let lockHeld = false;
+
+  await lockClient.query("SELECT pg_advisory_lock($1, $2)", [advisoryLockKey, 0]);
+  lockHeld = true;
+  await bootstrapPool!.query(`
+    CREATE FUNCTION "${schemaName}"."${functionName}"()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+      IF NEW.name = '${attemptedWorkspaceName}' THEN
+        PERFORM pg_advisory_xact_lock(${advisoryLockKey}, 0);
+      END IF;
+      RETURN NEW;
+    END;
+    $$;
+    CREATE TRIGGER "${triggerName}"
+    BEFORE INSERT ON "${schemaName}".clientguard_workspaces
+    FOR EACH ROW
+    EXECUTE FUNCTION "${schemaName}"."${functionName}"();
+  `);
+
+  try {
+    const setupRequest = request("/workspace", {
+      userId,
+      method: "POST",
+      body: { name: attemptedWorkspaceName, practiceType: "law" },
+    });
+
+    const deadline = Date.now() + 5_000;
+    let requestBlockedOnWorkspaceInsert = false;
+    while (Date.now() < deadline) {
+      const result = await bootstrapPool!.query<{ count: string }>(`
+        SELECT count(*)::text AS count
+        FROM pg_stat_activity
+        WHERE pid <> pg_backend_pid()
+          AND wait_event_type = 'Lock'
+          AND query ILIKE '%clientguard_workspaces%'
+      `);
+      if (Number(result.rows[0]?.count ?? 0) > 0) {
+        requestBlockedOnWorkspaceInsert = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.ok(requestBlockedOnWorkspaceInsert, "workspace setup should reach the race window");
+
+    const [competingWorkspace] = await db
+      .insert(workspacesTable)
+      .values({ name: competingWorkspaceName, practiceType: "law" })
+      .returning();
+    const [existingMembership] = await db
+      .insert(membershipsTable)
+      .values({
+        workspaceId: competingWorkspace.id,
+        clerkUserId: userId,
+        email: "existing-owner@example.test",
+        displayName: "Existing Firm Owner",
+        role: "owner",
+      })
+      .returning();
+
+    await lockClient.query("SELECT pg_advisory_unlock($1, $2)", [
+      advisoryLockKey,
+      0,
+    ]);
+    lockHeld = false;
+
+    const result = await setupRequest;
+    assert.equal(result.response.status, 409);
+    assert.deepEqual(result.body, {
+      error:
+        "Your account joined a firm while setup was in progress. Refresh to continue.",
+    });
+
+    const losingWorkspaces = await db
+      .select()
+      .from(workspacesTable)
+      .where(eq(workspacesTable.name, attemptedWorkspaceName));
+    const memberships = await db
+      .select()
+      .from(membershipsTable)
+      .where(eq(membershipsTable.clerkUserId, userId));
+    const setupActivities = await db
+      .select()
+      .from(activitiesTable)
+      .where(eq(activitiesTable.clerkUserId, userId));
+
+    assert.equal(losingWorkspaces.length, 0);
+    assert.deepEqual(memberships, [existingMembership]);
+    assert.equal(setupActivities.length, 0);
+  } finally {
+    if (lockHeld) {
+      await lockClient.query("SELECT pg_advisory_unlock($1, $2)", [
+        advisoryLockKey,
+        0,
+      ]);
+    }
+    lockClient.release();
+    await bootstrapPool!.query(
+      `DROP TRIGGER IF EXISTS "${triggerName}" ON "${schemaName}".clientguard_workspaces`,
+    );
+    await bootstrapPool!.query(
+      `DROP FUNCTION IF EXISTS "${schemaName}"."${functionName}"()`,
+    );
+  }
+});
+
 test("failed workspace setup leaves no partial firm and can be retried", async () => {
   const userId = `workspace-setup-failure-${randomUUID()}`;
   const workspaceName = `Retryable Workspace ${randomUUID()}`;

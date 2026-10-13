@@ -92,6 +92,29 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
+function isWorkspaceMembershipUniqueViolation(error: unknown): boolean {
+  const seen = new Set<object>();
+  let current = error;
+
+  while (typeof current === "object" && current !== null && !seen.has(current)) {
+    seen.add(current);
+    const databaseError = current as {
+      code?: unknown;
+      constraint?: unknown;
+      cause?: unknown;
+    };
+    if (
+      databaseError.code === "23505" &&
+      databaseError.constraint === "clientguard_membership_user_unique"
+    ) {
+      return true;
+    }
+    current = databaseError.cause;
+  }
+
+  return false;
+}
+
 router.get("/workspace", async (req, res): Promise<void> => {
   const identity = identify(req, res);
   if (!identity) return;
@@ -110,37 +133,47 @@ router.post("/workspace", async (req, res): Promise<void> => {
   }
 
   let created = false;
-  await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${identity.userId}))`);
-    const [existing] = await tx
-      .select({ id: membershipsTable.id })
-      .from(membershipsTable)
-      .where(eq(membershipsTable.clerkUserId, identity.userId))
-      .limit(1);
-    if (existing) return;
+  try {
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${identity.userId}))`);
+      const [existing] = await tx
+        .select({ id: membershipsTable.id })
+        .from(membershipsTable)
+        .where(eq(membershipsTable.clerkUserId, identity.userId))
+        .limit(1);
+      if (existing) return;
 
-    const [workspace] = await tx
-      .insert(workspacesTable)
-      .values(parsed.data)
-      .returning();
-    await tx.insert(membershipsTable).values({
-      workspaceId: workspace.id,
-      clerkUserId: identity.userId,
-      email: identity.email,
-      displayName: identity.name || "Firm owner",
-      role: "owner",
+      const [workspace] = await tx
+        .insert(workspacesTable)
+        .values(parsed.data)
+        .returning();
+      await tx.insert(membershipsTable).values({
+        workspaceId: workspace.id,
+        clerkUserId: identity.userId,
+        email: identity.email,
+        displayName: identity.name || "Firm owner",
+        role: "owner",
+      });
+      await tx.insert(activitiesTable).values({
+        workspaceId: workspace.id,
+        clerkUserId: identity.userId,
+        actor: identity.name || identity.email || "Firm owner",
+        action: "created the firm workspace",
+        entityType: "workspace",
+        entityId: workspace.id,
+        entityLabel: workspace.name,
+      });
+      created = true;
     });
-    await tx.insert(activitiesTable).values({
-      workspaceId: workspace.id,
-      clerkUserId: identity.userId,
-      actor: identity.name || identity.email || "Firm owner",
-      action: "created the firm workspace",
-      entityType: "workspace",
-      entityId: workspace.id,
-      entityLabel: workspace.name,
-    });
-    created = true;
-  });
+  } catch (error) {
+    if (isWorkspaceMembershipUniqueViolation(error)) {
+      res.status(409).json({
+        error: "Your account joined a firm while setup was in progress. Refresh to continue.",
+      });
+      return;
+    }
+    throw error;
+  }
 
   const row = await membershipFor(identity.userId);
   const response = CreateWorkspaceResponse.parse(workspaceContext(identity, row));
