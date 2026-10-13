@@ -445,6 +445,7 @@ router.post(
       return;
     }
 
+    await backfillAssignmentIdentities(access.workspaceId);
     const result = await db.transaction(async (tx) => {
       const [candidate] = await tx
         .select()
@@ -479,7 +480,6 @@ router.post(
         if (member.role === "owner") return { kind: "owner_protected" as const };
         if (member.clerkUserId === access.userId) return { kind: "self_removal" as const };
 
-      await backfillAssignmentIdentities(access.workspaceId);
         const labels = assignmentLabels(member);
         const assignedClients = await tx
           .select()

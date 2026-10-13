@@ -15,6 +15,7 @@ const firmBOwnerId = `firm-b-owner-${randomUUID()}`;
 const firmAViewerId = `firm-a-viewer-${randomUUID()}`;
 const replacementId = `replacement-${randomUUID()}`;
 const conflictingUserId = `shared-user-${randomUUID()}`;
+const concurrentUserId = `concurrent-shared-user-${randomUUID()}`;
 
 let bootstrapPool: Pool | undefined;
 let appPool: Pool | undefined;
@@ -32,6 +33,8 @@ let firmAWorkspaceId = 0;
 let firmBWorkspaceId = 0;
 let conflictingMembershipAId = 0;
 let conflictingMembershipBId = 0;
+let concurrentMembershipAId = 0;
+let concurrentMembershipBId = 0;
 let firmAOwnerMembershipId = 0;
 let replacementMembershipId = 0;
 let assignedClientId = 0;
@@ -203,6 +206,28 @@ before(async () => {
     })
     .returning();
   conflictingMembershipBId = conflictB.id;
+  const [concurrentConflictA] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firmA.id,
+      clerkUserId: concurrentUserId,
+      email: "concurrent-shared-person@example.test",
+      displayName: "Concurrent Shared Person",
+      role: "professional",
+    })
+    .returning();
+  concurrentMembershipAId = concurrentConflictA.id;
+  const [concurrentConflictB] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firmB.id,
+      clerkUserId: concurrentUserId,
+      email: "concurrent-shared-person@example.test",
+      displayName: "Concurrent Shared Person",
+      role: "professional",
+    })
+    .returning();
+  concurrentMembershipBId = concurrentConflictB.id;
   await db.insert(membershipsTable).values({
     workspaceId: firmB.id,
     clerkUserId: firmAOwnerId,
@@ -475,4 +500,79 @@ test("each firm admin reviews only local memberships and removals preserve assig
     .where(eq(activitiesTable.workspaceId, firmAWorkspaceId));
   assert.ok(reassignmentActivities.some((event) => event.entityId === assignedClientId));
   assert.ok(reassignmentActivities.some((event) => event.entityId === assignedMatterId));
+});
+
+test("concurrent firm decisions serialize and reject a stale local removal", async () => {
+  const decision = (membershipId: number, userId: string) =>
+    request(`/workspace/membership-conflicts/${membershipId}/decision`, {
+      userId,
+      method: "POST",
+      body: {
+        decision: "remove",
+        reason: "Remove duplicate access after review",
+      },
+    });
+
+  const responses = await Promise.race([
+    Promise.all([
+      decision(concurrentMembershipAId, firmAOwnerId),
+      decision(concurrentMembershipBId, firmBOwnerId),
+    ]),
+    new Promise<never>((_, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("Concurrent membership decisions did not complete.")),
+        5_000,
+      );
+      timeout.unref();
+    }),
+  ]);
+
+  const [responseA, responseB] = responses;
+  assert.deepEqual(
+    [responseA.response.status, responseB.response.status].sort(),
+    [200, 404],
+    "one firm-local removal should succeed and the now-stale decision should be rejected",
+  );
+  const successfulResponse = responseA.response.status === 200 ? responseA : responseB;
+  const staleResponse = responseA.response.status === 404 ? responseA : responseB;
+  const successfulMembershipId =
+    responseA.response.status === 200 ? concurrentMembershipAId : concurrentMembershipBId;
+  const staleMembershipId =
+    responseA.response.status === 404 ? concurrentMembershipAId : concurrentMembershipBId;
+  assert.equal(successfulResponse.body.membershipId, successfulMembershipId);
+  assert.equal(successfulResponse.body.accessRemoved, true);
+  assert.match(staleResponse.body.error, /no longer has a duplicate access conflict/i);
+  assert.ok(!JSON.stringify(staleResponse.body).includes(firmAName));
+  assert.ok(!JSON.stringify(staleResponse.body).includes(firmBName));
+  assert.ok(!JSON.stringify(staleResponse.body).includes(concurrentUserId));
+
+  const remainingMemberships = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, concurrentUserId));
+  assert.equal(remainingMemberships.length, 1);
+  assert.equal(
+    remainingMemberships[0].id,
+    staleMembershipId,
+    "the rejected firm-local decision's membership must remain untouched",
+  );
+  assert.equal(
+    remainingMemberships[0].workspaceId,
+    staleMembershipId === concurrentMembershipAId ? firmAWorkspaceId : firmBWorkspaceId,
+    "the surviving membership must remain scoped to its own firm",
+  );
+
+  const reviews = await db
+    .select()
+    .from(auditEventsTable)
+    .where(eq(auditEventsTable.entityType, "membership_access_conflict"));
+  const concurrentReviews = reviews.filter((review) =>
+    review.entityId === concurrentMembershipAId || review.entityId === concurrentMembershipBId
+  );
+  assert.equal(concurrentReviews.length, 1);
+  assert.equal(concurrentReviews[0].entityId, successfulMembershipId);
+  assert.equal(
+    concurrentReviews[0].workspaceId,
+    successfulMembershipId === concurrentMembershipAId ? firmAWorkspaceId : firmBWorkspaceId,
+  );
 });
