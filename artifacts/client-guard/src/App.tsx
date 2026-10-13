@@ -416,7 +416,7 @@ export function MattersPage() {
    </AlertDialog>
   </>;
 }
-function MatterDetail() {
+export function MatterDetail() {
   const params = useRoute('/matters/:id')[1];
   const id = Number(params?.id);
   const result = useGetMatter(id, { query: { queryKey: getGetMatterQueryKey(id) } });
@@ -435,13 +435,14 @@ function MatterDetail() {
   function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
+    const nextClientId = Number(f.get('clientId'));
     const responsibleMemberId = Number(f.get('responsibleMemberId'));
     const member = assignmentMembers.data?.find(candidate => candidate.id === responsibleMemberId);
     if (!member) return;
     update.mutate({
       id,
       data: {
-        clientId: Number(f.get('clientId')),
+        clientId: nextClientId,
         title: String(f.get('title')),
         matterType: String(f.get('matterType')),
         responsible: member.name || member.email,
@@ -454,6 +455,10 @@ function MatterDetail() {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getGetMatterQueryKey(id) });
         qc.invalidateQueries({ queryKey: getListMattersQueryKey() });
+        qc.invalidateQueries({ queryKey: getListClientsQueryKey() });
+        for (const clientId of new Set([m.clientId, nextClientId])) {
+          qc.invalidateQueries({ queryKey: getGetClientQueryKey(clientId) });
+        }
         qc.invalidateQueries({ queryKey: getListActivityQueryKey() });
         qc.invalidateQueries({ queryKey: getListWorkspaceAssignmentIssuesQueryKey() });
         setEditing(false);

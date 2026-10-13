@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
   useListClients: vi.fn(),
   useCreateClient: vi.fn(),
   useListMatters: vi.fn(),
+  useGetMatter: vi.fn(),
+  useGetMatterCloseout: vi.fn(),
+  useUpdateMatter: vi.fn(),
+  useCloseMatter: vi.fn(),
   useLogMatterExportRequest: vi.fn(),
   useGetIntakeOverview: vi.fn(),
   useGetClient: vi.fn(),
@@ -26,8 +30,11 @@ vi.mock('@workspace/api-client-react', () => ({
   ...mocks,
   getGetDashboardQueryKey: () => ['dashboard'],
   getGetClientQueryKey: (id: number) => ['client', id],
+  getGetMatterQueryKey: (id: number) => ['matter', id],
+  getGetMatterCloseoutQueryKey: (id: number) => ['matter-closeout', id],
   getListActivityQueryKey: () => ['activity'],
   getListClientsQueryKey: () => ['clients'],
+  getListWorkspaceAssignmentIssuesQueryKey: () => ['assignment-issues'],
   getGetIntakeOverviewQueryKey: () => ['intake'],
   getListMattersQueryKey: () => ['matters'],
 }));
@@ -36,8 +43,9 @@ vi.mock('./lib/matters-pdf', () => ({
   downloadMattersPdf: mocks.downloadMattersPdf,
 }));
 vi.mock('./PortalInvitation', () => ({ default: () => null }));
+vi.mock('./MatterCloseout', () => ({ default: () => null }));
 
-import { ClientDetail, ClientsPage, Dashboard, MattersPage } from './App';
+import { ClientDetail, ClientsPage, Dashboard, MatterDetail, MattersPage } from './App';
 import Intake from './Intake';
 
 const firstMatter = {
@@ -77,6 +85,7 @@ function renderAt(path: string, queryClient = new QueryClient({
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/clients" component={ClientsPage} />
           <Route path="/clients/:id" component={ClientDetail} />
+          <Route path="/matters/:id" component={MatterDetail} />
           <Route path="/intake" component={Intake} />
           <Route path="/matters" component={MattersPage} />
         </Switch>
@@ -113,6 +122,27 @@ describe('dashboard shortcuts and matter exports', () => {
       isError: false,
       refetch: vi.fn(),
     });
+    mocks.useGetMatter.mockReturnValue({
+      data: {
+        ...firstMatter,
+        responsibleMemberId: 1,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    mocks.useGetMatterCloseout.mockReturnValue({
+      data: { canClose: false },
+      isLoading: false,
+    });
+    mocks.useUpdateMatter.mockReturnValue({
+      mutate: vi.fn((_variables: any, callbacks: any) => callbacks?.onSuccess?.()),
+      isPending: false,
+      isError: false,
+    });
+    mocks.useCloseMatter.mockReturnValue({ mutate: vi.fn(), isPending: false, isError: false });
     mocks.useLogMatterExportRequest.mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue({}),
     });
@@ -302,6 +332,32 @@ describe('dashboard shortcuts and matter exports', () => {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['intake'] });
     });
     expect(screen.getByRole('status').textContent).toContain('Matter opened');
+  });
+
+  it('refreshes both client matter totals when a matter is reassigned', async () => {
+    mocks.useListClients.mockReturnValue({
+      data: [
+        { id: 5, name: 'Northstar Ltd' },
+        { id: 6, name: 'Harbor Group' },
+      ],
+      isLoading: false,
+      isError: false,
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    renderAt('/matters/11', queryClient);
+
+    fireEvent.click(screen.getByTestId('button-edit-matter'));
+    fireEvent.change(screen.getByLabelText('Client'), { target: { value: '6' } });
+    fireEvent.click(screen.getByTestId('button-save-matter-edit'));
+
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['clients'] });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['client', 5] });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['client', 6] });
+    });
   });
 
   it('exports only selected matters in the selected PDF and audit request', async () => {
