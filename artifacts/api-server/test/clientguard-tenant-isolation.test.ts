@@ -3958,6 +3958,125 @@ test("failed expired invitation renewal leaves it safe to retry", async (t) => {
   assert(renewed.expiresAt > new Date(Date.now() + 6 * 24 * 60 * 60 * 1000));
 });
 
+test("failed database save revokes the unsaved renewal and leaves the expired invitation retryable", async (t) => {
+  const oldToken = randomUUID();
+  const oldCreatedAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+  const oldExpiresAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [expired] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email: `database-failure-renewal-${randomUUID()}@example.test`,
+      role: "professional",
+      invitedByClerkUserId: firms.primary.ownerId,
+      clerkInvitationId: "database_failure_old_clerk_invitation",
+      tokenHash: createHash("sha256").update(oldToken).digest("hex"),
+      expiresAt: oldExpiresAt,
+      createdAt: oldCreatedAt,
+    })
+    .returning();
+  const [before] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, expired.id));
+  const functionName = `reject_invitation_renewal_${randomUUID().replaceAll("-", "")}`;
+  const triggerName = `reject_invitation_renewal_${randomUUID().replaceAll("-", "")}`;
+  let providerAttempts = 0;
+  const createInvitation = t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async () => {
+      providerAttempts += 1;
+      return {
+        id:
+          providerAttempts === 1
+            ? "unsaved_renewed_clerk_invitation"
+            : "retry_renewed_clerk_invitation",
+      } as never;
+    },
+  );
+  const revokedInvitationIds: string[] = [];
+  const revokeInvitation = t.mock.method(
+    clerkClient.invitations,
+    "revokeInvitation",
+    async (invitationId) => {
+      revokedInvitationIds.push(invitationId);
+      return { id: invitationId } as never;
+    },
+  );
+
+  try {
+    await appPool!.query(`
+      CREATE FUNCTION "${schemaName}"."${functionName}"()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        IF NEW.id = ${expired.id} THEN
+          RAISE EXCEPTION 'simulated invitation renewal save failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$;
+      CREATE TRIGGER "${triggerName}"
+      BEFORE UPDATE ON "${schemaName}".clientguard_invitations
+      FOR EACH ROW
+      EXECUTE FUNCTION "${schemaName}"."${functionName}"();
+    `);
+
+    const failed = await request(`/workspace/invitations/${expired.id}/resend`, {
+      userId: firms.primary.ownerId,
+      method: "POST",
+    });
+    assert.equal(failed.response.status, 502);
+    assert.deepEqual(failed.body, {
+      error: "The invitation email could not be sent. Please try again.",
+    });
+    assert.equal(createInvitation.mock.callCount(), 1);
+    assert.equal(revokeInvitation.mock.callCount(), 1);
+    assert.deepEqual(revokedInvitationIds, ["unsaved_renewed_clerk_invitation"]);
+
+    await appPool!.query(`
+      DROP TRIGGER "${triggerName}"
+      ON "${schemaName}".clientguard_invitations;
+      DROP FUNCTION "${schemaName}"."${functionName}"();
+    `);
+
+    const [afterFailure] = await db
+      .select()
+      .from(invitationsTable)
+      .where(eq(invitationsTable.id, expired.id));
+    assert.deepEqual(afterFailure, before);
+
+    const retried = await request(`/workspace/invitations/${expired.id}/resend`, {
+      userId: firms.primary.ownerId,
+      method: "POST",
+    });
+    assert.equal(retried.response.status, 200);
+    assert.equal(createInvitation.mock.callCount(), 2);
+    assert.equal(revokeInvitation.mock.callCount(), 2);
+    assert.deepEqual(revokedInvitationIds, [
+      "unsaved_renewed_clerk_invitation",
+      "database_failure_old_clerk_invitation",
+    ]);
+
+    const [renewed] = await db
+      .select()
+      .from(invitationsTable)
+      .where(eq(invitationsTable.id, expired.id));
+    assert.notEqual(renewed.tokenHash, before.tokenHash);
+    assert.equal(renewed.clerkInvitationId, "retry_renewed_clerk_invitation");
+    assert(renewed.createdAt > before.createdAt);
+    assert(renewed.expiresAt > new Date(Date.now() + 6 * 24 * 60 * 60 * 1000));
+  } finally {
+    await appPool!.query(`
+      DROP TRIGGER IF EXISTS "${triggerName}"
+      ON "${schemaName}".clientguard_invitations;
+      DROP FUNCTION IF EXISTS "${schemaName}"."${functionName}"();
+    `);
+  }
+});
+
 test("renewing an expired invitation does not replace another live invitation", async (t) => {
   const email = `expired-renewal-conflict-${randomUUID()}@example.test`;
   const expiredToken = randomUUID();
