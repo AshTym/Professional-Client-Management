@@ -369,6 +369,114 @@ describe('new-firm dashboard onboarding', () => {
     expect(screen.queryByRole('button', { name: 'Reloading activity' })).toBeNull();
   });
 
+  it('distinguishes a failed membership check and preserves setup fields while retrying', async () => {
+    let finishRefetch!: (result: { data: { workspace: null } }) => void;
+    const refetch = vi.fn(() => new Promise<{ data: { workspace: null } }>((resolve) => {
+      finishRefetch = resolve;
+    }));
+    apiMocks.useGetWorkspace.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      isFetching: false,
+      refetch,
+    });
+    window.history.replaceState({}, '', '/workspace/setup');
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <Router>
+          <Switch>
+            <Route path="/workspace/setup" component={SetupPage} />
+          </Switch>
+        </Router>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByRole('alert').textContent).toContain(
+      "We couldn't check whether you already belong to a firm.",
+    );
+    const nameInput = screen.getByTestId('input-workspace-name') as HTMLInputElement;
+    const practiceType = screen.getByTestId('select-practice-type') as HTMLSelectElement;
+    fireEvent.change(nameInput, { target: { value: 'Northline Advisory' } });
+    fireEvent.change(practiceType, { target: { value: 'financial' } });
+    expect((screen.getByTestId('button-create-workspace') as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByTestId('button-retry-membership'));
+
+    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('status').textContent).toContain('Checking whether you already belong');
+    expect(nameInput.value).toBe('Northline Advisory');
+    expect(practiceType.value).toBe('financial');
+    expect((screen.getByTestId('button-create-workspace') as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => {
+      finishRefetch({ data: { workspace: null } });
+    });
+    expect(nameInput.value).toBe('Northline Advisory');
+    expect(practiceType.value).toBe('financial');
+  });
+
+  it('routes to the firm dashboard when a membership retry finds an existing firm', async () => {
+    const existingContext = {
+      userId: 'owner-1',
+      email: 'owner@example.test',
+      name: 'Test Owner',
+      workspace: {
+        id: 48,
+        name: 'Northline Advisory',
+        practiceType: 'law' as const,
+        createdAt: new Date('2026-10-14T00:00:00.000Z'),
+      },
+      role: 'owner' as const,
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    let view: ReturnType<typeof render>;
+    let queryResult: Record<string, unknown>;
+    const renderRoutes = () => (
+      <QueryClientProvider client={queryClient}>
+        <Router>
+          <Switch>
+            <Route path="/workspace/setup" component={SetupPage} />
+            <Route path="/dashboard" component={() => <div data-testid="firm-dashboard">Firm dashboard</div>} />
+          </Switch>
+        </Router>
+      </QueryClientProvider>
+    );
+    const refetch = vi.fn(async () => {
+      queryResult = {
+        data: existingContext,
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        refetch,
+      };
+      view.rerender(renderRoutes());
+      return { data: existingContext };
+    });
+    queryResult = {
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      isFetching: false,
+      refetch,
+    };
+    apiMocks.useGetWorkspace.mockImplementation(() => queryResult);
+    window.history.replaceState({}, '', '/workspace/setup');
+    view = render(renderRoutes());
+
+    fireEvent.click(screen.getByTestId('button-retry-membership'));
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/dashboard');
+      expect(screen.getByTestId('firm-dashboard')).toBeTruthy();
+    });
+  });
+
   it('recovers from an uncertain setup save and opens the completed workspace', () => {
     const mutate = vi.fn();
     apiMocks.useCreateWorkspace.mockReturnValue({ mutate, isPending: false });
