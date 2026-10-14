@@ -359,6 +359,47 @@ describe('dashboard shortcuts and matter exports', () => {
     expect(screen.queryByRole('dialog', { name: 'Start a client intake' })).toBeNull();
   });
 
+  it('focuses the intake dialog, traps Tab navigation, and closes with Escape', () => {
+    renderAt('/intake?create=1&clientId=5');
+
+    const dialog = screen.getByRole('dialog', { name: 'Start a client intake' });
+    const clientSelect = screen.getByTestId('select-intake-client');
+    const closeButton = screen.getByRole('button', { name: 'Close intake' });
+    const submitButton = screen.getByTestId('button-submit-intake');
+    const launcher = screen.getByTestId('button-start-intake');
+
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(clientSelect);
+
+    submitButton.focus();
+    fireEvent.keyDown(window, { key: 'Tab' });
+    expect(document.activeElement).toBe(closeButton);
+
+    closeButton.focus();
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(submitButton);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Start a client intake' })).toBeNull();
+    expect(window.location.search).toBe('?clientId=5');
+    expect(document.activeElement).toBe(launcher);
+  });
+
+  it('returns keyboard focus to the button that opened intake', () => {
+    renderAt('/intake');
+
+    const launcher = screen.getByTestId('button-start-intake');
+    fireEvent.click(launcher);
+
+    const dialog = screen.getByRole('dialog', { name: 'Start a client intake' });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Start a client intake' })).toBeNull();
+    expect(document.activeElement).toBe(launcher);
+  });
+
   it('removes the create query when staff cancel intake by clicking outside the dialog', () => {
     renderAt('/intake?create=1&firstMatter=1');
 
