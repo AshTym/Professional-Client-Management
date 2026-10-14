@@ -48,6 +48,8 @@ import type {
   ClientUpdateSchedule,
   ClientUpdateScheduleInput,
   ClientVisibilityInput,
+  CloseoutChecklistSettings,
+  CloseoutChecklistSettingsInput,
   CloseoutItem,
   CloseoutItemUpdateInput,
   ContactInquiryInput,
@@ -9919,7 +9921,7 @@ export const getInitializeMatterCloseoutUrl = (id: number,) => {
 }
 
 /**
- * @summary Create default final-billing, handover, and retention review steps
+ * @summary Snapshot the applicable required closeout checklist for this matter
  */
 export const initializeMatterCloseout = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<MatterCloseout> => {
 
@@ -9971,7 +9973,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type InitializeMatterCloseoutMutationVariables = {id: number}
 
     /**
- * @summary Create default final-billing, handover, and retention review steps
+ * @summary Snapshot the applicable required closeout checklist for this matter
  */
 export const useInitializeMatterCloseout = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof initializeMatterCloseout>>, TError,InitializeMatterCloseoutMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -9982,6 +9984,195 @@ export const useInitializeMatterCloseout = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getInitializeMatterCloseoutMutationOptions(options), queryClient);
+    }
+
+export const getGetCloseoutChecklistSettingsUrl = () => {
+
+
+
+
+  return `/api/closeout/checklist-settings`
+}
+
+/**
+ * @summary Get firm-wide and matter-type-specific closeout checklists
+ */
+export const getCloseoutChecklistSettings = async ( options?: Parameters<typeof customFetch>[1]): Promise<CloseoutChecklistSettings> => {
+
+  return customFetch<CloseoutChecklistSettings>(getGetCloseoutChecklistSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCloseoutChecklistSettingsQueryKey = () => {
+    return [
+    `/api/closeout/checklist-settings`
+    ] as const;
+    }
+
+
+export const getGetCloseoutChecklistSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getCloseoutChecklistSettings>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCloseoutChecklistSettings>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCloseoutChecklistSettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCloseoutChecklistSettings>>> = ({ signal }) => getCloseoutChecklistSettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCloseoutChecklistSettings>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetCloseoutChecklistSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getCloseoutChecklistSettings>>>
+export type GetCloseoutChecklistSettingsQueryError = ErrorType<unknown>
+
+
+export function useGetCloseoutChecklistSettings<TData = Awaited<ReturnType<typeof getCloseoutChecklistSettings>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCloseoutChecklistSettings>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCloseoutChecklistSettings>>,
+          TError,
+          Awaited<ReturnType<typeof getCloseoutChecklistSettings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCloseoutChecklistSettings<TData = Awaited<ReturnType<typeof getCloseoutChecklistSettings>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCloseoutChecklistSettings>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCloseoutChecklistSettings>>,
+          TError,
+          Awaited<ReturnType<typeof getCloseoutChecklistSettings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCloseoutChecklistSettings<TData = Awaited<ReturnType<typeof getCloseoutChecklistSettings>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCloseoutChecklistSettings>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get firm-wide and matter-type-specific closeout checklists
+ */
+
+export function useGetCloseoutChecklistSettings<TData = Awaited<ReturnType<typeof getCloseoutChecklistSettings>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCloseoutChecklistSettings>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetCloseoutChecklistSettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateCloseoutChecklistSettingsUrl = () => {
+
+
+
+
+  return `/api/closeout/checklist-settings`
+}
+
+/**
+ * @summary Replace the firm closeout checklist settings
+ */
+export const updateCloseoutChecklistSettings = async (closeoutChecklistSettingsInput: CloseoutChecklistSettingsInput, options?: Parameters<typeof customFetch>[1]): Promise<CloseoutChecklistSettings> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<CloseoutChecklistSettings>(getUpdateCloseoutChecklistSettingsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(closeoutChecklistSettingsInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateCloseoutChecklistSettingsMutationKey = () => ['updateCloseoutChecklistSettings'] as const;
+
+export const getUpdateCloseoutChecklistSettingsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCloseoutChecklistSettings>>, TError,UpdateCloseoutChecklistSettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCloseoutChecklistSettings>>, TError,UpdateCloseoutChecklistSettingsMutationVariables, TContext> => {
+
+const mutationKey = getUpdateCloseoutChecklistSettingsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCloseoutChecklistSettings>>, UpdateCloseoutChecklistSettingsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateCloseoutChecklistSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCloseoutChecklistSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateCloseoutChecklistSettings>>>
+    export type UpdateCloseoutChecklistSettingsMutationBody = BodyType<CloseoutChecklistSettingsInput>
+    export type UpdateCloseoutChecklistSettingsMutationError = ErrorType<void>
+    export type UpdateCloseoutChecklistSettingsMutationVariables = {data: BodyType<CloseoutChecklistSettingsInput>}
+
+    /**
+ * @summary Replace the firm closeout checklist settings
+ */
+export const useUpdateCloseoutChecklistSettings = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCloseoutChecklistSettings>>, TError,UpdateCloseoutChecklistSettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateCloseoutChecklistSettings>>,
+        TError,
+        UpdateCloseoutChecklistSettingsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateCloseoutChecklistSettingsMutationOptions(options), queryClient);
     }
 
 export const getUpdateCloseoutItemUrl = (id: number,) => {

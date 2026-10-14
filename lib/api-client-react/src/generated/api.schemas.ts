@@ -2013,15 +2013,6 @@ export interface TrustAccountStatement {
   entries: TrustAccountStatementEntriesItem[];
 }
 
-export type CloseoutItemItemKey = typeof CloseoutItemItemKey[keyof typeof CloseoutItemItemKey];
-
-
-export const CloseoutItemItemKey = {
-  final_billing: 'final_billing',
-  document_handover: 'document_handover',
-  retention_review: 'retention_review',
-} as const;
-
 export type CloseoutItemStatus = typeof CloseoutItemStatus[keyof typeof CloseoutItemStatus];
 
 
@@ -2032,13 +2023,54 @@ export const CloseoutItemStatus = {
 
 export interface CloseoutItem {
   id: number;
-  itemKey: CloseoutItemItemKey;
+  itemKey: string;
   title: string;
   status: CloseoutItemStatus;
   /** @nullable */
   completedBy: string | null;
   /** @nullable */
   completedAt: string | null;
+}
+
+export interface CloseoutChecklistItemDefinition {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     * @pattern ^[a-zA-Z0-9_-]+$
+     */
+  itemKey: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  title: string;
+}
+
+export interface CloseoutChecklistDefinition {
+  /**
+     * @maxLength 160
+     * @nullable
+     */
+  matterType: string | null;
+  /**
+     * @minItems 1
+     * @maxItems 30
+     */
+  items: CloseoutChecklistItemDefinition[];
+}
+
+export interface CloseoutChecklistSettingsInput {
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  checklists: CloseoutChecklistDefinition[];
+}
+
+export interface CloseoutChecklistSettings {
+  checklists: CloseoutChecklistDefinition[];
+  /** @nullable */
+  updatedAt: string | null;
 }
 
 export interface MatterFollowupInput {

@@ -4,6 +4,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   serial,
   text,
@@ -35,6 +36,37 @@ export const practiceSettingsTable = pgTable(
   },
   (table) => [
     uniqueIndex("clientguard_practice_settings_workspace_unique").on(
+      table.workspaceId,
+    ),
+  ],
+);
+
+export type CloseoutChecklistItemConfig = {
+  itemKey: string;
+  title: string;
+};
+
+export type CloseoutChecklistConfig = {
+  matterType: string | null;
+  items: CloseoutChecklistItemConfig[];
+};
+
+export const closeoutChecklistSettingsTable = pgTable(
+  "clientguard_closeout_checklist_settings",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspace_id")
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: "cascade" }),
+    checklists: jsonb("checklists").$type<CloseoutChecklistConfig[]>().notNull(),
+    updatedByClerkUserId: text("updated_by_clerk_user_id").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("clientguard_closeout_checklist_settings_workspace_unique").on(
       table.workspaceId,
     ),
   ],

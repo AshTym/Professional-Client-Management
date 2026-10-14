@@ -3106,7 +3106,7 @@ export const GetMatterCloseoutResponse = zod.object({
   "matterStatus": zod.string(),
   "items": zod.array(zod.object({
   "id": zod.number().int(),
-  "itemKey": zod.enum(['final_billing', 'document_handover', 'retention_review']),
+  "itemKey": zod.string(),
   "title": zod.string(),
   "status": zod.enum(['open', 'complete']),
   "completedBy": zod.string().nullable(),
@@ -3130,7 +3130,7 @@ export const GetMatterCloseoutResponse = zod.object({
 
 
 /**
- * @summary Create default final-billing, handover, and retention review steps
+ * @summary Snapshot the applicable required closeout checklist for this matter
  */
 
 
@@ -3145,7 +3145,7 @@ export const InitializeMatterCloseoutResponse = zod.object({
   "matterStatus": zod.string(),
   "items": zod.array(zod.object({
   "id": zod.number().int(),
-  "itemKey": zod.enum(['final_billing', 'document_handover', 'retention_review']),
+  "itemKey": zod.string(),
   "title": zod.string(),
   "status": zod.enum(['open', 'complete']),
   "completedBy": zod.string().nullable(),
@@ -3165,6 +3165,84 @@ export const InitializeMatterCloseoutResponse = zod.object({
   "targetRetentionDate": zod.coerce.date().nullable(),
   "legalHold": zod.boolean(),
   "canClose": zod.boolean()
+})
+
+
+/**
+ * @summary Get firm-wide and matter-type-specific closeout checklists
+ */
+export const getCloseoutChecklistSettingsResponseChecklistsItemMatterTypeMax = 160;
+
+export const getCloseoutChecklistSettingsResponseChecklistsItemItemsItemItemKeyMax = 80;
+
+
+export const getCloseoutChecklistSettingsResponseChecklistsItemItemsItemItemKeyRegExp = new RegExp('^[a-zA-Z0-9_-]+$');
+export const getCloseoutChecklistSettingsResponseChecklistsItemItemsItemTitleMax = 200;
+
+export const getCloseoutChecklistSettingsResponseChecklistsItemItemsMax = 30;
+
+
+
+export const GetCloseoutChecklistSettingsResponse = zod.object({
+  "checklists": zod.array(zod.object({
+  "matterType": zod.string().max(getCloseoutChecklistSettingsResponseChecklistsItemMatterTypeMax).nullable(),
+  "items": zod.array(zod.object({
+  "itemKey": zod.string().min(1).max(getCloseoutChecklistSettingsResponseChecklistsItemItemsItemItemKeyMax).regex(getCloseoutChecklistSettingsResponseChecklistsItemItemsItemItemKeyRegExp),
+  "title": zod.string().min(1).max(getCloseoutChecklistSettingsResponseChecklistsItemItemsItemTitleMax)
+})).min(1).max(getCloseoutChecklistSettingsResponseChecklistsItemItemsMax)
+})),
+  "updatedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Replace the firm closeout checklist settings
+ */
+export const updateCloseoutChecklistSettingsBodyChecklistsItemMatterTypeMax = 160;
+
+export const updateCloseoutChecklistSettingsBodyChecklistsItemItemsItemItemKeyMax = 80;
+
+
+export const updateCloseoutChecklistSettingsBodyChecklistsItemItemsItemItemKeyRegExp = new RegExp('^[a-zA-Z0-9_-]+$');
+export const updateCloseoutChecklistSettingsBodyChecklistsItemItemsItemTitleMax = 200;
+
+export const updateCloseoutChecklistSettingsBodyChecklistsItemItemsMax = 30;
+
+export const updateCloseoutChecklistSettingsBodyChecklistsMax = 100;
+
+
+
+export const UpdateCloseoutChecklistSettingsBody = zod.object({
+  "checklists": zod.array(zod.object({
+  "matterType": zod.string().max(updateCloseoutChecklistSettingsBodyChecklistsItemMatterTypeMax).nullable(),
+  "items": zod.array(zod.object({
+  "itemKey": zod.string().min(1).max(updateCloseoutChecklistSettingsBodyChecklistsItemItemsItemItemKeyMax).regex(updateCloseoutChecklistSettingsBodyChecklistsItemItemsItemItemKeyRegExp),
+  "title": zod.string().min(1).max(updateCloseoutChecklistSettingsBodyChecklistsItemItemsItemTitleMax)
+})).min(1).max(updateCloseoutChecklistSettingsBodyChecklistsItemItemsMax)
+})).min(1).max(updateCloseoutChecklistSettingsBodyChecklistsMax)
+})
+
+export const updateCloseoutChecklistSettingsResponseChecklistsItemMatterTypeMax = 160;
+
+export const updateCloseoutChecklistSettingsResponseChecklistsItemItemsItemItemKeyMax = 80;
+
+
+export const updateCloseoutChecklistSettingsResponseChecklistsItemItemsItemItemKeyRegExp = new RegExp('^[a-zA-Z0-9_-]+$');
+export const updateCloseoutChecklistSettingsResponseChecklistsItemItemsItemTitleMax = 200;
+
+export const updateCloseoutChecklistSettingsResponseChecklistsItemItemsMax = 30;
+
+
+
+export const UpdateCloseoutChecklistSettingsResponse = zod.object({
+  "checklists": zod.array(zod.object({
+  "matterType": zod.string().max(updateCloseoutChecklistSettingsResponseChecklistsItemMatterTypeMax).nullable(),
+  "items": zod.array(zod.object({
+  "itemKey": zod.string().min(1).max(updateCloseoutChecklistSettingsResponseChecklistsItemItemsItemItemKeyMax).regex(updateCloseoutChecklistSettingsResponseChecklistsItemItemsItemItemKeyRegExp),
+  "title": zod.string().min(1).max(updateCloseoutChecklistSettingsResponseChecklistsItemItemsItemTitleMax)
+})).min(1).max(updateCloseoutChecklistSettingsResponseChecklistsItemItemsMax)
+})),
+  "updatedAt": zod.coerce.date().nullable()
 })
 
 
@@ -3184,7 +3262,7 @@ export const UpdateCloseoutItemBody = zod.object({
 
 export const UpdateCloseoutItemResponse = zod.object({
   "id": zod.number().int(),
-  "itemKey": zod.enum(['final_billing', 'document_handover', 'retention_review']),
+  "itemKey": zod.string(),
   "title": zod.string(),
   "status": zod.enum(['open', 'complete']),
   "completedBy": zod.string().nullable(),

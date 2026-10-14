@@ -4,6 +4,7 @@ import * as api from "@workspace/api-zod";
 import {
   auditEventsTable,
   clientsTable,
+  closeoutChecklistSettingsTable,
   legalHoldsTable,
   matterCloseoutItemsTable,
   matterFollowupsTable,
@@ -15,7 +16,7 @@ import { firmAccess, logAuditEvent } from "../lib/clientguard-auth";
 import { canMatterOpen } from "../lib/clientguard-practice-service";
 
 const router: IRouter = Router();
-const CLOSEOUT_STEPS = [
+const DEFAULT_CLOSEOUT_CHECKLIST = [
   {
     itemKey: "final_billing",
     title: "Complete final billing and outstanding balance review",
@@ -29,6 +30,104 @@ const CLOSEOUT_STEPS = [
     title: "Review record disposition under the firm retention rule and any legal hold",
   },
 ] as const;
+
+function isAdmin(role: string) {
+  return role === "owner" || role === "admin";
+}
+
+function normalizeMatterType(value: string) {
+  return value.trim().toLocaleLowerCase();
+}
+
+async function getChecklists(workspaceId: number) {
+  const [settings] = await db.select({
+    checklists: closeoutChecklistSettingsTable.checklists,
+    updatedAt: closeoutChecklistSettingsTable.updatedAt,
+  }).from(closeoutChecklistSettingsTable)
+    .where(eq(closeoutChecklistSettingsTable.workspaceId, workspaceId))
+    .limit(1);
+  return {
+    checklists: settings?.checklists ?? [
+      { matterType: null, items: DEFAULT_CLOSEOUT_CHECKLIST.map((item) => ({ ...item })) },
+    ],
+    updatedAt: settings?.updatedAt ?? null,
+  };
+}
+
+router.get("/closeout/checklist-settings", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+  res.json(api.GetCloseoutChecklistSettingsResponse.parse(
+    await getChecklists(access.workspaceId),
+  ));
+});
+
+router.put("/closeout/checklist-settings", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res, true);
+  if (!access) return;
+  if (!isAdmin(access.role)) {
+    res.status(403).json({ error: "Only a firm owner or admin can change closeout checklist settings." });
+    return;
+  }
+  const parsed = api.UpdateCloseoutChecklistSettingsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const checklists = parsed.data.checklists.map((checklist) => ({
+    matterType: checklist.matterType?.trim() || null,
+    items: checklist.items.map((item) => ({
+      itemKey: item.itemKey,
+      title: item.title.trim(),
+    })),
+  }));
+  const defaultCount = checklists.filter((checklist) => checklist.matterType === null).length;
+  const matterTypes = checklists
+    .filter((checklist) => checklist.matterType !== null)
+    .map((checklist) => normalizeMatterType(checklist.matterType!));
+  const duplicateItems = checklists.some((checklist) =>
+    new Set(checklist.items.map((item) => item.itemKey)).size !== checklist.items.length,
+  );
+  if (defaultCount !== 1 || new Set(matterTypes).size !== matterTypes.length || duplicateItems) {
+    res.status(400).json({
+      error: "Provide exactly one all-matters checklist and unique matter types and item keys.",
+    });
+    return;
+  }
+  const result = await db.transaction(async (tx) => {
+    const [settings] = await tx.insert(closeoutChecklistSettingsTable).values({
+      workspaceId: access.workspaceId,
+      checklists,
+      updatedByClerkUserId: access.userId,
+    }).onConflictDoUpdate({
+      target: closeoutChecklistSettingsTable.workspaceId,
+      set: {
+        checklists,
+        updatedByClerkUserId: access.userId,
+        updatedAt: new Date(),
+      },
+    }).returning();
+    await tx.insert(auditEventsTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action: "closeout_checklist_settings_updated",
+      entityType: "workspace",
+      entityId: access.workspaceId,
+      entityLabel: access.workspaceName,
+      details: {
+        matterTypeChecklistCount: checklists.length - 1,
+        requiredItemCount: checklists.reduce((sum, checklist) => sum + checklist.items.length, 0),
+        checklistDefinitions: JSON.stringify(checklists),
+      },
+    });
+    return settings;
+  });
+  res.json(api.UpdateCloseoutChecklistSettingsResponse.parse({
+    checklists: result.checklists,
+    updatedAt: result.updatedAt,
+  }));
+});
 
 function idFrom(value: string | string[] | undefined): number | null {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -76,10 +175,7 @@ async function closeoutData(workspaceId: number, matterId: number) {
     targetRetentionDate = retainedUntil.toISOString().slice(0, 10);
   }
   const closeoutItemsComplete =
-    items.length === CLOSEOUT_STEPS.length &&
-    CLOSEOUT_STEPS.every((step) =>
-      items.some((item) => item.itemKey === step.itemKey && item.status === "complete"),
-    );
+    items.length > 0 && items.every((item) => item.status === "complete");
   const canClose = closeoutItemsComplete &&
     await canMatterOpen(workspaceId, matterId);
   return {
@@ -137,13 +233,31 @@ router.post("/matters/:id/closeout", async (req, res): Promise<void> => {
     return;
   }
   const result = await db.transaction(async (tx) => {
-    const [matter] = await tx.select({ id: mattersTable.id, title: mattersTable.title })
+    const [matter] = await tx.select({
+      id: mattersTable.id,
+      title: mattersTable.title,
+      matterType: mattersTable.matterType,
+    })
       .from(mattersTable).where(and(
         eq(mattersTable.id, params.data.id),
         eq(mattersTable.workspaceId, access.workspaceId),
       )).for("update").limit(1);
     if (!matter) return null;
-    await tx.insert(matterCloseoutItemsTable).values(CLOSEOUT_STEPS.map((step) => ({
+    const [settings] = await tx.select({
+      checklists: closeoutChecklistSettingsTable.checklists,
+    }).from(closeoutChecklistSettingsTable).where(
+      eq(closeoutChecklistSettingsTable.workspaceId, access.workspaceId),
+    ).limit(1);
+    const checklists = settings?.checklists ?? [
+      { matterType: null, items: DEFAULT_CLOSEOUT_CHECKLIST.map((item) => ({ ...item })) },
+    ];
+    const typeChecklist = checklists.find((checklist) =>
+      checklist.matterType !== null &&
+      normalizeMatterType(checklist.matterType) === normalizeMatterType(matter.matterType),
+    );
+    const applicableChecklist = typeChecklist ??
+      checklists.find((checklist) => checklist.matterType === null)!;
+    await tx.insert(matterCloseoutItemsTable).values(applicableChecklist.items.map((step) => ({
       workspaceId: access.workspaceId,
       matterId: matter.id,
       itemKey: step.itemKey,
@@ -157,7 +271,10 @@ router.post("/matters/:id/closeout", async (req, res): Promise<void> => {
       entityType: "matter",
       entityId: matter.id,
       entityLabel: matter.title,
-      details: {},
+      details: {
+        matterType: matter.matterType,
+        checklistItemCount: applicableChecklist.items.length,
+      },
     });
     return matter;
   });

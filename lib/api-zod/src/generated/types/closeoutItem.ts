@@ -5,12 +5,11 @@
  * ClientGuard firm-scoped client and matter management API
  * OpenAPI spec version: 0.1.0
  */
-import type { CloseoutItemItemKey } from './closeoutItemItemKey';
 import type { CloseoutItemStatus } from './closeoutItemStatus';
 
 export interface CloseoutItem {
   id: number;
-  itemKey: CloseoutItemItemKey;
+  itemKey: string;
   title: string;
   status: CloseoutItemStatus;
   /** @nullable */

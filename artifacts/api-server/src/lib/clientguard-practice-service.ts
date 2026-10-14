@@ -1,16 +1,10 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   engagementLettersTable,
   matterCloseoutItemsTable,
   practiceSettingsTable,
 } from "@workspace/db";
-
-const REQUIRED_CLOSEOUT_KEYS = [
-  "final_billing",
-  "document_handover",
-  "retention_review",
-] as const;
 
 export async function engagementSignatureRequired(workspaceId: number) {
   const [settings] = await db
@@ -51,17 +45,12 @@ export async function closeoutIsReady(workspaceId: number, matterId: number) {
       status: matterCloseoutItemsTable.status,
     })
     .from(matterCloseoutItemsTable)
-    .where(
-      and(
-        eq(matterCloseoutItemsTable.workspaceId, workspaceId),
-        eq(matterCloseoutItemsTable.matterId, matterId),
-        inArray(matterCloseoutItemsTable.itemKey, [...REQUIRED_CLOSEOUT_KEYS]),
-      ),
-    );
+    .where(and(
+      eq(matterCloseoutItemsTable.workspaceId, workspaceId),
+      eq(matterCloseoutItemsTable.matterId, matterId),
+    ));
   return (
-    items.length === REQUIRED_CLOSEOUT_KEYS.length &&
-    REQUIRED_CLOSEOUT_KEYS.every((key) =>
-      items.some((item) => item.itemKey === key && item.status === "complete"),
-    )
+    items.length > 0 &&
+    items.every((item) => item.status === "complete")
   );
 }

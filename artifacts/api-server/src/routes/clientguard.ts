@@ -3642,20 +3642,12 @@ router.patch("/matters/:id", async (req, res): Promise<void> => {
       }
       if (parsed.data.status === "closed") {
         const items = await tx.select({
-          itemKey: matterCloseoutItemsTable.itemKey,
           status: matterCloseoutItemsTable.status,
         }).from(matterCloseoutItemsTable).where(and(
           eq(matterCloseoutItemsTable.workspaceId, access.workspaceId),
           eq(matterCloseoutItemsTable.matterId, params.data.id),
-          inArray(matterCloseoutItemsTable.itemKey, [
-            "final_billing",
-            "document_handover",
-            "retention_review",
-          ]),
         ));
-        const ready = ["final_billing", "document_handover", "retention_review"].every((key) =>
-          items.some((item) => item.itemKey === key && item.status === "complete"),
-        );
+        const ready = items.length > 0 && items.every((item) => item.status === "complete");
         if (!ready) return { kind: "closeout-required" as const };
       }
     }
@@ -3796,20 +3788,12 @@ router.delete("/matters/:id", async (req, res): Promise<void> => {
     if (!existing) return { kind: "matter-missing" as const };
     if (existing.status === "closed") return { kind: "already-closed" as const };
     const items = await tx.select({
-      itemKey: matterCloseoutItemsTable.itemKey,
       status: matterCloseoutItemsTable.status,
     }).from(matterCloseoutItemsTable).where(and(
       eq(matterCloseoutItemsTable.workspaceId, access.workspaceId),
       eq(matterCloseoutItemsTable.matterId, params.data.id),
-      inArray(matterCloseoutItemsTable.itemKey, [
-        "final_billing",
-        "document_handover",
-        "retention_review",
-      ]),
     ));
-    const ready = ["final_billing", "document_handover", "retention_review"].every((key) =>
-      items.some((item) => item.itemKey === key && item.status === "complete"),
-    );
+    const ready = items.length > 0 && items.every((item) => item.status === "complete");
     if (!ready) return { kind: "closeout-required" as const };
     const [matter] = await tx.update(mattersTable).set({ status: "closed" }).where(and(
       eq(mattersTable.id, params.data.id),

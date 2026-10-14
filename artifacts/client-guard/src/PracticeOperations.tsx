@@ -10,6 +10,7 @@ import {
 } from '@workspace/api-client-react';
 import type { GetTrustAccountStatementParams, TrustStatementLineInput } from '@workspace/api-client-react';
 import { AlertTriangle, FileSignature, Landmark, Plus, Printer, RefreshCw, ShieldCheck } from 'lucide-react';
+import CloseoutChecklistSettings from './CloseoutChecklistSettings';
 
 const jurisdictions = ['Australia', 'USA', 'Great Britain'] as const;
 const panel = 'rounded-md border border-[#e0dace] bg-[#fbfaf5]';
@@ -247,6 +248,10 @@ export default function PracticeOperations() {
   return <div data-testid="page-practice-operations">
     <header className="mb-7"><div className="mono mb-2 text-[10px] uppercase tracking-[.18em] text-[#987747]">Firm policy / client money custody</div><h1 className="serif text-3xl font-bold md:text-[38px]">Practice operations</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-[#72807f]">Set the rules of engagement, issue letters for provider-confirmed signature, and keep a precise record of client money.</p></header>
     <div className="mb-5"><Notice error={error} success={success} /></div>
+    <CloseoutChecklistSettings
+      isAdmin={workspace.data?.role === 'owner' || workspace.data?.role === 'admin'}
+      matterTypes={(matters.data || []).map(matter => matter.matterType)}
+    />
     <section className={`${panel} mb-5 overflow-hidden`}><div className="flex items-start gap-3 border-b border-[#e9e4d9] px-5 py-4"><ShieldCheck className="mt-0.5 h-5 w-5 text-[#527861]" /><div><h2 className="serif text-lg font-bold">Practice configuration</h2><p className="mt-1 text-xs text-[#788581]">Apply signature and jurisdiction policy before new matters are opened.</p></div></div>
       <form onSubmit={savePractice} className="grid gap-5 p-5 md:grid-cols-[1fr_320px]"><fieldset><legend className="mb-3 text-xs font-bold uppercase tracking-wide text-[#687773]">Supported jurisdictions</legend><div className="flex flex-wrap gap-2">{jurisdictions.map(j => <label key={j} className={`flex cursor-pointer items-center gap-2 rounded border px-3 py-2.5 text-sm transition ${jurisdiction.includes(j)?'border-[#829c8b] bg-[#edf3ed]':'border-[#ded9cd] bg-[#f8f6ef] hover:bg-[#f0ece2]'}`}><input type="checkbox" checked={jurisdiction.includes(j)} onChange={e => setJurisdiction(old => e.target.checked ? [...old, j] : old.filter(v => v !== j))} className="accent-[#294651]" />{j}</label>)}</div></fieldset>
       <div className="flex flex-col justify-between gap-4"><label className="flex items-start gap-3 rounded bg-[#f1eee6] p-3 text-xs leading-5"><input type="checkbox" checked={requiresSignature} onChange={e => setRequiresSignature(e.target.checked)} className="mt-1 accent-[#294651]" /><span><strong className="block text-[#344b50]">Require signed engagement before opening</strong><span className="text-[#74807d]">A letter must be confirmed signed by the provider.</span></span></label><button className={button} disabled={saveSettings.isPending}>{saveSettings.isPending ? 'Saving policy…' : 'Save practice policy'}</button></div>

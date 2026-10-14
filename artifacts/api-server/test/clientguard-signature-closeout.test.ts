@@ -116,6 +116,10 @@ before(async () => {
       completed_by_clerk_user_id text, completed_at timestamptz,
       updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE (workspace_id, matter_id, item_key)
     );
+    CREATE TABLE "${schemaName}".clientguard_closeout_checklist_settings (
+      id serial PRIMARY KEY, workspace_id integer NOT NULL UNIQUE, checklists jsonb NOT NULL,
+      updated_by_clerk_user_id text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now()
+    );
     CREATE TABLE "${schemaName}".clientguard_matter_followups (
       id serial PRIMARY KEY, workspace_id integer NOT NULL, matter_id integer NOT NULL,
       due_at timestamptz NOT NULL, reason text NOT NULL, status text NOT NULL DEFAULT 'open',
@@ -506,4 +510,90 @@ test("closeout gates closure, legal holds pause disposition, and reminders survi
   const released = await releasedResponse.json() as { legalHold: boolean; targetRetentionDate: string | null };
   assert.equal(released.legalHold, false);
   assert.ok(released.targetRetentionDate);
+});
+
+test("firm closeout checklist settings are audited and matter checklists retain their starting snapshot", async () => {
+  const initialSettings = await request("/closeout/checklist-settings", "PUT", {
+    checklists: [
+      {
+        matterType: null,
+        items: [{ itemKey: "general_review", title: "Complete the general closeout review" }],
+      },
+      {
+        matterType: "advisory",
+        items: [
+          { itemKey: "archive_files", title: "Archive advisory workpapers" },
+          { itemKey: "confirm_final_invoice", title: "Confirm the final advisory invoice" },
+        ],
+      },
+    ],
+  });
+  assert.equal(initialSettings.status, 200);
+  const settingsBody = await initialSettings.json() as {
+    checklists: Array<{ matterType: string | null; items: Array<{ itemKey: string }> }>;
+  };
+  assert.equal(settingsBody.checklists.length, 2);
+  const fetchedSettings = await request("/closeout/checklist-settings");
+  assert.equal(fetchedSettings.status, 200);
+  assert.deepEqual(
+    (await fetchedSettings.json() as typeof settingsBody).checklists,
+    settingsBody.checklists,
+  );
+
+  await db.update(membershipsTable).set({ role: "professional" })
+    .where(eq(membershipsTable.clerkUserId, userId));
+  const deniedUpdate = await request("/closeout/checklist-settings", "PUT", {
+    checklists: settingsBody.checklists,
+  });
+  assert.equal(deniedUpdate.status, 403);
+  await db.update(membershipsTable).set({ role: "owner" })
+    .where(eq(membershipsTable.clerkUserId, userId));
+
+  const matter = await createMatter("open");
+  const initialized = await request(`/matters/${matter.id}/closeout`, "POST", {});
+  assert.equal(initialized.status, 201);
+  const startedChecklist = await initialized.json() as {
+    items: Array<{ id: number; itemKey: string; title: string; status: string }>;
+  };
+  assert.deepEqual(startedChecklist.items.map(({ itemKey, title }) => [itemKey, title]), [
+    ["archive_files", "Archive advisory workpapers"],
+    ["confirm_final_invoice", "Confirm the final advisory invoice"],
+  ]);
+
+  const changedSettings = await request("/closeout/checklist-settings", "PUT", {
+    checklists: [
+      {
+        matterType: null,
+        items: [{ itemKey: "general_review", title: "Complete the general closeout review" }],
+      },
+      {
+        matterType: "advisory",
+        items: [{ itemKey: "confirm_transfer", title: "Confirm the client handover" }],
+      },
+    ],
+  });
+  assert.equal(changedSettings.status, 200);
+  const existingMatter = await request(`/matters/${matter.id}/closeout`);
+  const unchangedSnapshot = await existingMatter.json() as {
+    items: Array<{ itemKey: string; title: string }>;
+  };
+  assert.deepEqual(unchangedSnapshot.items.map(({ itemKey, title }) => [itemKey, title]), [
+    ["archive_files", "Archive advisory workpapers"],
+    ["confirm_final_invoice", "Confirm the final advisory invoice"],
+  ]);
+
+  const blocked = await request(`/matters/${matter.id}`, "PATCH", { status: "closed" });
+  assert.equal(blocked.status, 409);
+  for (const item of startedChecklist.items) {
+    const completed = await request(`/closeout-items/${item.id}`, "PATCH", { status: "complete" });
+    assert.equal(completed.status, 200);
+  }
+  const closed = await request(`/matters/${matter.id}`, "PATCH", { status: "closed" });
+  assert.equal(closed.status, 200);
+
+  const [audit] = await db.select().from(auditEventsTable).where(
+    eq(auditEventsTable.action, "closeout_checklist_settings_updated"),
+  );
+  assert.ok(audit);
+  assert.match(String(audit.details.checklistDefinitions), /archive_files/);
 });
