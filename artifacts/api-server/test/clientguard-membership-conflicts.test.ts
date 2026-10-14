@@ -755,6 +755,140 @@ test("audit insert failure preserves conflict membership, assignments, and activ
   await assertRetriedRemovalCommittedExactlyOnce(fixture);
 });
 
+test("retained decision audit failure leaves no membership or review history changes", async () => {
+  const fixture = await createAssignedConflict("retain-audit");
+  const membershipsBefore = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, fixture.userId))
+    .orderBy(membershipsTable.id);
+
+  await withInsertFailure(
+    "clientguard_audit_events",
+    `NEW.entity_type = 'membership_access_conflict' AND NEW.entity_id = ${fixture.member.id}`,
+    async () => {
+      const failed = await request(
+        `/workspace/membership-conflicts/${fixture.member.id}/decision`,
+        {
+          userId: firmAOwnerId,
+          method: "POST",
+          body: {
+            decision: "retain",
+            reason: "Keep this teammate's firm access",
+          },
+        },
+      );
+      assert.equal(failed.response.status, 503);
+      assert.equal(failed.body.code, "membership_conflict_decision_not_saved");
+      assert.match(failed.body.error, /no access or assignment changes were made/i);
+      assert.ok(!JSON.stringify(failed.body).includes("Forced membership conflict"));
+
+      const membershipsAfter = await db
+        .select()
+        .from(membershipsTable)
+        .where(eq(membershipsTable.clerkUserId, fixture.userId))
+        .orderBy(membershipsTable.id);
+      assert.deepEqual(membershipsAfter, membershipsBefore);
+
+      const [clientAfter] = await db
+        .select()
+        .from(clientsTable)
+        .where(eq(clientsTable.id, fixture.client.id));
+      const [matterAfter] = await db
+        .select()
+        .from(mattersTable)
+        .where(eq(mattersTable.id, fixture.matter.id));
+      assert.deepEqual(clientAfter, fixture.client);
+      assert.deepEqual(matterAfter, fixture.matter);
+
+      const auditHistory = await db
+        .select()
+        .from(auditEventsTable)
+        .where(
+          and(
+            eq(auditEventsTable.workspaceId, firmAWorkspaceId),
+            eq(auditEventsTable.entityType, "membership_access_conflict"),
+            eq(auditEventsTable.entityId, fixture.member.id),
+          ),
+        );
+      assert.deepEqual(auditHistory, []);
+
+      const activityHistory = await db
+        .select()
+        .from(activitiesTable)
+        .where(eq(activitiesTable.workspaceId, firmAWorkspaceId));
+      assert.deepEqual(
+        activityHistory.filter(
+          (activity) =>
+            (activity.entityType === "membership" && activity.entityId === fixture.member.id) ||
+            (activity.entityType === "client" && activity.entityId === fixture.client.id) ||
+            (activity.entityType === "matter" && activity.entityId === fixture.matter.id),
+        ),
+        [],
+      );
+
+      const conflicts = await request("/workspace/membership-conflicts", {
+        userId: firmAOwnerId,
+      });
+      const conflict = conflicts.body.find(
+        (item: { membershipId: number }) => item.membershipId === fixture.member.id,
+      );
+      assert.ok(conflict);
+      assert.equal(conflict.lastDecision, null);
+      assert.equal(conflict.otherMembershipCount, 1);
+    },
+  );
+
+  const retried = await request(
+    `/workspace/membership-conflicts/${fixture.member.id}/decision`,
+    {
+      userId: firmAOwnerId,
+      method: "POST",
+      body: {
+        decision: "retain",
+        reason: "Keep this teammate's firm access",
+      },
+    },
+  );
+  assert.equal(retried.response.status, 200);
+  assert.equal(retried.body.decision, "retain");
+  assert.equal(retried.body.accessRemoved, false);
+
+  const membershipsAfterRetry = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, fixture.userId))
+    .orderBy(membershipsTable.id);
+  assert.deepEqual(membershipsAfterRetry, membershipsBefore);
+
+  const auditHistoryAfterRetry = await db
+    .select()
+    .from(auditEventsTable)
+    .where(
+      and(
+        eq(auditEventsTable.workspaceId, firmAWorkspaceId),
+        eq(auditEventsTable.entityType, "membership_access_conflict"),
+        eq(auditEventsTable.entityId, fixture.member.id),
+      ),
+    );
+  assert.equal(auditHistoryAfterRetry.length, 1);
+  assert.equal(auditHistoryAfterRetry[0].details.decision, "retain");
+
+  const activityHistoryAfterRetry = await db
+    .select()
+    .from(activitiesTable)
+    .where(eq(activitiesTable.workspaceId, firmAWorkspaceId));
+  assert.deepEqual(
+    activityHistoryAfterRetry.filter(
+      (activity) =>
+        (activity.entityType === "membership" && activity.entityId === fixture.member.id) ||
+        (activity.entityType === "client" && activity.entityId === fixture.client.id) ||
+        (activity.entityType === "matter" && activity.entityId === fixture.matter.id),
+    ),
+    [],
+  );
+});
+
 test("activity insert failure preserves conflict membership, assignments, and audit history", async () => {
   const fixture = await createAssignedConflict("activity");
 
