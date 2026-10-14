@@ -330,6 +330,8 @@ export function ClientDetail() {
 
 export function MattersPage() {
   const qc=useQueryClient();
+ const workspace=useGetWorkspace();
+ const workspaceId=workspace.data?.workspace?.id;
  const [search,setSearch]=useState('');
  const [status,setStatus]=useState(()=>{const initial=new URLSearchParams(window.location.search).get('status')||'';return ['open','on_hold','closed'].includes(initial)?initial:'';});
  const [dueFilter,setDueFilter]=useState<'overdue'|''>(()=>new URLSearchParams(window.location.search).get('due')==='overdue'?'overdue':'');
@@ -340,10 +342,39 @@ export function MattersPage() {
  const [pdfError,setPdfError]=useState('');
  const [isExportingPdf,setIsExportingPdf]=useState(false);
   const [isRetryingExportRecord,setIsRetryingExportRecord]=useState(false);
+ const exportRecordStorageKey=workspaceId ? `clientguard.pendingMatterExportRecord.v1:${workspaceId}` : null;
  const list=useListMatters();
  const logExport=useLogMatterExportRequest();
  const clients=useListClients();
  const [,setLocation]=useLocation();
+ useEffect(()=>{
+  if(!exportRecordStorageKey)return;
+  try{
+   const stored=localStorage.getItem(exportRecordStorageKey);
+   if(!stored){
+    setPendingExportRecord(null);
+    return;
+   }
+   const parsed=JSON.parse(stored);
+   const valid=parsed&&
+    (parsed.scope==='selected'||parsed.scope==='all')&&
+    Array.isArray(parsed.matterIds)&&
+    parsed.matterIds.length>0&&
+    parsed.matterIds.every((id:unknown)=>Number.isSafeInteger(id)&&Number(id)>0)&&
+    typeof parsed.exportRequestId==='string'&&
+    parsed.exportRequestId.length>0;
+   if(!valid){
+    localStorage.removeItem(exportRecordStorageKey);
+    setPendingExportRecord(null);
+    return;
+   }
+   setPendingExportRecord({scope:parsed.scope,matterIds:parsed.matterIds,exportRequestId:parsed.exportRequestId});
+   setPdfError('The PDF was downloaded, but its audit-trail entry could not be recorded. Retry recording it without downloading the PDF again.');
+  }catch{
+   setPendingExportRecord(null);
+   setPdfError('A saved export retry could not be read. You can create a new export if needed.');
+  }
+ },[exportRecordStorageKey]);
  useEffect(()=>{if(new URLSearchParams(window.location.search).get('create')==='1')setLocation('/intake?create=1',{replace:true});},[setLocation]);
   function updateQueryFilter(key:string,value:string){const params=new URLSearchParams(window.location.search);if(value)params.set(key,value);else params.delete(key);const query=params.toString();setLocation(`/matters${query?`?${query}`:''}`,{replace:true});}
  const filteredMatters=useMemo(()=>{
@@ -366,9 +397,8 @@ export function MattersPage() {
   });
  }
  async function downloadPdf(records: Matter[], scope:'selected'|'all'){
-  if(!records.length)return;
+  if(!records.length||pendingExportRecord||!exportRecordStorageKey)return;
   setPdfError('');
-   setPendingExportRecord(null);
   setIsExportingPdf(true);
   try{
    const {downloadMattersPdf}=await import('./lib/matters-pdf');
@@ -377,8 +407,12 @@ export function MattersPage() {
     try{
        await logExport.mutateAsync({data:exportRequest});
     }catch{
+       let retrySaved=true;
+       try{localStorage.setItem(exportRecordStorageKey,JSON.stringify(exportRequest));}catch{retrySaved=false;}
        setPendingExportRecord(exportRequest);
-       setPdfError('The PDF was downloaded, but its audit-trail entry could not be recorded. Retry recording it without downloading the PDF again.');
+       setPdfError(retrySaved
+        ? 'The PDF was downloaded, but its audit-trail entry could not be recorded. Retry recording it without downloading the PDF again.'
+        : 'The PDF was downloaded, but its audit-trail entry could not be recorded and this browser could not save the retry. Keep this page open and retry recording it without downloading the PDF again.');
       return;
     }
     void Promise.all([
@@ -396,6 +430,7 @@ export function MattersPage() {
    setIsRetryingExportRecord(true);
    try{
     await logExport.mutateAsync({data:pendingExportRecord});
+    if(exportRecordStorageKey)localStorage.removeItem(exportRecordStorageKey);
     setPendingExportRecord(null);
     setPdfError('');
     void Promise.all([
@@ -415,6 +450,7 @@ export function MattersPage() {
     <select value={status} onChange={e=>{setStatus(e.target.value);updateQueryFilter('status',e.target.value);setSelectedIds(new Set());}} aria-label="Filter matters by status" className="h-10 rounded-md border border-[#d9d4c8] bg-[#fbfaf5] px-3 text-sm capitalize" data-testid="select-matter-status"><option value="">All statuses</option><option value="open">Open</option><option value="on_hold">On hold</option><option value="closed">Closed</option></select>
     <select value={dueFilter} onChange={e=>{const value=e.target.value as ''|'overdue';setDueFilter(value);updateQueryFilter('due',value);setSelectedIds(new Set());}} aria-label="Filter matters by due date" className="h-10 rounded-md border border-[#d9d4c8] bg-[#fbfaf5] px-3 text-sm" data-testid="select-matter-due-filter"><option value="">All due dates</option><option value="overdue">Overdue only</option></select>
   </div>
+   {pendingExportRecord&&<div role="alert" className="mb-5 flex flex-wrap items-center gap-3 rounded-md border border-[#e6c7c1] bg-[#fff9f6] p-4 text-xs text-[#9b4941]" data-testid="panel-pending-matter-export-record"><p className="flex-1">{pdfError||'The PDF was downloaded, but its audit-trail entry could not be recorded. Retry recording it without downloading the PDF again.'}</p><Button variant="outline" onClick={retryExportRecord} disabled={isRetryingExportRecord} testId="button-retry-matter-export-record"><RefreshCw className="h-4 w-4" />{isRetryingExportRecord?'Recording export…':'Retry recording export'}</Button></div>}
    {(clientId!==null||dueFilter==='overdue')&&<div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-[#e0dace] bg-[#f5f2e9] px-4 py-3 text-xs text-[#687779]">{clientId!==null&&<span data-testid="text-matter-client-filter">Client: {clients.data?.find(c=>c.id===clientId)?.name||`Client #${clientId}`}</span>}{dueFilter==='overdue'&&<span data-testid="text-matter-overdue-filter">Overdue matters</span>}{clientId!==null&&<button type="button" onClick={()=>{setClientId(null);setSelectedIds(new Set());updateQueryFilter('clientId','');}} className="ml-auto font-semibold text-[#405c60] underline underline-offset-2" data-testid="button-clear-client-filter">Clear client filter</button>}</div>}
   {list.isLoading?<Skeleton title="Loading matters" />:list.isError?<ErrorState title="Matter list unavailable" retry={()=>list.refetch()} />:<>
    {!!list.data?.length&&<div className="mb-4 rounded-md border border-[#e0dace] bg-[#fbfaf5] p-3">
@@ -425,11 +461,11 @@ export function MattersPage() {
       {selectedIds.size>0&&<button type="button" onClick={()=>setSelectedIds(new Set())} className="font-semibold text-[#405c60] underline underline-offset-2" data-testid="button-clear-matter-selection">Clear selection</button>}
      </div>
      <div className="flex flex-wrap gap-2">
-       <Button variant="outline" onClick={()=>downloadPdf(selectedMatters,'selected')} disabled={!selectedMatters.length||isExportingPdf||isRetryingExportRecord} testId="button-download-selected-matters"><Download className="h-4 w-4" />{isExportingPdf?'Preparing PDF…':`Download selected PDF (${selectedMatters.length})`}</Button>
-       <Button onClick={()=>setPendingAllMattersExport([...(list.data||[])])} disabled={!list.data?.length||isExportingPdf||isRetryingExportRecord} testId="button-download-all-matters"><Download className="h-4 w-4" />{isExportingPdf?'Preparing PDF…':`Download all matters PDF (${list.data.length})`}</Button>
+       <Button variant="outline" onClick={()=>downloadPdf(selectedMatters,'selected')} disabled={!selectedMatters.length||isExportingPdf||isRetryingExportRecord||Boolean(pendingExportRecord)} testId="button-download-selected-matters"><Download className="h-4 w-4" />{isExportingPdf?'Preparing PDF…':`Download selected PDF (${selectedMatters.length})`}</Button>
+       <Button onClick={()=>setPendingAllMattersExport([...(list.data||[])])} disabled={!list.data?.length||isExportingPdf||isRetryingExportRecord||Boolean(pendingExportRecord)} testId="button-download-all-matters"><Download className="h-4 w-4" />{isExportingPdf?'Preparing PDF…':`Download all matters PDF (${list.data.length})`}</Button>
      </div>
     </div>
-     {pdfError&&<div role="alert" className="mt-3 flex flex-wrap items-center gap-3 text-xs text-[#9b4941]" data-testid="status-matter-pdf-error"><p>{pdfError}</p>{pendingExportRecord&&<Button variant="outline" onClick={retryExportRecord} disabled={isRetryingExportRecord} testId="button-retry-matter-export-record">{isRetryingExportRecord?'Recording export…':'Retry recording export'}</Button>}</div>}
+     {pdfError&&!pendingExportRecord&&<div role="alert" className="mt-3 text-xs text-[#9b4941]" data-testid="status-matter-pdf-error"><p>{pdfError}</p></div>}
    </div>}
     {!filteredMatters.length?<EmptyState title={search||status||dueFilter||clientId!==null?'No matching matters':'No matters on file'} detail={search||status||dueFilter||clientId!==null?'Try adjusting the search or filters.':'Start a client intake, complete the conflict review, then open the matter.'} action={<Button onClick={()=>setLocation('/intake?create=1')} testId="button-empty-add-matter"><Plus className="h-4 w-4" />Start intake</Button>} />:
     <div className="overflow-hidden rounded-md border border-[#e0dace] bg-[#fbfaf5]">

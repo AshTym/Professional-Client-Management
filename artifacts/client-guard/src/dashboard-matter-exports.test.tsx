@@ -5,6 +5,7 @@ import { Route, Router, Switch } from 'wouter';
 
 const mocks = vi.hoisted(() => ({
   useGetDashboard: vi.fn(),
+  useGetWorkspace: vi.fn(),
   useListActivity: vi.fn(),
   useListClients: vi.fn(),
   useCreateClient: vi.fn(),
@@ -103,6 +104,7 @@ function renderAt(path: string, queryClient = new QueryClient({
 
 describe('dashboard shortcuts and matter exports', () => {
   beforeEach(() => {
+    localStorage.clear();
     mocks.useGetDashboard.mockReturnValue({
       data: {
         clientCount: 1,
@@ -114,6 +116,11 @@ describe('dashboard shortcuts and matter exports', () => {
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
+    });
+    mocks.useGetWorkspace.mockReturnValue({
+      data: { userId: 'user-1', workspace: { id: 1, name: 'Test Firm', practiceType: 'law', createdAt: '2026-01-01T00:00:00.000Z' }, role: 'owner' },
+      isLoading: false,
+      isError: false,
     });
     mocks.useListActivity.mockReturnValue({
       data: [],
@@ -612,6 +619,51 @@ describe('dashboard shortcuts and matter exports', () => {
     expect(mocks.useLogMatterExportRequest.mock.results[0].value.mutateAsync).toHaveBeenCalledWith({
       data: expect.objectContaining({ scope: 'selected', matterIds: [12] }),
     });
+  });
+
+  it('keeps a failed export audit retry after leaving and returning to Matters, then clears it on success', async () => {
+    const mutateAsync = vi.fn()
+      .mockRejectedValueOnce(new Error('Audit recording failed'))
+      .mockResolvedValueOnce({});
+    mocks.useLogMatterExportRequest.mockReturnValue({ mutateAsync });
+
+    renderAt('/matters');
+    fireEvent.click(screen.getByTestId('checkbox-matter-12'));
+    fireEvent.click(screen.getByTestId('button-download-selected-matters'));
+
+    const storageKey = 'clientguard.pendingMatterExportRecord.v1:1';
+    await waitFor(() => expect(localStorage.getItem(storageKey)).not.toBeNull());
+    const savedRetry = JSON.parse(localStorage.getItem(storageKey)!);
+    expect(savedRetry).toEqual({
+      scope: 'selected',
+      matterIds: [12],
+      exportRequestId: expect.any(String),
+    });
+    expect(JSON.stringify(savedRetry)).not.toContain('Northstar');
+    expect(JSON.stringify(savedRetry)).not.toContain('Harbor');
+
+    cleanup();
+    renderAt('/dashboard');
+    cleanup();
+    mocks.useListMatters.mockReturnValue({ data: [], isLoading: false, isError: false, refetch: vi.fn() });
+    renderAt('/matters');
+
+    expect(await screen.findByTestId('panel-pending-matter-export-record')).toBeTruthy();
+    expect(screen.getByTestId('button-retry-matter-export-record')).toBeTruthy();
+    expect(mocks.downloadMattersPdf).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId('button-retry-matter-export-record'));
+
+    await waitFor(() => expect(localStorage.getItem(storageKey)).toBeNull());
+    expect(mutateAsync).toHaveBeenCalledTimes(2);
+    expect(mutateAsync.mock.calls[1][0]).toEqual({
+      data: {
+        scope: 'selected',
+        matterIds: [12],
+        exportRequestId: savedRetry.exportRequestId,
+      },
+    });
+    expect(screen.queryByTestId('panel-pending-matter-export-record')).toBeNull();
+    expect(mocks.downloadMattersPdf).toHaveBeenCalledTimes(1);
   });
 
   it('shows a PDF creation error and allows retrying with the same selected matters', async () => {
