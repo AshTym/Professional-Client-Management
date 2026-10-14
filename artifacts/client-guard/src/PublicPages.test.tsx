@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
-import { ContactPage, PricingPage } from "./PublicPages";
+import { AboutPage, ContactPage, PricingPage } from "./PublicPages";
 
 afterEach(() => {
   cleanup();
@@ -40,6 +40,24 @@ function fillContactForm() {
 }
 
 describe("public pages", () => {
+  it("publishes the interactive feature deck on the About page", () => {
+    renderPublicPage(<AboutPage />);
+
+    expect(screen.getByTestId("page-about")).toBeTruthy();
+    expect(screen.getByTestId("link-public-about").getAttribute("href")).toBe("/about");
+    expect(screen.getByTestId("iframe-about-deck").getAttribute("src")).toBe(
+      "/clientguard-feature-deck/slide1",
+    );
+    expect(screen.getByTestId("link-about-open-deck").getAttribute("href")).toBe(
+      "/clientguard-feature-deck/",
+    );
+    fireEvent.click(screen.getByTestId("button-about-next"));
+    expect(screen.getByTestId("text-about-slide-count").textContent).toBe("Slide 2 of 15");
+    expect(screen.getByTestId("iframe-about-deck").getAttribute("src")).toBe(
+      "/clientguard-feature-deck/slide2",
+    );
+  });
+
   it("explains the requested pricing without implying app restrictions", () => {
     renderPublicPage(<PricingPage />);
 

@@ -1,12 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Link } from 'wouter';
-import { ArrowRight, Check, ChevronRight, CircleAlert, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Check, ChevronLeft, ChevronRight, CircleAlert, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
 import { useSubmitContactInquiry } from '@workspace/api-client-react';
 import type { ContactInquiryInput } from '@workspace/api-client-react';
 import { Form } from '@/components/ui/form';
+import './public-about.css';
 
 const publicSiteUrl = (import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined)?.replace(/\/$/, '');
 
@@ -64,7 +65,7 @@ function usePublicMeta(title: string, description: string, route: string) {
   }, [description, route, title]);
 }
 
-function PublicHeader({ current }: { current: 'pricing' | 'contact' }) {
+function PublicHeader({ current }: { current: 'about' | 'pricing' | 'contact' }) {
   return (
     <header className="public-header">
       <div className="public-header-inner">
@@ -73,6 +74,7 @@ function PublicHeader({ current }: { current: 'pricing' | 'contact' }) {
           <span className="serif">ClientGuard</span>
         </Link>
         <nav className="public-nav" aria-label="Public navigation">
+          <Link href="/about" aria-current={current === 'about' ? 'page' : undefined} data-testid="link-public-about">About</Link>
           <Link href="/pricing" aria-current={current === 'pricing' ? 'page' : undefined} data-testid="link-public-pricing">Pricing</Link>
           <Link href="/contact" aria-current={current === 'contact' ? 'page' : undefined} data-testid="link-public-contact">Contact</Link>
           <Link href="/sign-in" className="public-sign-in" data-testid="link-public-sign-in">Sign in</Link>
@@ -89,10 +91,109 @@ function PublicFooter() {
       <Link href="/" className="public-footer-brand" data-testid="link-footer-home">ClientGuard</Link>
       <span data-testid="text-footer-description">A careful workspace for professional relationships.</span>
       <nav aria-label="Footer navigation">
+        <Link href="/about" data-testid="link-footer-about">About</Link>
         <Link href="/pricing" data-testid="link-footer-pricing">Pricing</Link>
         <Link href="/contact" data-testid="link-footer-contact">Contact</Link>
       </nav>
     </footer>
+  );
+}
+
+const featureDeckSlides = 15;
+
+export function AboutPage() {
+  usePublicMeta(
+    'About ClientGuard — client and matter management',
+    'Explore the ClientGuard feature overview for law firms and financial-service providers, including current workflows, safeguards, integrations, and pricing.',
+    '/about',
+  );
+  const [slidePosition, setSlidePosition] = useState(1);
+  const slideFrame = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    const onDeckNavigation = (event: MessageEvent) => {
+      if (event.source !== slideFrame.current?.contentWindow) return;
+      if (event.data?.type === 'advanceSlide') {
+        setSlidePosition((current) => Math.min(featureDeckSlides, current + 1));
+      } else if (event.data?.type === 'retreatSlide') {
+        setSlidePosition((current) => Math.max(1, current - 1));
+      }
+    };
+    window.addEventListener('message', onDeckNavigation);
+    return () => window.removeEventListener('message', onDeckNavigation);
+  }, []);
+
+  return (
+    <main className="public-page grain" data-testid="page-about">
+      <PublicHeader current="about" />
+      <section className="about-hero page-in">
+        <div className="public-eyebrow"><span />ABOUT CLIENTGUARD</div>
+        <h1 className="serif">Client and matter work, with <em>care.</em></h1>
+        <p>
+          ClientGuard helps law firms and financial-service providers manage client relationships—from
+          intake and conflict review through billing, documents, updates, and closeout.
+        </p>
+      </section>
+
+      <section className="about-presentation" aria-labelledby="about-presentation-title">
+        <div className="about-presentation-heading">
+          <div>
+            <div className="public-eyebrow"><span />FEATURE OVERVIEW</div>
+            <h2 className="serif" id="about-presentation-title">Explore the ClientGuard platform.</h2>
+          </div>
+          <p>See current workflows, safeguards, integrations, and pricing. Planned items are clearly marked.</p>
+        </div>
+        <div className="about-presentation-viewer" data-testid="about-deck-viewer">
+          <iframe
+            ref={slideFrame}
+            src={`/clientguard-feature-deck/slide${slidePosition}`}
+            title={`ClientGuard feature deck, slide ${slidePosition} of ${featureDeckSlides}`}
+            allowFullScreen
+            data-testid="iframe-about-deck"
+          />
+        </div>
+        <nav className="about-presentation-controls" aria-label="Feature deck navigation">
+          <button
+            type="button"
+            className="about-slide-button"
+            aria-label="Previous slide"
+            data-testid="button-about-previous"
+            disabled={slidePosition === 1}
+            onClick={() => setSlidePosition((current) => Math.max(1, current - 1))}
+          >
+            <ChevronLeft aria-hidden="true" /> Previous
+          </button>
+          <span className="about-slide-count" data-testid="text-about-slide-count">
+            Slide {slidePosition} of {featureDeckSlides}
+          </span>
+          <button
+            type="button"
+            className="about-slide-button"
+            aria-label="Next slide"
+            data-testid="button-about-next"
+            disabled={slidePosition === featureDeckSlides}
+            onClick={() => setSlidePosition((current) => Math.min(featureDeckSlides, current + 1))}
+          >
+            Next <ChevronRight aria-hidden="true" />
+          </button>
+        </nav>
+        <a
+          className="about-open-deck"
+          href="/clientguard-feature-deck/"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="link-about-open-deck"
+        >
+          Open the presentation separately <ArrowRight aria-hidden="true" />
+        </a>
+      </section>
+
+      <section className="public-cta-band">
+        <div><span className="public-eyebrow">A CONSIDERED PLACE TO WORK</span><h2 className="serif">See whether ClientGuard fits your practice.</h2></div>
+        <Link href="/contact" className="public-cta-button" data-testid="link-about-contact">Talk with us <ArrowRight aria-hidden="true" /></Link>
+      </section>
+      <PublicFooter />
+    </main>
   );
 }
 

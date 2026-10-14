@@ -43,7 +43,7 @@ import MembershipConflicts from './MembershipConflicts';
 import PracticeOperations from './PracticeOperations';
 import OperationsReport from './OperationsReport';
 import MatterCloseout from './MatterCloseout';
-import { ContactPage, PricingPage } from './PublicPages';
+import { AboutPage, ContactPage, PricingPage } from './PublicPages';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -91,6 +91,7 @@ function ClerkQueryClientCacheInvalidator() {
 }
 function ClerkRoutes() {
   return <Switch>
+    <Route path="/about" component={AboutPage} />
     <Route path="/pricing" component={PricingPage} />
     <Route path="/contact" component={ContactPage} />
     <Route component={AuthenticatedRoutes} />
