@@ -1808,6 +1808,144 @@ test("successful matter exports are recorded in the activity feed for only the e
   }
 });
 
+test("matter export retries with the same request ID stay isolated by firm", async () => {
+  const exportRequestId = randomUUID();
+  const exportAction = "exported selected matters (1 record)";
+  const workspaceIds = [firms.primary.workspaceId, firms.other.workspaceId];
+  const beforeActivityIds = new Set(
+    (await db
+      .select({ id: activitiesTable.id })
+      .from(activitiesTable)
+      .where(
+        and(
+          inArray(activitiesTable.workspaceId, workspaceIds),
+          eq(activitiesTable.action, exportAction),
+        ),
+      ))
+      .map(({ id }) => id),
+  );
+
+  const postExport = (userId: string, matterId: number) =>
+    request("/audit/exports", {
+      userId,
+      method: "POST",
+      body: {
+        scope: "selected",
+        matterIds: [matterId],
+        exportRequestId,
+      },
+    });
+
+  const firmsAndMatters = [
+    {
+      userId: firms.primary.ownerId,
+      matterId: firms.primary.matterId,
+      workspaceId: firms.primary.workspaceId,
+    },
+    {
+      userId: firms.other.ownerId,
+      matterId: firms.other.matterId,
+      workspaceId: firms.other.workspaceId,
+    },
+  ];
+
+  try {
+    for (const { userId, matterId } of firmsAndMatters) {
+      const firstRequest = await postExport(userId, matterId);
+      assert.equal(firstRequest.response.status, 204);
+    }
+
+    for (const { userId, matterId } of firmsAndMatters) {
+      const retry = await postExport(userId, matterId);
+      assert.equal(retry.response.status, 204);
+    }
+
+    const activities = await db
+      .select({
+        id: activitiesTable.id,
+        workspaceId: activitiesTable.workspaceId,
+        clerkUserId: activitiesTable.clerkUserId,
+      })
+      .from(activitiesTable)
+      .where(
+        and(
+          inArray(activitiesTable.workspaceId, workspaceIds),
+          eq(activitiesTable.action, exportAction),
+        ),
+      );
+    const newActivities = activities.filter(({ id }) => !beforeActivityIds.has(id));
+    assert.equal(newActivities.length, 2);
+    for (const { userId, workspaceId } of firmsAndMatters) {
+      const firmActivities = newActivities.filter(
+        (activity) => activity.workspaceId === workspaceId,
+      );
+      assert.equal(firmActivities.length, 1);
+      assert.equal(firmActivities[0].clerkUserId, userId);
+    }
+
+    const exportAudits = await db
+      .select({
+        id: auditEventsTable.id,
+        workspaceId: auditEventsTable.workspaceId,
+        clerkUserId: auditEventsTable.clerkUserId,
+        details: auditEventsTable.details,
+      })
+      .from(auditEventsTable)
+      .where(
+        and(
+          inArray(auditEventsTable.workspaceId, workspaceIds),
+          eq(auditEventsTable.action, "matter_pdf_exported"),
+        ),
+      );
+    const matchingAudits = exportAudits.filter(
+      ({ details }) => details.exportRequestId === exportRequestId,
+    );
+    assert.equal(matchingAudits.length, 2);
+    for (const { userId, workspaceId } of firmsAndMatters) {
+      const firmAudits = matchingAudits.filter(
+        (audit) => audit.workspaceId === workspaceId,
+      );
+      assert.equal(firmAudits.length, 1);
+      assert.equal(firmAudits[0].clerkUserId, userId);
+    }
+  } finally {
+    const testActivities = await db
+      .select({ id: activitiesTable.id })
+      .from(activitiesTable)
+      .where(
+        and(
+          inArray(activitiesTable.workspaceId, workspaceIds),
+          eq(activitiesTable.action, exportAction),
+        ),
+      );
+    const createdActivityIds = testActivities
+      .filter(({ id }) => !beforeActivityIds.has(id))
+      .map(({ id }) => id);
+    if (createdActivityIds.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, createdActivityIds));
+    }
+    const testAudits = await db
+      .select({ id: auditEventsTable.id, details: auditEventsTable.details })
+      .from(auditEventsTable)
+      .where(
+        and(
+          inArray(auditEventsTable.workspaceId, workspaceIds),
+          eq(auditEventsTable.action, "matter_pdf_exported"),
+        ),
+      );
+    const createdAuditIds = testAudits
+      .filter(({ details }) => details.exportRequestId === exportRequestId)
+      .map(({ id }) => id);
+    if (createdAuditIds.length) {
+      await db
+        .delete(auditEventsTable)
+        .where(inArray(auditEventsTable.id, createdAuditIds));
+    }
+  }
+});
+
 test("activity pagination keeps page boundaries and firm isolation", async () => {
   const insertedActivityIds: number[] = [];
   const occurredAt = new Date("2099-01-01T00:00:00.000Z");
