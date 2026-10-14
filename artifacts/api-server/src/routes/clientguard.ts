@@ -106,6 +106,7 @@ import {
   sendOwnershipTransferNotice,
   sendOwnershipTransferNotices,
   workspaceContext,
+  type FirmAccess,
 } from "../lib/clientguard-auth";
 import { logger } from "../lib/logger";
 
@@ -113,11 +114,24 @@ const router: IRouter = Router();
 
 async function attemptInvitationRevocation(
   req: Request,
-  workspaceId: number,
+  access: FirmAccess,
   invitationId: number,
   clerkInvitationId: string,
+  recordResolution = false,
 ): Promise<boolean> {
+  const workspaceId = access.workspaceId;
   try {
+    const [invitationToAudit] = await db
+      .select({ email: invitationsTable.email })
+      .from(invitationsTable)
+      .where(
+        and(
+          eq(invitationsTable.id, invitationId),
+          eq(invitationsTable.workspaceId, workspaceId),
+        ),
+      )
+      .limit(1);
+
     await db
       .insert(invitationRevocationsTable)
       .values({ workspaceId, invitationId, clerkInvitationId })
@@ -139,7 +153,7 @@ async function attemptInvitationRevocation(
       );
     }
 
-    const stillFailed = await db.transaction(async (tx) => {
+    const revocationResult = await db.transaction(async (tx) => {
       const [invitation] = await tx
         .select({ id: invitationsTable.id })
         .from(invitationsTable)
@@ -151,7 +165,7 @@ async function attemptInvitationRevocation(
         )
         .limit(1)
         .for("update");
-      if (!invitation) return true;
+      if (!invitation) return { stillFailed: true, revoked: false };
       const [pendingRevocation] = await tx
         .select({ id: invitationRevocationsTable.id })
         .from(invitationRevocationsTable)
@@ -165,24 +179,43 @@ async function attemptInvitationRevocation(
         .limit(1)
         .for("update");
       if (!pendingRevocation) {
-        return false;
+        return { stillFailed: false, revoked: false };
       }
       try {
         await clerkClient.invitations.revokeInvitation(clerkInvitationId);
       } catch (error) {
+        if (invitationToAudit) {
+          await recordInvitationRevocationAudit(
+            req,
+            access,
+            invitationId,
+            invitationToAudit.email,
+            "failed",
+          );
+        }
         req.log.warn(
           { invitationId, error },
           "Could not revoke a Clerk invitation; cleanup remains available to retry",
         );
-        return true;
+        return { stillFailed: true, revoked: false };
       }
 
       await tx
         .delete(invitationRevocationsTable)
         .where(eq(invitationRevocationsTable.id, pendingRevocation.id));
-      return false;
+      return { stillFailed: false, revoked: true };
     });
-    if (stillFailed) return true;
+    if (revocationResult.stillFailed) return true;
+
+    if (recordResolution && revocationResult.revoked && invitationToAudit) {
+      await recordInvitationRevocationAudit(
+        req,
+        access,
+        invitationId,
+        invitationToAudit.email,
+        "resolved",
+      );
+    }
 
     return await synchronizeInvitationRevocationStatus(req, workspaceId, invitationId);
   } catch (error) {
@@ -191,6 +224,35 @@ async function attemptInvitationRevocation(
       "Could not safely process Clerk invitation revocation",
     );
     return true;
+  }
+}
+
+async function recordInvitationRevocationAudit(
+  req: Request,
+  access: FirmAccess,
+  invitationId: number,
+  email: string,
+  outcome: "failed" | "resolved",
+): Promise<void> {
+  try {
+    await db.insert(auditEventsTable).values({
+      workspaceId: access.workspaceId,
+      clerkUserId: access.userId,
+      actor: access.name || access.email || "Firm user",
+      action:
+        outcome === "failed"
+          ? "invitation_revocation_failed"
+          : "invitation_revocation_resolved",
+      entityType: "invitation",
+      entityId: invitationId,
+      entityLabel: email,
+      details: { email, outcome },
+    });
+  } catch {
+    req.log.warn(
+      { workspaceId: access.workspaceId, invitationId },
+      "Could not record invitation revocation audit event",
+    );
   }
 }
 
@@ -2292,7 +2354,7 @@ router.post(
           try {
             await attemptInvitationRevocation(
               req,
-              access.workspaceId,
+              access,
               params.data.id,
               createdClerkInvitationId,
             );
@@ -2327,9 +2389,9 @@ router.post(
       if (result.previousClerkInvitationId) {
         providerRevocationFailed = await attemptInvitationRevocation(
           req,
-          access.workspaceId,
+          access,
           result.invitation.id,
-            result.previousClerkInvitationId,
+          result.previousClerkInvitationId,
         );
       }
       res.json(
@@ -2345,7 +2407,7 @@ router.post(
         try {
           await attemptInvitationRevocation(
             req,
-            access.workspaceId,
+            access,
             params.data.id,
             createdClerkInvitationId,
           );
@@ -2430,7 +2492,7 @@ router.delete(
     if (invitation.clerkInvitationId) {
       providerRevocationFailed = await attemptInvitationRevocation(
         req,
-        access.workspaceId,
+        access,
         invitation.id,
         invitation.clerkInvitationId,
       );
@@ -2494,9 +2556,10 @@ router.post(
       for (const revocation of pendingRevocations) {
         await attemptInvitationRevocation(
           req,
-          access.workspaceId,
+          access,
           invitation.id,
           revocation.clerkInvitationId,
+          true,
         );
       }
       providerRevocationFailed = await synchronizeInvitationRevocationStatus(
@@ -2511,9 +2574,10 @@ router.post(
     ) {
       providerRevocationFailed = await attemptInvitationRevocation(
         req,
-        access.workspaceId,
+        access,
         invitation.id,
         invitation.clerkInvitationId,
+        true,
       );
     }
     res.json(

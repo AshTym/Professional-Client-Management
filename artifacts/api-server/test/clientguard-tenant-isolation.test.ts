@@ -3968,6 +3968,29 @@ test("a failed superseded Clerk revocation is visible and the old link cannot cr
     pendingRevocation.map(({ clerkInvitationId }) => clerkInvitationId),
     ["unrevoked_superseded_clerk_invitation"],
   );
+  const failureEvents = await db
+    .select()
+    .from(auditEventsTable)
+    .where(
+      and(
+        eq(auditEventsTable.workspaceId, firms.primary.workspaceId),
+        eq(auditEventsTable.action, "invitation_revocation_failed"),
+        eq(auditEventsTable.entityId, pending.id),
+      ),
+    );
+  assert.equal(failureEvents.length, 1);
+  assert.equal(failureEvents[0]?.clerkUserId, adminId);
+  assert.equal(failureEvents[0]?.entityLabel, "revocation-target@example.test");
+  assert.deepEqual(failureEvents[0]?.details, {
+    email: "revocation-target@example.test",
+    outcome: "failed",
+  });
+  assert.equal(
+    JSON.stringify(failureEvents).includes(
+      "unrevoked_superseded_clerk_invitation",
+    ),
+    false,
+  );
 });
 
 test("firm admins can renew expired invitations with a new seven-day link", async (t) => {
@@ -4477,6 +4500,31 @@ test("a failed Clerk revocation leaves a visible withdrawn invitation and the ol
     .where(eq(invitationsTable.id, pending.id));
   assert(stored.revokedAt);
   assert.equal(stored.providerRevocationFailed, true);
+
+  const failureEvents = await db
+    .select()
+    .from(auditEventsTable)
+    .where(
+      and(
+        eq(auditEventsTable.workspaceId, firms.primary.workspaceId),
+        eq(auditEventsTable.action, "invitation_revocation_failed"),
+        eq(auditEventsTable.entityId, pending.id),
+      ),
+    );
+  assert.equal(failureEvents.length, 1);
+  assert.equal(failureEvents[0]?.clerkUserId, adminId);
+  assert.ok(failureEvents[0]?.actor);
+  assert.equal(failureEvents[0]?.entityType, "invitation");
+  assert.equal(failureEvents[0]?.entityLabel, "withdraw-revocation-target@example.test");
+  assert.deepEqual(failureEvents[0]?.details, {
+    email: "withdraw-revocation-target@example.test",
+    outcome: "failed",
+  });
+  assert.equal(
+    JSON.stringify(failureEvents).includes("unrevoked_withdrawn_clerk_invitation"),
+    false,
+  );
+  assert.equal(JSON.stringify(failureEvents).includes("Simulated Clerk outage"), false);
 });
 
 test("firm admins can retry failed Clerk revocations without exposing provider identifiers", async (t) => {
@@ -4576,6 +4624,148 @@ test("firm admins can retry failed Clerk revocations without exposing provider i
     .from(invitationRevocationsTable)
     .where(eq(invitationRevocationsTable.invitationId, pending.id));
   assert.equal(cleared.length, 0);
+
+  const revocationEvents = await db
+    .select()
+    .from(auditEventsTable)
+    .where(
+      and(
+        eq(auditEventsTable.workspaceId, firms.primary.workspaceId),
+        inArray(auditEventsTable.action, [
+          "invitation_revocation_failed",
+          "invitation_revocation_resolved",
+        ]),
+        eq(auditEventsTable.entityId, pending.id),
+      ),
+    )
+    .orderBy(asc(auditEventsTable.id));
+  assert.deepEqual(
+    revocationEvents.map(({ action, details }) => [action, details.outcome]),
+    [
+      ["invitation_revocation_failed", "failed"],
+      ["invitation_revocation_failed", "failed"],
+      ["invitation_revocation_resolved", "resolved"],
+    ],
+  );
+  assert(
+    revocationEvents.every(
+      (event) =>
+        event.workspaceId === firms.primary.workspaceId &&
+        event.clerkUserId === firms.primary.ownerId &&
+        event.entityLabel === "retry-revocation-target@example.test" &&
+        event.details.email === "retry-revocation-target@example.test",
+    ),
+  );
+  const serializedEvents = JSON.stringify(revocationEvents);
+  assert.equal(serializedEvents.includes(providerInvitationId), false);
+  assert.equal(serializedEvents.includes("Simulated Clerk outage"), false);
+});
+
+test("invitation state remains correct when revocation audit writes fail", async (t) => {
+  const email = `audit-write-failure-${randomUUID()}@example.test`;
+  const clerkInvitationId = `private-audit-failure-${randomUUID()}`;
+  const [pending] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email,
+      role: "assistant",
+      invitedByClerkUserId: firms.primary.ownerId,
+      clerkInvitationId,
+      tokenHash: createHash("sha256").update(randomUUID()).digest("hex"),
+      expiresAt: new Date(Date.now() + 60_000),
+    })
+    .returning();
+  let shouldFail = true;
+  t.mock.method(clerkClient.invitations, "revokeInvitation", async (id) => {
+    if (shouldFail) throw new Error("Simulated Clerk outage");
+    return { id } as never;
+  });
+
+  try {
+    await appPool!.query(`
+      CREATE FUNCTION "${schemaName}".reject_invitation_revocation_audit()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        IF NEW.action IN (
+          'invitation_revocation_failed',
+          'invitation_revocation_resolved'
+        ) THEN
+          RAISE EXCEPTION 'simulated invitation audit write failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$;
+      CREATE TRIGGER reject_invitation_revocation_audit
+      BEFORE INSERT ON "${schemaName}".clientguard_audit_events
+      FOR EACH ROW
+      EXECUTE FUNCTION "${schemaName}".reject_invitation_revocation_audit();
+    `);
+
+    const withdrawn = await request(`/workspace/invitations/${pending.id}`, {
+      userId: firms.primary.ownerId,
+      method: "DELETE",
+    });
+    assert.equal(withdrawn.response.status, 200);
+    assert.equal((withdrawn.body as { revoked: boolean }).revoked, true);
+    assert.equal(
+      (withdrawn.body as { providerRevocationFailed: boolean })
+        .providerRevocationFailed,
+      true,
+    );
+    const queuedAfterFailure = await db
+      .select()
+      .from(invitationRevocationsTable)
+      .where(eq(invitationRevocationsTable.invitationId, pending.id));
+    assert.equal(queuedAfterFailure.length, 1);
+
+    shouldFail = false;
+    const retried = await request(
+      `/workspace/invitations/${pending.id}/retry-revocation`,
+      { userId: firms.primary.ownerId, method: "POST" },
+    );
+    assert.equal(retried.response.status, 200);
+    assert.equal((retried.body as { revoked: boolean }).revoked, true);
+    assert.equal(
+      (retried.body as { providerRevocationFailed: boolean })
+        .providerRevocationFailed,
+      false,
+    );
+
+    const [stored] = await db
+      .select()
+      .from(invitationsTable)
+      .where(eq(invitationsTable.id, pending.id));
+    assert(stored?.revokedAt);
+    assert.equal(stored?.providerRevocationFailed, false);
+    const queueAfterSuccess = await db
+      .select()
+      .from(invitationRevocationsTable)
+      .where(eq(invitationRevocationsTable.invitationId, pending.id));
+    assert.equal(queueAfterSuccess.length, 0);
+    const auditEvents = await db
+      .select()
+      .from(auditEventsTable)
+      .where(
+        and(
+          eq(auditEventsTable.workspaceId, firms.primary.workspaceId),
+          inArray(auditEventsTable.action, [
+            "invitation_revocation_failed",
+            "invitation_revocation_resolved",
+          ]),
+          eq(auditEventsTable.entityId, pending.id),
+        ),
+      );
+    assert.equal(auditEvents.length, 0);
+  } finally {
+    await appPool!.query(`
+      DROP TRIGGER IF EXISTS reject_invitation_revocation_audit
+      ON "${schemaName}".clientguard_audit_events;
+      DROP FUNCTION IF EXISTS "${schemaName}".reject_invitation_revocation_audit();
+    `);
+  }
 });
 
 test("acceptance can finish while a resend email is slow and the new Clerk invitation is revoked", async (t) => {
