@@ -22,7 +22,15 @@ vi.mock('@workspace/api-client-react', () => ({
 
 import { ActivityPage } from './App';
 
-function event(id: number) {
+function event(
+  id: number,
+  overrides: {
+    actor?: string;
+    entityType?: string;
+    entityId?: number;
+    entityLabel?: string;
+  } = {},
+) {
   return {
     id,
     actor: 'A. Morgan',
@@ -31,6 +39,7 @@ function event(id: number) {
     entityId: 1,
     entityLabel: `Record ${id}`,
     occurredAt: '2026-10-13T10:00:00.000Z',
+    ...overrides,
   };
 }
 
@@ -53,22 +62,38 @@ describe('activity pagination', () => {
   beforeEach(() => {
     apiMocks.exportActivity.mockReset().mockResolvedValue('');
     apiMocks.eventTotal = 41;
-    apiMocks.useListActivity.mockImplementation(({ limit, offset, snapshotId }) => {
-      const currentSnapshot = snapshotId ?? apiMocks.eventTotal;
-      const newestEventId = Math.min(apiMocks.eventTotal, currentSnapshot);
-      return {
-      data: {
-        items: Array.from(
-          { length: Math.min(limit, Math.max(0, newestEventId - offset)) },
-          (_, index) => event(newestEventId - offset - index),
-        ),
-        snapshotId: currentSnapshot,
+    apiMocks.useListActivity.mockImplementation(
+      ({ limit, offset, snapshotId, actorName, entityType, entityId }) => {
+        const isFilteredRecord =
+          actorName === 'Former Teammate' && entityType === 'client' && entityId === 10;
+        const matchingEventTotal = isFilteredRecord ? 43 : apiMocks.eventTotal;
+        const currentSnapshot = snapshotId ?? matchingEventTotal;
+        const newestEventId = Math.min(matchingEventTotal, currentSnapshot);
+        return {
+          data: {
+            items: Array.from(
+              { length: Math.min(limit, Math.max(0, newestEventId - offset)) },
+              (_, index) =>
+                event(
+                  newestEventId - offset - index,
+                  isFilteredRecord
+                    ? {
+                        actor: 'Former Teammate',
+                        entityType: 'client',
+                        entityId: 10,
+                        entityLabel: 'Northline Client',
+                      }
+                    : {},
+                ),
+            ),
+            snapshotId: currentSnapshot,
+          },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
       },
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    };
-    });
+    );
     apiMocks.useListWorkspaceAssignmentMembers.mockReturnValue({
       data: [{ id: 5, name: 'A. Morgan' }],
       isLoading: false,
@@ -248,13 +273,77 @@ describe('activity pagination', () => {
       expect.objectContaining({
         limit: 41,
         offset: 0,
-        snapshotId: 41,
+        snapshotId: 43,
         actorName: 'Former Teammate',
         entityType: 'client',
         entityId: 10,
       }),
       expect.any(Object),
     );
+  });
+
+  it('keeps teammate and record filters on forward and backward pages with filtered ranges', () => {
+    renderActivityPage();
+    fireEvent.change(screen.getByTestId('select-activity-actor'), {
+      target: { value: 'Former Teammate' },
+    });
+    fireEvent.change(screen.getByTestId('select-activity-record'), {
+      target: { value: 'client:10' },
+    });
+
+    expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        limit: 41,
+        offset: 0,
+        snapshotId: 43,
+        actorName: 'Former Teammate',
+        entityType: 'client',
+        entityId: 10,
+      }),
+      expect.any(Object),
+    );
+    expect(screen.getByTestId('text-activity-count').textContent).toBe('Events 1–40');
+    expect(screen.getByTestId('text-activity-page-status').textContent).toBe('Page 1');
+    expect(screen.getByTestId('activity-item-43').textContent).toContain(
+      'Former Teammate updated Northline Client',
+    );
+
+    fireEvent.click(screen.getByTestId('button-activity-next'));
+
+    expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        limit: 41,
+        offset: 40,
+        snapshotId: 43,
+        actorName: 'Former Teammate',
+        entityType: 'client',
+        entityId: 10,
+      }),
+      expect.any(Object),
+    );
+    expect(screen.getByTestId('text-activity-count').textContent).toBe('Events 41–43');
+    expect(screen.getByTestId('text-activity-page-status').textContent).toBe(
+      'End of activity history · Page 2',
+    );
+    expect(screen.getByTestId('activity-item-3').textContent).toContain(
+      'Former Teammate updated Northline Client',
+    );
+
+    fireEvent.click(screen.getByTestId('button-activity-previous'));
+
+    expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        limit: 41,
+        offset: 0,
+        snapshotId: 43,
+        actorName: 'Former Teammate',
+        entityType: 'client',
+        entityId: 10,
+      }),
+      expect.any(Object),
+    );
+    expect(screen.getByTestId('text-activity-count').textContent).toBe('Events 1–40');
+    expect(screen.getByTestId('text-activity-page-status').textContent).toBe('Page 1');
   });
 
   it('keeps later pages on the starting snapshot and refreshes to include newer events', () => {
