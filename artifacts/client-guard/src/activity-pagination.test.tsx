@@ -95,6 +95,7 @@ describe('activity pagination', () => {
                     : {},
                 ),
             ),
+            totalCount: Math.min(matchingEventTotal, currentSnapshot),
             snapshotId: currentSnapshot,
             latestSnapshotId: matchingEventTotal,
           },
@@ -200,6 +201,9 @@ describe('activity pagination', () => {
       expect.any(Object),
     );
     expect(screen.getByTestId('text-activity-count').textContent).toBe('Events 1–40');
+    expect(screen.getByTestId('text-activity-total').textContent).toBe(
+      '41 matching events in this history snapshot.',
+    );
     expect(screen.getByTestId('button-activity-previous').hasAttribute('disabled')).toBe(true);
     expect(screen.getByTestId('button-activity-next').hasAttribute('disabled')).toBe(false);
 
@@ -210,6 +214,9 @@ describe('activity pagination', () => {
       expect.any(Object),
     );
     expect(screen.getByTestId('text-activity-count').textContent).toBe('Events 41–41');
+    expect(screen.getByTestId('text-activity-total').textContent).toBe(
+      '41 matching events in this history snapshot.',
+    );
     expect(screen.getByTestId('text-activity-page-status').textContent).toBe(
       'End of activity history · Page 2',
     );
@@ -249,6 +256,9 @@ describe('activity pagination', () => {
     );
     expect(screen.queryByTestId('status-new-activity')).toBeNull();
     expect(screen.getByText('Record 43')).toBeTruthy();
+    expect(screen.getByTestId('text-activity-total').textContent).toBe(
+      '43 matching events in this history snapshot.',
+    );
   });
 
   it.each([20, 40, 80])(
@@ -415,6 +425,9 @@ describe('activity pagination', () => {
       expect.any(Object),
     );
     expect(screen.getByTestId('text-activity-count').textContent).toBe('Events 1–40');
+    expect(screen.getByTestId('text-activity-total').textContent).toBe(
+      '43 matching events in this history snapshot.',
+    );
     expect(screen.getByTestId('text-activity-page-status').textContent).toBe('Page 1');
     expect(screen.getByTestId('activity-item-43').textContent).toContain(
       'Former Teammate updated Northline Client',
@@ -532,7 +545,7 @@ describe('activity pagination', () => {
 
   it('distinguishes an empty filtered result from an empty audit trail', () => {
     apiMocks.useListActivity.mockReturnValue({
-      data: { items: [], snapshotId: 41 },
+      data: { items: [], totalCount: 0, snapshotId: 41, latestSnapshotId: 41 },
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
@@ -540,6 +553,9 @@ describe('activity pagination', () => {
     renderActivityPage();
 
     expect(screen.getByText('No recorded events')).toBeTruthy();
+    expect(screen.getByTestId('text-activity-total').textContent).toBe(
+      '0 matching events in this history snapshot.',
+    );
 
     fireEvent.change(screen.getByTestId('select-activity-actor'), {
       target: { value: primaryActorId },
@@ -550,7 +566,7 @@ describe('activity pagination', () => {
 
   it('explains an empty search and returns to the unfiltered empty state when cleared', () => {
     apiMocks.useListActivity.mockReturnValue({
-      data: { items: [], snapshotId: 41, latestSnapshotId: 41 },
+      data: { items: [], totalCount: 0, snapshotId: 41, latestSnapshotId: 41 },
       isLoading: false,
       isError: false,
       refetch: vi.fn(),

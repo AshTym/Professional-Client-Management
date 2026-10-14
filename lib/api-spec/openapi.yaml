@@ -2906,11 +2906,15 @@ components:
         $ref: "#/components/schemas/ActivityActor"
     ActivityPage:
       type: object
-      required: [items, snapshotId, latestSnapshotId]
+      required: [items, totalCount, snapshotId, latestSnapshotId]
       properties:
         items:
           type: array
           items: { $ref: "#/components/schemas/Activity" }
+        totalCount:
+          type: integer
+          minimum: 0
+          description: Number of events matching the query filters at this snapshot, independent of pagination.
         snapshotId: { type: integer, minimum: 0 }
         latestSnapshotId:
           type: integer

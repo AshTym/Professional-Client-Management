@@ -2122,6 +2122,7 @@ test("activity pagination keeps page boundaries and firm isolation", async () =>
       (firstPage.body.items as Array<{ action: string }>).map(({ action }) => action),
       [primaryActions[2], primaryActions[1]],
     );
+    assert((firstPage.body.totalCount as number) >= 2);
 
     const snapshotId = firstPage.body.snapshotId as number;
     const lateActivity = await db
@@ -2159,6 +2160,7 @@ test("activity pagination keeps page boundaries and firm isolation", async () =>
       (secondPage.body.items as Array<{ action: string }>).map(({ action }) => action),
       [primaryActions[0], "primary-only activity"],
     );
+    assert.equal(secondPage.body.totalCount, firstPage.body.totalCount);
     assert(
       (secondPage.body.items as Array<{ action: string }>).every(
         ({ action }) => !action.startsWith("other"),
@@ -2171,6 +2173,7 @@ test("activity pagination keeps page boundaries and firm isolation", async () =>
     );
     assert.equal(pastLastPage.response.status, 200);
     assert.deepEqual(pastLastPage.body.items, []);
+    assert.equal(pastLastPage.body.totalCount, firstPage.body.totalCount);
 
     const otherFirmPage = await request("/activity?limit=2&offset=0", {
       userId: firms.other.ownerId,
@@ -2670,6 +2673,7 @@ test("activity text search matches actions or record labels within combined firm
     );
     assert.equal(matchingSearch.response.status, 200);
     assert.equal((matchingSearch.body.items as unknown[]).length, 4);
+    assert.equal(matchingSearch.body.totalCount, 4);
     assert(
       !(matchingSearch.body.items as Array<{ action: string }>).some(({ action }) =>
         action.includes("another firm"),
@@ -2685,6 +2689,7 @@ test("activity text search matches actions or record labels within combined firm
       (filteredFirstPage.body.items as Array<{ action: string }>).map(({ action }) => action),
       [`Archived ${searchTerm} notes`],
     );
+    assert.equal(filteredFirstPage.body.totalCount, 3);
     const snapshotId = filteredFirstPage.body.snapshotId as number;
 
     const lateInserted = await db
@@ -2711,6 +2716,7 @@ test("activity text search matches actions or record labels within combined firm
       [`Updated client details`],
     );
     assert.equal(filteredSecondPage.body.snapshotId, snapshotId);
+    assert.equal(filteredSecondPage.body.totalCount, 3);
 
     const recordLabelSearch = await request(
       `/activity?search=${encodeURIComponent(searchTerm.toUpperCase())}&actorId=${ownerActorId}&entityType=client&entityId=${firms.primary.clientId}&snapshotId=${snapshotId}`,
@@ -2721,6 +2727,7 @@ test("activity text search matches actions or record labels within combined firm
       (recordLabelSearch.body.items as Array<{ action: string }>).map(({ action }) => action),
       [`Archived ${searchTerm} notes`, "Updated client details", `Reviewed ${searchTerm} terms`],
     );
+    assert.equal(recordLabelSearch.body.totalCount, 3);
 
     const literalWildcardSearch = await request("/activity?search=%25", {
       userId: firms.primary.ownerId,

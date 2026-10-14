@@ -543,6 +543,8 @@ export const ListActivityQueryParams = zod.object({
   "endDate": zod.date().optional().describe('Include events occurring on or before this UTC calendar date.')
 })
 
+export const listActivityResponseTotalCountMin = 0;
+
 export const listActivityResponseSnapshotIdMin = 0;
 
 export const listActivityResponseLatestSnapshotIdMin = 0;
@@ -559,6 +561,7 @@ export const ListActivityResponse = zod.object({
   "entityLabel": zod.string(),
   "occurredAt": zod.coerce.date()
 })),
+  "totalCount": zod.number().int().min(listActivityResponseTotalCountMin).describe('Number of events matching the query filters at this snapshot, independent of pagination.'),
   "snapshotId": zod.number().int().min(listActivityResponseSnapshotIdMin),
   "latestSnapshotId": zod.number().int().min(listActivityResponseLatestSnapshotIdMin).describe('Highest activity ID currently available in this firm.')
 })

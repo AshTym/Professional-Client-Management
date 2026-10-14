@@ -626,6 +626,11 @@ export type ActivityActorsResponse = ActivityActor[];
 
 export interface ActivityPage {
   items: Activity[];
+  /**
+     * Number of events matching the query filters at this snapshot, independent of pagination.
+     * @minimum 0
+     */
+  totalCount: number;
   /** @minimum 0 */
   snapshotId: number;
   /**

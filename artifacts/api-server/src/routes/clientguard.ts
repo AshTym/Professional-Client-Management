@@ -2965,14 +2965,27 @@ router.get("/activity", async (req, res): Promise<void> => {
     filters.push(lt(activitiesTable.occurredAt, endExclusive));
   }
   filters.push(lte(activitiesTable.id, snapshotId));
-  const activity = await db
-    .select()
-    .from(activitiesTable)
-    .where(and(...filters))
-    .orderBy(desc(activitiesTable.occurredAt), desc(activitiesTable.id))
-    .limit(parsed.data.limit)
-    .offset(parsed.data.offset);
-  res.json(ListActivityResponse.parse({ items: activity, snapshotId, latestSnapshotId }));
+  const [activity, total] = await Promise.all([
+    db
+      .select()
+      .from(activitiesTable)
+      .where(and(...filters))
+      .orderBy(desc(activitiesTable.occurredAt), desc(activitiesTable.id))
+      .limit(parsed.data.limit)
+      .offset(parsed.data.offset),
+    db
+      .select({ totalCount: count() })
+      .from(activitiesTable)
+      .where(and(...filters)),
+  ]);
+  res.json(
+    ListActivityResponse.parse({
+      items: activity,
+      totalCount: total[0]?.totalCount ?? 0,
+      snapshotId,
+      latestSnapshotId,
+    }),
+  );
 });
 
 router.get("/activity/export.csv", async (req, res): Promise<void> => {
