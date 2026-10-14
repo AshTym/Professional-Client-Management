@@ -153,9 +153,15 @@ function Logo({ small = false }: { small?: boolean }) {
 }
 function Landing() {
   return <main className="grain min-h-[100dvh] bg-[#f6f3eb] text-[#23353b]">
-    <header className="mx-auto flex max-w-[1240px] items-center justify-between px-6 py-6 lg:px-10">
-      <Link href="/" className="flex items-center gap-3" data-testid="link-brand"><Logo /><span className="serif text-xl font-extrabold">ClientGuard</span></Link>
-      <div className="flex items-center gap-4"><Link href="/pricing" className="text-sm font-semibold text-[#526568] transition hover:text-[#a77937]" data-testid="link-landing-pricing">Pricing</Link><Link href="/contact" className="text-sm font-semibold text-[#526568] transition hover:text-[#a77937]" data-testid="link-landing-contact">Contact</Link><Link href="/sign-in" className="text-sm font-semibold hover:text-[#a77937]" data-testid="link-sign-in">Sign in</Link><Link href="/sign-up" className="rounded-md bg-[#284651] px-5 py-3 text-sm font-semibold text-[#fbf8ee] transition hover:bg-[#1e3942]" data-testid="link-get-started">Get started <ArrowRight className="ml-2 inline h-4 w-4" /></Link></div>
+    <header className="mx-auto flex max-w-[1240px] items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-6 lg:px-10">
+      <Link href="/" className="flex shrink-0 items-center gap-2 sm:gap-3" data-testid="link-brand"><Logo small /><span className="serif text-base font-extrabold sm:text-xl">ClientGuard</span></Link>
+      <nav className="flex items-center gap-2 sm:gap-4" aria-label="Main navigation">
+        <Link href="/about" className="text-xs font-semibold text-[#526568] transition hover:text-[#a77937] sm:text-sm" data-testid="link-landing-about">About</Link>
+        <Link href="/pricing" className="text-xs font-semibold text-[#526568] transition hover:text-[#a77937] sm:text-sm" data-testid="link-landing-pricing">Pricing</Link>
+        <Link href="/contact" className="text-xs font-semibold text-[#526568] transition hover:text-[#a77937] sm:text-sm" data-testid="link-landing-contact">Contact</Link>
+        <Link href="/sign-in" className="hidden text-sm font-semibold hover:text-[#a77937] sm:inline" data-testid="link-sign-in">Sign in</Link>
+        <Link href="/sign-up" className="rounded-md bg-[#284651] px-2 py-2 text-[11px] font-semibold text-[#fbf8ee] transition hover:bg-[#1e3942] sm:px-5 sm:py-3 sm:text-sm" data-testid="link-get-started">Get started <ArrowRight className="ml-1 inline h-3 w-3 sm:ml-2 sm:h-4 sm:w-4" /></Link>
+      </nav>
     </header>
     <section className="mx-auto grid max-w-[1240px] items-center gap-14 px-6 pb-20 pt-12 md:grid-cols-[1.1fr_.9fr] md:pb-32 md:pt-20 lg:px-10">
       <div className="page-in"><div className="mb-7 flex items-center gap-3 text-[11px] font-bold uppercase tracking-[.18em] text-[#8b7049]"><span className="h-px w-8 bg-[#b89663]" />THE WORKSPACE FOR TRUST</div>
