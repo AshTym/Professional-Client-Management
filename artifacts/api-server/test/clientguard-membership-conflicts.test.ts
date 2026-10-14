@@ -440,6 +440,58 @@ async function assertFailedRemovalIsRolledBack(
   );
 }
 
+async function assertRetriedRemovalCommittedExactlyOnce(
+  fixture: Awaited<ReturnType<typeof createAssignedConflict>>,
+) {
+  const localMembership = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.id, fixture.member.id));
+  assert.deepEqual(localMembership, []);
+
+  const [client] = await db
+    .select()
+    .from(clientsTable)
+    .where(eq(clientsTable.id, fixture.client.id));
+  const [matter] = await db
+    .select()
+    .from(mattersTable)
+    .where(eq(mattersTable.id, fixture.matter.id));
+  assert.equal(client.ownerMemberId, replacementMembershipId);
+  assert.equal(matter.responsibleMemberId, replacementMembershipId);
+
+  const auditHistory = await db
+    .select()
+    .from(auditEventsTable)
+    .where(
+      and(
+        eq(auditEventsTable.workspaceId, firmAWorkspaceId),
+        eq(auditEventsTable.entityType, "membership_access_conflict"),
+        eq(auditEventsTable.entityId, fixture.member.id),
+      ),
+    );
+  assert.equal(auditHistory.length, 1);
+  assert.equal(auditHistory[0].details.decision, "remove");
+
+  const activities = await db
+    .select()
+    .from(activitiesTable)
+    .where(eq(activitiesTable.workspaceId, firmAWorkspaceId));
+  for (const [entityType, entityId] of [
+    ["membership", fixture.member.id],
+    ["client", fixture.client.id],
+    ["matter", fixture.matter.id],
+  ]) {
+    assert.equal(
+      activities.filter(
+        (activity) => activity.entityType === entityType && activity.entityId === entityId,
+      ).length,
+      1,
+      `expected one committed ${entityType} activity for the retried removal`,
+    );
+  }
+}
+
 async function withInsertFailure(
   table: "clientguard_audit_events" | "clientguard_activities",
   condition: string,
@@ -678,10 +730,29 @@ test("audit insert failure preserves conflict membership, assignments, and activ
           },
         },
       );
-      assert.equal(failed.response.status, 500);
+      assert.equal(failed.response.status, 503);
+      assert.equal(failed.body.code, "membership_conflict_decision_not_saved");
+      assert.match(failed.body.error, /no access or assignment changes were made/i);
+      assert.ok(!JSON.stringify(failed.body).includes("Forced membership conflict"));
       await assertFailedRemovalIsRolledBack(fixture);
     },
   );
+
+  const retried = await request(
+    `/workspace/membership-conflicts/${fixture.member.id}/decision`,
+    {
+      userId: firmAOwnerId,
+      method: "POST",
+      body: {
+        decision: "remove",
+        reason: "Remove duplicate access after review",
+        replacementMemberId: replacementMembershipId,
+      },
+    },
+  );
+  assert.equal(retried.response.status, 200);
+  assert.equal(retried.body.accessRemoved, true);
+  await assertRetriedRemovalCommittedExactlyOnce(fixture);
 });
 
 test("activity insert failure preserves conflict membership, assignments, and audit history", async () => {
@@ -703,10 +774,29 @@ test("activity insert failure preserves conflict membership, assignments, and au
           },
         },
       );
-      assert.equal(failed.response.status, 500);
+      assert.equal(failed.response.status, 503);
+      assert.equal(failed.body.code, "membership_conflict_decision_not_saved");
+      assert.match(failed.body.error, /no access or assignment changes were made/i);
+      assert.ok(!JSON.stringify(failed.body).includes("Forced membership conflict"));
       await assertFailedRemovalIsRolledBack(fixture);
     },
   );
+
+  const retried = await request(
+    `/workspace/membership-conflicts/${fixture.member.id}/decision`,
+    {
+      userId: firmAOwnerId,
+      method: "POST",
+      body: {
+        decision: "remove",
+        reason: "Remove duplicate access after review",
+        replacementMemberId: replacementMembershipId,
+      },
+    },
+  );
+  assert.equal(retried.response.status, 200);
+  assert.equal(retried.body.accessRemoved, true);
+  await assertRetriedRemovalCommittedExactlyOnce(fixture);
 });
 
 test("concurrent firm decisions serialize and reject a stale local removal", async () => {

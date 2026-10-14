@@ -879,7 +879,18 @@ router.post(
         decidedAt: review.occurredAt,
         remainingMembershipCount: Number(remaining?.count ?? 0),
       };
+    }).catch((error: unknown) => {
+      req.log?.error(
+        { err: error, membershipId: params.data.id, workspaceId: access.workspaceId },
+        "Could not record membership conflict decision",
+      );
+      res.status(503).json({
+        error: "The decision could not be recorded. No access or assignment changes were made. You can retry this decision.",
+        code: "membership_conflict_decision_not_saved",
+      });
+      return null;
     });
+    if (result === null) return;
 
     if (result.kind === "member_missing") {
       res.status(404).json({ error: "That membership is not part of this firm." });

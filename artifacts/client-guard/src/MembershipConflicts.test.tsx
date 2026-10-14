@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   useGetWorkspaceMemberAssignments: vi.fn(),
   useResolveWorkspaceMembershipConflict: vi.fn(),
   resolveMutate: vi.fn(),
+  resolveIsError: false,
 }));
 
 vi.mock("@workspace/api-client-react", () => ({
@@ -112,7 +113,7 @@ describe("firm membership conflict review", () => {
     mocks.useResolveWorkspaceMembershipConflict.mockReturnValue({
       mutate: mocks.resolveMutate,
       isPending: false,
-      isError: false,
+      isError: mocks.resolveIsError,
     });
   });
 
@@ -156,6 +157,50 @@ describe("firm membership conflict review", () => {
         },
         expect.any(Object),
       );
+      expect(screen.getByTestId("status-membership-decision-saved")).toBeTruthy();
+    });
+  });
+
+  it("offers a safe retry after a logging failure without displaying database details", async () => {
+    mocks.resolveMutate
+      .mockImplementationOnce((_variables, callbacks) => {
+        (callbacks as { onError?: (error: unknown) => void } | undefined)?.onError?.({
+          status: 503,
+          response: {
+            status: 503,
+            data: {
+              code: "membership_conflict_decision_not_saved",
+              error: "Database password secret from failed insert",
+            },
+          },
+        });
+      })
+      .mockImplementationOnce((_variables, callbacks) => {
+        (callbacks as { onSuccess?: () => void } | undefined)?.onSuccess?.();
+      });
+
+    renderPanel();
+    fireEvent.click(screen.getByTestId("radio-remove-42"));
+    fireEvent.change(screen.getByTestId("select-replacement-42"), {
+      target: { value: "17" },
+    });
+    fireEvent.change(screen.getByTestId("input-reason-42"), {
+      target: { value: "Remove after reviewing duplicate access" },
+    });
+    fireEvent.click(screen.getByTestId("button-submit-decision-42"));
+
+    expect(await screen.findByTestId("error-decision-42")).toBeTruthy();
+    expect(screen.getByTestId("error-decision-42").textContent).toContain(
+      "No access or assignment changes were made",
+    );
+    expect(document.body.textContent).not.toContain("Database password");
+    expect(screen.getByTestId("button-submit-decision-42").textContent).toContain(
+      "Retry removal",
+    );
+
+    fireEvent.click(screen.getByTestId("button-submit-decision-42"));
+    await waitFor(() => {
+      expect(mocks.resolveMutate).toHaveBeenCalledTimes(2);
       expect(screen.getByTestId("status-membership-decision-saved")).toBeTruthy();
     });
   });
