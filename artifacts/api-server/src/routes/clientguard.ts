@@ -76,6 +76,8 @@ import {
   ExportActivityQueryParams,
   ListClientsQueryParams,
   ListClientsResponse,
+  ListClientMattersQueryParams,
+  ListClientMattersResponse,
   ListMattersQueryParams,
   ListMattersResponse,
   UpdateClientBody,
@@ -3389,6 +3391,84 @@ router.delete("/clients/:id", async (req, res): Promise<void> => {
   }
   await logActivity(access, "client", client.id, client.name, "archived client");
   res.sendStatus(204);
+});
+
+router.get("/client-matters", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+  await backfillAssignmentIdentities(access.workspaceId);
+  const parsed = ListClientMattersQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [client] = await db
+    .select({ id: clientsTable.id })
+    .from(clientsTable)
+    .where(
+      and(
+        eq(clientsTable.id, parsed.data.clientId),
+        eq(clientsTable.workspaceId, access.workspaceId),
+      ),
+    )
+    .limit(1);
+  if (!client) {
+    res.status(404).json({ error: "Client not found in this firm." });
+    return;
+  }
+
+  const search = parsed.data.search?.trim();
+  const filters = and(
+    eq(mattersTable.workspaceId, access.workspaceId),
+    eq(mattersTable.clientId, parsed.data.clientId),
+    parsed.data.status ? eq(mattersTable.status, parsed.data.status) : undefined,
+    search
+      ? or(
+          ilike(mattersTable.title, `%${search}%`),
+          ilike(mattersTable.reference, `%${search}%`),
+        )
+      : undefined,
+  );
+  const [rows, totals, members] = await Promise.all([
+    db
+      .select({ matter: mattersTable, clientName: clientsTable.name })
+      .from(mattersTable)
+      .innerJoin(
+        clientsTable,
+        and(
+          eq(mattersTable.clientId, clientsTable.id),
+          eq(mattersTable.workspaceId, clientsTable.workspaceId),
+        ),
+      )
+      .where(filters)
+      .orderBy(desc(mattersTable.updatedAt), desc(mattersTable.id))
+      .limit(parsed.data.limit)
+      .offset(parsed.data.offset),
+    db
+      .select({ total: count() })
+      .from(mattersTable)
+      .where(filters),
+    db
+      .select()
+      .from(membershipsTable)
+      .where(eq(membershipsTable.workspaceId, access.workspaceId)),
+  ]);
+  const memberLabels = memberLabelById(members);
+  res.json(
+    ListClientMattersResponse.parse({
+      items: rows.map(({ matter, clientName }) => ({
+        ...matter,
+        clientName,
+        responsible: matter.responsibleMemberId === null
+          ? matter.responsible
+          : memberLabels.get(matter.responsibleMemberId) ?? matter.responsible,
+      })),
+      total: totals[0]?.total ?? 0,
+      offset: parsed.data.offset,
+      limit: parsed.data.limit,
+    }),
+  );
 });
 
 router.get("/matters", async (req, res): Promise<void> => {

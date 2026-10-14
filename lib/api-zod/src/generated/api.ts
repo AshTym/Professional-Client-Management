@@ -744,6 +744,56 @@ export const DeleteClientResponse = zod.void()
 
 
 /**
+ * @summary List a page of matters currently associated with a firm client
+ */
+
+export const listClientMattersQueryOffsetDefault = 0;
+export const listClientMattersQueryOffsetMin = 0;
+
+export const listClientMattersQueryLimitDefault = 20;
+export const listClientMattersQueryLimitMax = 100;
+
+
+
+export const ListClientMattersQueryParams = zod.object({
+  "clientId": zod.coerce.number().int().min(1).describe('Return matters currently associated with this client in the signed-in firm.'),
+  "offset": zod.coerce.number().int().min(listClientMattersQueryOffsetMin).default(listClientMattersQueryOffsetDefault),
+  "limit": zod.coerce.number().int().min(1).max(listClientMattersQueryLimitMax).default(listClientMattersQueryLimitDefault),
+  "search": zod.coerce.string().optional().describe('Case-insensitive match in matter title or reference.'),
+  "status": zod.enum(['open', 'on_hold', 'closed']).optional()
+})
+
+export const listClientMattersResponseTotalMin = 0;
+
+export const listClientMattersResponseOffsetMin = 0;
+
+export const listClientMattersResponseLimitMax = 100;
+
+
+
+export const ListClientMattersResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.number().int(),
+  "clientId": zod.number().int(),
+  "clientName": zod.string(),
+  "title": zod.string(),
+  "reference": zod.string(),
+  "matterType": zod.string(),
+  "status": zod.enum(['open', 'on_hold', 'closed']),
+  "riskLevel": zod.enum(['low', 'medium', 'high']),
+  "responsible": zod.string(),
+  "responsibleMemberId": zod.number().int().nullable(),
+  "dueAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "total": zod.number().int().min(listClientMattersResponseTotalMin),
+  "offset": zod.number().int().min(listClientMattersResponseOffsetMin),
+  "limit": zod.number().int().min(1).max(listClientMattersResponseLimitMax)
+})
+
+
+/**
  * @summary Search and filter firm matters
  */
 

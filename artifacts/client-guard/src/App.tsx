@@ -17,13 +17,14 @@ import {
   useResolveWorkspaceAssignmentIssue,
   useGetMatterCloseout, getGetMatterCloseoutQueryKey,
   useListClients, useCreateClient, useGetClient, useUpdateClient, useDeleteClient,
-  useListMatters, useGetMatter, useUpdateMatter, useCloseMatter, useLogMatterExportRequest,
+  useListMatters, useListClientMatters, useGetMatter, useUpdateMatter, useCloseMatter, useLogMatterExportRequest,
   getHealthCheckQueryKey, getGetWorkspaceQueryKey, getGetDashboardQueryKey, getListActivityQueryKey,
   getListWorkspaceInvitationsQueryKey, getListWorkspaceMembersQueryKey,
   getListOwnershipNoticeFailuresQueryKey,
   getListWorkspaceAssignmentIssuesQueryKey,
   getGetIntakeOverviewQueryKey,
   getListClientsQueryKey, getGetClientQueryKey, getListMattersQueryKey, getGetMatterQueryKey,
+  getListClientMattersQueryKey,
 } from '@workspace/api-client-react';
 import type { Client, ClientInput, Matter, WorkspaceInput, WorkspaceInvitationInput, WorkspaceMemberUpdate } from '@workspace/api-client-react';
 import {
@@ -287,12 +288,13 @@ function Modal({title,close,children}:{title:string;close:()=>void;children:Reac
 function Field({label,children}:{label:string;children:ReactNode}) {return <label className="block text-xs font-semibold text-[#506064]">{label}<div className="mt-1.5">{children}</div></label>}
 export function ClientDetail() {
  const params=useRoute('/clients/:id')[1];const id=Number(params?.id);const result=useGetClient(id,{query:{queryKey:getGetClientQueryKey(id)}});
-  const update=useUpdateClient();const remove=useDeleteClient();const qc=useQueryClient();const [,setLocation]=useLocation();const [editing,setEditing]=useState(false);const [matterSearch,setMatterSearch]=useState('');const [matterStatus,setMatterStatus]=useState('');const assignmentMembers=useListWorkspaceAssignmentMembers();const matterList=useListMatters({clientId:id,...(matterSearch.trim()?{search:matterSearch.trim()}:{}),...(matterStatus?{status:matterStatus as Matter['status']}: {})},{query:{enabled:Number.isSafeInteger(id)&&id>0}});
+  const update=useUpdateClient();const remove=useDeleteClient();const qc=useQueryClient();const [,setLocation]=useLocation();const [editing,setEditing]=useState(false);const [matterSearch,setMatterSearch]=useState('');const [matterStatus,setMatterStatus]=useState('');const [matterPage,setMatterPage]=useState(0);const matterPageSize=20;const assignmentMembers=useListWorkspaceAssignmentMembers();const matterList=useListClientMatters({clientId:id,offset:matterPage*matterPageSize,limit:matterPageSize,...(matterSearch.trim()?{search:matterSearch.trim()}:{}),...(matterStatus?{status:matterStatus as Matter['status']}: {})},{query:{enabled:Number.isSafeInteger(id)&&id>0}});
+  useEffect(()=>{const total=matterList.data?.total;if(total!==undefined&&matterPage>0&&matterPage*matterPageSize>=total)setMatterPage(Math.max(0,Math.ceil(total/matterPageSize)-1));},[matterList.data?.total,matterPage]);
  if(result.isLoading)return <Skeleton title="Loading client record" />;if(result.isError||!result.data)return <ErrorState title="Client record unavailable" retry={()=>result.refetch()} />;
  const c=result.data;
- const clientMatters=matterList.data?.filter(matter=>matter.clientId===c.id)??[];
+ const clientMatters=matterList.data?.items??[];
   const hasMatterFilters=Boolean(matterSearch.trim()||matterStatus);
-  function clearMatterFilters(){setMatterSearch('');setMatterStatus('');}
+  function clearMatterFilters(){setMatterSearch('');setMatterStatus('');setMatterPage(0);}
  const portalInvitation=<PortalInvitation clientId={c.id} clientName={c.name} email={c.email} />;
  function save(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);update.mutate({id,data:{name:String(f.get('name')),clientType:String(f.get('clientType')) as any,email:String(f.get('email'))||null,phone:String(f.get('phone'))||null,industry:String(f.get('industry'))||null,status:String(f.get('status')) as any,ownerMemberId:Number(f.get('ownerMemberId'))}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getGetClientQueryKey(id)});qc.invalidateQueries({queryKey:getListClientsQueryKey()});qc.invalidateQueries({queryKey:getListActivityQueryKey()});qc.invalidateQueries({queryKey:getListWorkspaceAssignmentIssuesQueryKey()});setEditing(false)}});}
  function archive(){if(window.confirm(`Archive ${c.name}?`))remove.mutate({id},{onSuccess:()=>{qc.invalidateQueries({queryKey:getListClientsQueryKey()});qc.invalidateQueries({queryKey:getGetDashboardQueryKey()});qc.invalidateQueries({queryKey:getListActivityQueryKey()});setLocation('/clients')}});}
@@ -306,14 +308,14 @@ export function ClientDetail() {
         <h2 id="client-matters-title" className="serif text-lg font-bold">Matters</h2>
         <p className="mt-1 text-xs text-[#87918d]">Work currently associated with this client</p>
       </div>
-      {!matterList.isLoading && !matterList.isError && <span className="mono text-xs text-[#687779]" data-testid="client-matters-count">{clientMatters.length}</span>}
+      {!matterList.isLoading && !matterList.isError && <span className="mono text-xs text-[#687779]" data-testid="client-matters-count">{matterList.data?.total ?? 0}</span>}
     </div>
      <div className="flex flex-col gap-3 border-b border-[#eee9df] p-4 sm:flex-row">
        <label className="relative flex-1">
          <Search className="absolute left-3 top-3 h-4 w-4 text-[#89918d]" />
-         <input value={matterSearch} onChange={e=>setMatterSearch(e.target.value)} placeholder="Search matter title or reference…" aria-label="Search this client's matters" className="h-10 w-full rounded-md border border-[#d9d4c8] bg-[#fffefa] pl-10 pr-3 text-sm outline-none focus:border-[#a88b5e]" data-testid="input-search-client-matters" />
+         <input value={matterSearch} onChange={e=>{setMatterSearch(e.target.value);setMatterPage(0);}} placeholder="Search matter title or reference…" aria-label="Search this client's matters" className="h-10 w-full rounded-md border border-[#d9d4c8] bg-[#fffefa] pl-10 pr-3 text-sm outline-none focus:border-[#a88b5e]" data-testid="input-search-client-matters" />
        </label>
-       <select value={matterStatus} onChange={e=>setMatterStatus(e.target.value)} aria-label="Filter this client's matters by status" className="h-10 rounded-md border border-[#d9d4c8] bg-[#fffefa] px-3 text-sm capitalize" data-testid="select-client-matter-status">
+       <select value={matterStatus} onChange={e=>{setMatterStatus(e.target.value);setMatterPage(0);}} aria-label="Filter this client's matters by status" className="h-10 rounded-md border border-[#d9d4c8] bg-[#fffefa] px-3 text-sm capitalize" data-testid="select-client-matter-status">
          <option value="">All statuses</option><option value="open">Open</option><option value="on_hold">On hold</option><option value="closed">Closed</option>
        </select>
        {hasMatterFilters&&<button type="button" onClick={clearMatterFilters} className="rounded-md px-3 py-2 text-xs font-semibold text-[#405c60] underline underline-offset-2 hover:bg-[#f1eee6]" data-testid="button-clear-client-matter-filters">Clear filters</button>}
@@ -350,6 +352,13 @@ export function ClientDetail() {
                 </Link>
               ))}
             </div>}
+    {!matterList.isLoading&&!matterList.isError&&(matterList.data?.total??0)>0&&<div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#eee9df] px-5 py-3" data-testid="client-matters-pagination">
+      <span className="text-xs text-[#71807e]" data-testid="client-matters-range">Showing {matterPage*matterPageSize+1}–{Math.min((matterPage+1)*matterPageSize,matterList.data!.total)} of {matterList.data!.total} matters</span>
+      <div className="flex items-center gap-2">
+        <button type="button" disabled={matterPage===0} onClick={()=>setMatterPage(page=>Math.max(0,page-1))} className="rounded border border-[#d9d4c8] px-3 py-1.5 text-xs font-semibold text-[#405c60] disabled:opacity-45" data-testid="button-client-matters-previous">Previous</button>
+        <button type="button" disabled={(matterPage+1)*matterPageSize>=matterList.data!.total} onClick={()=>setMatterPage(page=>page+1)} className="rounded border border-[#d9d4c8] px-3 py-1.5 text-xs font-semibold text-[#405c60] disabled:opacity-45" data-testid="button-client-matters-next">Next</button>
+      </div>
+    </div>}
   </section></>;
 }
 
@@ -567,6 +576,7 @@ export function MatterDetail() {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getGetMatterQueryKey(id) });
         qc.invalidateQueries({ queryKey: getListMattersQueryKey() });
+        qc.invalidateQueries({ queryKey: getListClientMattersQueryKey() });
         qc.invalidateQueries({ queryKey: getListClientsQueryKey() });
         for (const clientId of new Set([m.clientId, nextClientId])) {
           qc.invalidateQueries({ queryKey: getGetClientQueryKey(clientId) });
@@ -582,6 +592,7 @@ export function MatterDetail() {
     if (window.confirm(`Close the matter “${m.title}”?`)) close.mutate({ id }, {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getListMattersQueryKey() });
+        qc.invalidateQueries({ queryKey: getListClientMattersQueryKey() });
         qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
         qc.invalidateQueries({ queryKey: getListActivityQueryKey() });
         setLocation('/matters');
@@ -760,6 +771,7 @@ function TeamPage() {
       qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
       qc.invalidateQueries({ queryKey: getListClientsQueryKey() }),
       qc.invalidateQueries({ queryKey: getListMattersQueryKey() }),
+      qc.invalidateQueries({ queryKey: getListClientMattersQueryKey() }),
       qc.invalidateQueries({ queryKey: getListWorkspaceAssignmentIssuesQueryKey() }),
       qc.invalidateQueries({ queryKey: getGetIntakeOverviewQueryKey() }),
       qc.invalidateQueries({
@@ -869,6 +881,7 @@ function TeamPage() {
           qc.invalidateQueries({ queryKey: getListWorkspaceAssignmentIssuesQueryKey() }),
           qc.invalidateQueries({ queryKey: getListClientsQueryKey() }),
           qc.invalidateQueries({ queryKey: getListMattersQueryKey() }),
+          qc.invalidateQueries({ queryKey: getListClientMattersQueryKey() }),
           qc.invalidateQueries({ queryKey: getListActivityQueryKey() }),
           qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
           qc.invalidateQueries({

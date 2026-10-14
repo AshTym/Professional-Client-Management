@@ -491,6 +491,19 @@ export interface Matter {
   updatedAt: string;
 }
 
+export interface ClientMattersPage {
+  items: Matter[];
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  offset: number;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  limit: number;
+}
+
 export type MatterInputStatus = typeof MatterInputStatus[keyof typeof MatterInputStatus];
 
 
@@ -2315,6 +2328,37 @@ export const ListClientsStatus = {
   prospect: 'prospect',
   active: 'active',
   archived: 'archived',
+} as const;
+
+export type ListClientMattersParams = {
+/**
+ * Return matters currently associated with this client in the signed-in firm.
+ * @minimum 1
+ */
+clientId: number;
+/**
+ * @minimum 0
+ */
+offset?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Case-insensitive match in matter title or reference.
+ */
+search?: string;
+status?: ListClientMattersStatus;
+};
+
+export type ListClientMattersStatus = typeof ListClientMattersStatus[keyof typeof ListClientMattersStatus];
+
+
+export const ListClientMattersStatus = {
+  open: 'open',
+  on_hold: 'on_hold',
+  closed: 'closed',
 } as const;
 
 export type ListMattersParams = {

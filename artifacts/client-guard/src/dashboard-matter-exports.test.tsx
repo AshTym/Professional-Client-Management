@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   useListClients: vi.fn(),
   useCreateClient: vi.fn(),
   useListMatters: vi.fn(),
+  useListClientMatters: vi.fn(),
   useGetMatter: vi.fn(),
   useGetMatterCloseout: vi.fn(),
   useUpdateMatter: vi.fn(),
@@ -44,6 +45,7 @@ vi.mock('@workspace/api-client-react', () => ({
   getGetIntakeOverviewQueryKey: () => ['intake'],
   getGetIntakeDraftsQueryKey: () => ['intake-drafts'],
   getListMattersQueryKey: (params?: any) => ['/api/matters', ...(params ? [params] : [])],
+  getListClientMattersQueryKey: (params?: any) => ['/api/client-matters', ...(params ? [params] : [])],
 }));
 
 vi.mock('./lib/matters-pdf', () => ({
@@ -132,6 +134,12 @@ describe('dashboard shortcuts and matter exports', () => {
     mocks.useCreateClient.mockReturnValue({ mutate: vi.fn(), isPending: false, isError: false });
     mocks.useListMatters.mockReturnValue({
       data: [firstMatter, secondMatter],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    mocks.useListClientMatters.mockReturnValue({
+      data: { items: [], total: 0, offset: 0, limit: 20 },
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
@@ -261,8 +269,13 @@ describe('dashboard shortcuts and matter exports', () => {
 
   it('shows only matters currently associated with the client on its profile', () => {
     const matters = [firstMatter, secondMatter];
-    mocks.useListMatters.mockImplementation((params?: { clientId?: number }) => ({
-      data: matters.filter(matter => matter.clientId === params?.clientId),
+    mocks.useListClientMatters.mockImplementation((params?: { clientId?: number; offset?: number; limit?: number }) => ({
+      data: {
+        items: matters.filter(matter => matter.clientId === params?.clientId),
+        total: matters.filter(matter => matter.clientId === params?.clientId).length,
+        offset: params?.offset ?? 0,
+        limit: params?.limit ?? 20,
+      },
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
@@ -270,13 +283,52 @@ describe('dashboard shortcuts and matter exports', () => {
 
     renderAt('/clients/5');
 
-    expect(mocks.useListMatters).toHaveBeenCalledWith(
-      { clientId: 5 },
+    expect(mocks.useListClientMatters).toHaveBeenCalledWith(
+      { clientId: 5, offset: 0, limit: 20 },
       { query: { enabled: true } },
     );
     expect(screen.getByTestId('client-matters-count').textContent).toBe('1');
     expect(screen.getByTestId('link-client-matter-11').getAttribute('href')).toBe('/matters/11');
     expect(screen.queryByTestId('link-client-matter-12')).toBeNull();
+  });
+
+  it('loads recent client matters first and lets staff reach older pages without changing the total', () => {
+    const matters = Array.from({ length: 21 }, (_, index) => ({
+      ...firstMatter,
+      id: index + 100,
+      title: `Matter ${index + 1}`,
+      reference: `MAT-${index + 1}`,
+      clientId: 5,
+    }));
+    mocks.useListClientMatters.mockImplementation((params?: { offset?: number; limit?: number }) => ({
+      data: {
+        items: matters.slice(params?.offset ?? 0, (params?.offset ?? 0) + (params?.limit ?? 20)),
+        total: matters.length,
+        offset: params?.offset ?? 0,
+        limit: params?.limit ?? 20,
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    }));
+
+    renderAt('/clients/5');
+
+    expect(screen.getByTestId('client-matters-count').textContent).toBe('21');
+    expect(screen.getByTestId('link-client-matter-100')).toBeTruthy();
+    expect(screen.queryByTestId('link-client-matter-120')).toBeNull();
+    expect(screen.getByTestId('client-matters-range').textContent).toBe('Showing 1–20 of 21 matters');
+
+    fireEvent.click(screen.getByTestId('button-client-matters-next'));
+
+    expect(mocks.useListClientMatters).toHaveBeenLastCalledWith(
+      { clientId: 5, offset: 20, limit: 20 },
+      { query: { enabled: true } },
+    );
+    expect(screen.getByTestId('link-client-matter-120')).toBeTruthy();
+    expect(screen.queryByTestId('link-client-matter-100')).toBeNull();
+    expect(screen.getByTestId('client-matters-count').textContent).toBe('21');
+    expect(screen.getByTestId('client-matters-range').textContent).toBe('Showing 21–21 of 21 matters');
   });
 
   it('combines client matter title or reference search with a status filter', () => {
@@ -285,23 +337,26 @@ describe('dashboard shortcuts and matter exports', () => {
       { ...firstMatter, id: 13, title: 'Employment renewal', reference: 'MAT-013', status: 'closed' },
       secondMatter,
     ];
-    mocks.useListMatters.mockImplementation((params?: { clientId?: number; search?: string; status?: string }) => ({
-      data: matters.filter(matter =>
-        matter.clientId === params?.clientId
-        && (!params.search || `${matter.title} ${matter.reference}`.toLowerCase().includes(params.search.toLowerCase()))
-        && (!params.status || matter.status === params.status),
-      ),
+    mocks.useListClientMatters.mockImplementation((params?: { clientId?: number; search?: string; status?: string; offset?: number; limit?: number }) => {
+      const matchingMatters = matters.filter(matter =>
+          matter.clientId === params?.clientId
+          && (!params.search || `${matter.title} ${matter.reference}`.toLowerCase().includes(params.search.toLowerCase()))
+          && (!params.status || matter.status === params.status),
+        );
+      return {
+      data: { items: matchingMatters, total: matchingMatters.length, offset: params?.offset ?? 0, limit: params?.limit ?? 20 },
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
-    }));
+      };
+    });
 
     renderAt('/clients/5');
     fireEvent.change(screen.getByTestId('input-search-client-matters'), { target: { value: 'MAT-013' } });
     fireEvent.change(screen.getByTestId('select-client-matter-status'), { target: { value: 'closed' } });
 
-    expect(mocks.useListMatters).toHaveBeenLastCalledWith(
-      { clientId: 5, search: 'MAT-013', status: 'closed' },
+    expect(mocks.useListClientMatters).toHaveBeenLastCalledWith(
+      { clientId: 5, offset: 0, limit: 20, search: 'MAT-013', status: 'closed' },
       { query: { enabled: true } },
     );
     expect(screen.getByTestId('link-client-matter-13')).toBeTruthy();
@@ -310,16 +365,21 @@ describe('dashboard shortcuts and matter exports', () => {
 
     fireEvent.change(screen.getByTestId('input-search-client-matters'), { target: { value: 'Employment' } });
 
-    expect(mocks.useListMatters).toHaveBeenLastCalledWith(
-      { clientId: 5, search: 'Employment', status: 'closed' },
+    expect(mocks.useListClientMatters).toHaveBeenLastCalledWith(
+      { clientId: 5, offset: 0, limit: 20, search: 'Employment', status: 'closed' },
       { query: { enabled: true } },
     );
     expect(screen.getByTestId('link-client-matter-13')).toBeTruthy();
   });
 
   it('shows a filter-specific empty state and lets staff clear client matter filters', () => {
-    mocks.useListMatters.mockImplementation((params?: { clientId?: number; search?: string; status?: string }) => ({
-      data: params?.search || params?.status ? [] : [firstMatter],
+    mocks.useListClientMatters.mockImplementation((params?: { search?: string; status?: string; offset?: number; limit?: number }) => ({
+      data: {
+        items: params?.search || params?.status ? [] : [firstMatter],
+        total: params?.search || params?.status ? 0 : 1,
+        offset: params?.offset ?? 0,
+        limit: params?.limit ?? 20,
+      },
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
@@ -340,8 +400,8 @@ describe('dashboard shortcuts and matter exports', () => {
   });
 
   it('shows a clear empty state when the client has no matters', () => {
-    mocks.useListMatters.mockReturnValue({
-      data: [],
+    mocks.useListClientMatters.mockReturnValue({
+      data: { items: [], total: 0, offset: 0, limit: 20 },
       isLoading: false,
       isError: false,
       refetch: vi.fn(),

@@ -1565,6 +1565,133 @@ test("clients, matters, and activity lists and details stay inside the signed-in
   assert.equal(otherActivityDetail.response.status, 404);
 });
 
+test("client matter pages keep accurate totals, stable boundaries, and firm isolation", async () => {
+  const extraMatters = await db
+    .insert(mattersTable)
+    .values([
+      {
+        workspaceId: firms.primary.workspaceId,
+        clientId: firms.primary.clientId,
+        title: `Older page matter ${randomUUID()}`,
+        reference: `PAGE-${randomUUID()}`,
+        matterType: "advisory",
+        responsible: "Primary Owner",
+        updatedAt: new Date("2020-01-01T00:00:00.000Z"),
+      },
+      {
+        workspaceId: firms.primary.workspaceId,
+        clientId: firms.primary.clientId,
+        title: `Newest page matter ${randomUUID()}`,
+        reference: `PAGE-${randomUUID()}`,
+        matterType: "advisory",
+        responsible: "Primary Owner",
+        updatedAt: new Date("2025-01-01T00:00:00.000Z"),
+      },
+    ])
+    .returning();
+  const [reassignedClient] = await db
+    .insert(clientsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      name: `Reassigned Matter Client ${randomUUID()}`,
+      owner: "Primary Owner",
+      status: "active",
+    })
+    .returning();
+
+  try {
+    const firstPage = await request(
+      `/client-matters?clientId=${firms.primary.clientId}&limit=2&offset=0`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(firstPage.response.status, 200);
+    const firstPageBody = firstPage.body as {
+      items: Array<{ id: number; updatedAt: string }>;
+      total: number;
+      offset: number;
+      limit: number;
+    };
+    assert.equal(firstPageBody.total, 3);
+    assert.equal(firstPageBody.offset, 0);
+    assert.equal(firstPageBody.limit, 2);
+    assert.equal(firstPageBody.items.length, 2);
+    assert.ok(
+      new Date(firstPageBody.items[0]!.updatedAt) >=
+        new Date(firstPageBody.items[1]!.updatedAt),
+    );
+
+    const secondPage = await request(
+      `/client-matters?clientId=${firms.primary.clientId}&limit=2&offset=2`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(secondPage.response.status, 200);
+    const secondPageBody = secondPage.body as {
+      items: Array<{ id: number }>;
+      total: number;
+      offset: number;
+    };
+    assert.equal(secondPageBody.total, 3);
+    assert.equal(secondPageBody.offset, 2);
+    assert.equal(secondPageBody.items.length, 1);
+    assert.equal(
+      new Set([...firstPageBody.items, ...secondPageBody.items].map(({ id }) => id))
+        .size,
+      3,
+    );
+
+    const emptyPage = await request(
+      `/client-matters?clientId=${firms.primary.clientId}&limit=2&offset=3`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(emptyPage.response.status, 200);
+    assert.deepEqual((emptyPage.body as { items: unknown[] }).items, []);
+    assert.equal((emptyPage.body as { total: number }).total, 3);
+
+    await db
+      .update(mattersTable)
+      .set({ clientId: reassignedClient.id })
+      .where(eq(mattersTable.id, firms.primary.matterId));
+    const priorClientAfterReassignment = await request(
+      `/client-matters?clientId=${firms.primary.clientId}&limit=2`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(priorClientAfterReassignment.response.status, 200);
+    assert.equal(
+      (priorClientAfterReassignment.body as { total: number }).total,
+      2,
+    );
+    const newClientAfterReassignment = await request(
+      `/client-matters?clientId=${reassignedClient.id}&limit=2`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(newClientAfterReassignment.response.status, 200);
+    assert.equal((newClientAfterReassignment.body as { total: number }).total, 1);
+
+    const foreignClient = await request(
+      `/client-matters?clientId=${firms.other.clientId}&limit=2`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(foreignClient.response.status, 404);
+
+    const invalidPage = await request(
+      `/client-matters?clientId=${firms.primary.clientId}&limit=101`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(invalidPage.response.status, 400);
+  } finally {
+    await db
+      .update(mattersTable)
+      .set({ clientId: firms.primary.clientId })
+      .where(eq(mattersTable.id, firms.primary.matterId));
+    await db
+      .delete(mattersTable)
+      .where(inArray(mattersTable.id, extraMatters.map(({ id }) => id)));
+    await db
+      .delete(clientsTable)
+      .where(eq(clientsTable.id, reassignedClient.id));
+  }
+});
+
 test("activity CSV exports all events newest-first and stays inside the signed-in firm", async () => {
   const insertedIds: number[] = [];
   const actions = Array.from(

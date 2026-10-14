@@ -38,6 +38,7 @@ import type {
   Client,
   ClientDocument,
   ClientInput,
+  ClientMattersPage,
   ClientPortalContext,
   ClientUpdate,
   ClientUpdateDraft,
@@ -77,6 +78,7 @@ import type {
   LegalHoldInput,
   ListActivityParams,
   ListAuditEventsParams,
+  ListClientMattersParams,
   ListClientsParams,
   ListMattersParams,
   ListPortalMessagesParams,
@@ -3140,6 +3142,114 @@ export const useDeleteClient = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getDeleteClientMutationOptions(options), queryClient);
     }
+
+export const getListClientMattersUrl = (params: ListClientMattersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/client-matters?${stringifiedParams}` : `/api/client-matters`
+}
+
+/**
+ * @summary List a page of matters currently associated with a firm client
+ */
+export const listClientMatters = async (params: ListClientMattersParams, options?: Parameters<typeof customFetch>[1]): Promise<ClientMattersPage> => {
+
+  return customFetch<ClientMattersPage>(getListClientMattersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListClientMattersQueryKey = (params?: ListClientMattersParams,) => {
+    return [
+    `/api/client-matters`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListClientMattersQueryOptions = <TData = Awaited<ReturnType<typeof listClientMatters>>, TError = ErrorType<void>>(params: ListClientMattersParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listClientMatters>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListClientMattersQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listClientMatters>>> = ({ signal }) => listClientMatters(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listClientMatters>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListClientMattersQueryResult = NonNullable<Awaited<ReturnType<typeof listClientMatters>>>
+export type ListClientMattersQueryError = ErrorType<void>
+
+
+export function useListClientMatters<TData = Awaited<ReturnType<typeof listClientMatters>>, TError = ErrorType<void>>(
+ params: ListClientMattersParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listClientMatters>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listClientMatters>>,
+          TError,
+          Awaited<ReturnType<typeof listClientMatters>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListClientMatters<TData = Awaited<ReturnType<typeof listClientMatters>>, TError = ErrorType<void>>(
+ params: ListClientMattersParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listClientMatters>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listClientMatters>>,
+          TError,
+          Awaited<ReturnType<typeof listClientMatters>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListClientMatters<TData = Awaited<ReturnType<typeof listClientMatters>>, TError = ErrorType<void>>(
+ params: ListClientMattersParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listClientMatters>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List a page of matters currently associated with a firm client
+ */
+
+export function useListClientMatters<TData = Awaited<ReturnType<typeof listClientMatters>>, TError = ErrorType<void>>(
+ params: ListClientMattersParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listClientMatters>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListClientMattersQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListMattersUrl = (params?: ListMattersParams,) => {
   const normalizedParams = new URLSearchParams();

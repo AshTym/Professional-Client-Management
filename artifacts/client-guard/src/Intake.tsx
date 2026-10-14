@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
-import { useCreateIntake, useCreateIntakeDraft, useDeleteIntakeDraft, useGetIntakeDrafts, useGetIntakeOverview, useListClients, useListWorkspaceAssignmentMembers, useOpenMatterFromIntake, useReviewIntake, useSaveIntakeChecks, useSubmitIntakeDraft, useUpdateIntakeDraft, getGetClientQueryKey, getGetDashboardQueryKey, getGetIntakeDraftsQueryKey, getGetIntakeOverviewQueryKey, getListActivityQueryKey, getListClientsQueryKey, getListMattersQueryKey } from '@workspace/api-client-react';
+import { useCreateIntake, useCreateIntakeDraft, useDeleteIntakeDraft, useGetIntakeDrafts, useGetIntakeOverview, useListClients, useListWorkspaceAssignmentMembers, useOpenMatterFromIntake, useReviewIntake, useSaveIntakeChecks, useSubmitIntakeDraft, useUpdateIntakeDraft, getGetClientQueryKey, getGetDashboardQueryKey, getGetIntakeDraftsQueryKey, getGetIntakeOverviewQueryKey, getListActivityQueryKey, getListClientsQueryKey, getListMattersQueryKey, getListClientMattersQueryKey } from '@workspace/api-client-react';
 import type { Client, IntakeCase, IntakeDraft, IntakeDraftData, IntakeInput, IntakeRule } from '@workspace/api-client-react';
 import { AlertTriangle, Check, ClipboardCheck, Plus, ShieldCheck } from 'lucide-react';
 
@@ -61,6 +61,7 @@ export default function Intake() {
       onSuccess: (matter) => {
         void Promise.all([
           qc.invalidateQueries({ queryKey: getListClientsQueryKey() }),
+          qc.invalidateQueries({ queryKey: getListClientMattersQueryKey() }),
           qc.invalidateQueries({ queryKey: getGetClientQueryKey(matter.clientId) }),
           qc.invalidateQueries({ queryKey: getGetDashboardQueryKey() }),
           qc.invalidateQueries({ queryKey: getListActivityQueryKey() }),
@@ -426,7 +427,7 @@ export default function Intake() {
             <button onClick={() => setSelected(record)} className="rounded border border-[#d9d4c8] px-3 py-2 text-xs font-bold hover:bg-[#f0ece2]" data-testid={`button-review-intake-${record.id}`}>Review record</button>
           </div>
           {record.conflictFindings.length > 0 && <div className="mt-4 rounded border border-[#e8d6b0] bg-[#faf4e6] p-3"><div className="flex items-center gap-2 text-xs font-bold text-[#775b2d]"><AlertTriangle className="h-3.5 w-3.5" />Potential conflict matches · review required</div><div className="mt-2 flex flex-wrap gap-2">{record.conflictFindings.map((f, i) => <span key={`${f.recordType}-${f.recordId}-${i}`} className="rounded border border-[#e6d8ba] bg-[#fffaf0] px-2 py-1 text-[10px] text-[#6f6047]">{f.name} ↔ {f.recordLabel} ({f.recordType})</span>)}</div></div>}
-          {record.status === 'cleared' && <div className="mt-3 flex justify-end"><button disabled={openMatter.isPending} onClick={() => openMatter.mutate({ id: record.id }, { onSuccess: () => { refresh(); qc.invalidateQueries({ queryKey: getListMattersQueryKey() }); setNotice('Matter opened from the cleared intake.'); }, onError: e => setError(message(e)) })} className="inline-flex items-center gap-2 rounded bg-[#294651] px-3 py-2 text-xs font-bold text-white disabled:opacity-50" data-testid={`button-open-matter-${record.id}`}><Check className="h-3.5 w-3.5" />{record.openedMatterId ? 'Matter opened' : 'Open matter'}</button></div>}
+          {record.status === 'cleared' && <div className="mt-3 flex justify-end"><button disabled={openMatter.isPending} onClick={() => openMatter.mutate({ id: record.id }, { onSuccess: () => { refresh(); qc.invalidateQueries({ queryKey: getListMattersQueryKey() }); qc.invalidateQueries({ queryKey: getListClientMattersQueryKey() }); setNotice('Matter opened from the cleared intake.'); }, onError: e => setError(message(e)) })} className="inline-flex items-center gap-2 rounded bg-[#294651] px-3 py-2 text-xs font-bold text-white disabled:opacity-50" data-testid={`button-open-matter-${record.id}`}><Check className="h-3.5 w-3.5" />{record.openedMatterId ? 'Matter opened' : 'Open matter'}</button></div>}
         </article>)}</div>
       )}
     </section>

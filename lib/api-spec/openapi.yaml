@@ -789,6 +789,57 @@ paths:
       responses:
         "204":
           description: Client archived
+  /client-matters:
+    get:
+      operationId: listClientMatters
+      tags: [clients]
+      summary: List a page of matters currently associated with a firm client
+      parameters:
+        - name: clientId
+          in: query
+          required: true
+          description: Return matters currently associated with this client in the signed-in firm.
+          schema:
+            type: integer
+            minimum: 1
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: search
+          in: query
+          required: false
+          description: Case-insensitive match in matter title or reference.
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, on_hold, closed]
+      responses:
+        "200":
+          description: Recent-first page of matters and the current matching total
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientMattersPage"
+        "400":
+          description: Invalid client matter page parameters
+        "404":
+          description: Client not found in this firm
   /matters:
     get:
       operationId: listMatters
@@ -2689,6 +2740,17 @@ components:
         dueAt: { type: ["string", "null"], format: date-time }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    ClientMattersPage:
+      type: object
+      required: [items, total, offset, limit]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Matter"
+        total: { type: integer, minimum: 0 }
+        offset: { type: integer, minimum: 0 }
+        limit: { type: integer, minimum: 1, maximum: 100 }
     MatterInput:
       type: object
       required: [clientId, title, matterType, responsibleMemberId]
