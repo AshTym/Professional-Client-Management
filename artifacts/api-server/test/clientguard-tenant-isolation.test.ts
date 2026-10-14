@@ -2070,6 +2070,20 @@ test("activity pagination keeps page boundaries and firm isolation", async () =>
 test("activity filters stay firm-scoped and apply before pagination", async () => {
   const insertedActivityIds: number[] = [];
   const occurredAt = new Date("2099-01-02T00:00:00.000Z");
+  const dateBoundaryActions = {
+    beforeStart: `date boundary before start ${randomUUID()}`,
+    firstDateStart: `date boundary first date start ${randomUUID()}`,
+    finalDateEnd: `date boundary final date end ${randomUUID()}`,
+    afterEnd: `date boundary after end ${randomUUID()}`,
+  };
+  const leapDayActions = {
+    beforeStart: `leap day before start ${randomUUID()}`,
+    leapDayStart: `leap day start ${randomUUID()}`,
+    finalDateEnd: `leap range final date end ${randomUUID()}`,
+    afterEnd: `leap range after end ${randomUUID()}`,
+  };
+  const dateBoundaryEntityId = 900001;
+  const leapDayEntityId = 900002;
   const ownerActions = [
     `filtered client event oldest ${randomUUID()}`,
     `filtered client event middle ${randomUUID()}`,
@@ -2171,6 +2185,43 @@ test("activity filters stay firm-scoped and apply before pagination", async () =
       ])
       .returning({ id: activitiesTable.id });
     insertedActivityIds.push(...inserted.map(({ id }) => id));
+
+    const boundaryActivities = await db
+      .insert(activitiesTable)
+      .values([
+        ...[
+          [dateBoundaryActions.beforeStart, "2099-01-01T23:59:59.999Z"],
+          [dateBoundaryActions.firstDateStart, "2099-01-02T00:00:00.000Z"],
+          [dateBoundaryActions.finalDateEnd, "2099-01-03T23:59:59.999Z"],
+          [dateBoundaryActions.afterEnd, "2099-01-04T00:00:00.000Z"],
+        ].map(([action, timestamp]) => ({
+          workspaceId: firms.primary.workspaceId,
+          clerkUserId: firms.primary.ownerId,
+          actor: "Primary Owner",
+          action,
+          entityType: "matter",
+          entityId: dateBoundaryEntityId,
+          entityLabel: "Date boundary test matter",
+          occurredAt: new Date(timestamp),
+        })),
+        ...[
+          [leapDayActions.beforeStart, "2024-02-28T23:59:59.999Z"],
+          [leapDayActions.leapDayStart, "2024-02-29T00:00:00.000Z"],
+          [leapDayActions.finalDateEnd, "2024-03-01T23:59:59.999Z"],
+          [leapDayActions.afterEnd, "2024-03-02T00:00:00.000Z"],
+        ].map(([action, timestamp]) => ({
+          workspaceId: firms.primary.workspaceId,
+          clerkUserId: firms.primary.ownerId,
+          actor: "Primary Owner",
+          action,
+          entityType: "matter",
+          entityId: leapDayEntityId,
+          entityLabel: "Leap day test matter",
+          occurredAt: new Date(timestamp),
+        })),
+      ])
+      .returning({ id: activitiesTable.id });
+    insertedActivityIds.push(...boundaryActivities.map(({ id }) => id));
 
     const actorOptions = await request("/activity/actors", {
       userId: firms.primary.ownerId,
@@ -2330,8 +2381,36 @@ test("activity filters stay firm-scoped and apply before pagination", async () =
         ({ action }) => action === unrelatedActions[2],
       ),
     );
+    const dateBoundaryPage = await request(
+      `/activity?startDate=2099-01-02&endDate=2099-01-03&entityType=matter&entityId=${dateBoundaryEntityId}`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(dateBoundaryPage.response.status, 200);
+    assert.deepEqual(
+      (dateBoundaryPage.body.items as Array<{ action: string; occurredAt: string }>).map(
+        ({ action, occurredAt }) => [action, occurredAt],
+      ),
+      [
+        [dateBoundaryActions.finalDateEnd, "2099-01-03T23:59:59.999Z"],
+        [dateBoundaryActions.firstDateStart, "2099-01-02T00:00:00.000Z"],
+      ],
+    );
+    const leapDayPage = await request(
+      `/activity?startDate=2024-02-29&endDate=2024-03-01&entityType=matter&entityId=${leapDayEntityId}`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(leapDayPage.response.status, 200);
+    assert.deepEqual(
+      (leapDayPage.body.items as Array<{ action: string; occurredAt: string }>).map(
+        ({ action, occurredAt }) => [action, occurredAt],
+      ),
+      [
+        [leapDayActions.finalDateEnd, "2024-03-01T23:59:59.999Z"],
+        [leapDayActions.leapDayStart, "2024-02-29T00:00:00.000Z"],
+      ],
+    );
     const emptyDateRange = await request(
-      "/activity?startDate=2099-01-04&endDate=2099-01-04",
+      `/activity?startDate=2099-01-04&endDate=2099-01-04&entityType=client&entityId=${firms.primary.clientId}`,
       { userId: firms.primary.ownerId },
     );
     assert.equal(emptyDateRange.response.status, 200);
@@ -2357,6 +2436,26 @@ test("activity filters stay firm-scoped and apply before pagination", async () =
     assert.equal(dateFilteredCsvResponse.status, 200);
     assert(dateFilteredCsv.includes(ownerActions[0]));
     assert(!dateFilteredCsv.includes(unrelatedActions[2]));
+    const boundaryCsvResponse = await fetch(
+      `${baseUrl}/activity/export.csv?startDate=2099-01-02&endDate=2099-01-03&entityType=matter&entityId=${dateBoundaryEntityId}`,
+      { headers: { "x-test-user-id": firms.primary.ownerId } },
+    );
+    const boundaryCsv = await boundaryCsvResponse.text();
+    assert.equal(boundaryCsvResponse.status, 200);
+    assert(boundaryCsv.includes(dateBoundaryActions.firstDateStart));
+    assert(boundaryCsv.includes(dateBoundaryActions.finalDateEnd));
+    assert(!boundaryCsv.includes(dateBoundaryActions.beforeStart));
+    assert(!boundaryCsv.includes(dateBoundaryActions.afterEnd));
+    const leapDayCsvResponse = await fetch(
+      `${baseUrl}/activity/export.csv?startDate=2024-02-29&endDate=2024-03-01&entityType=matter&entityId=${leapDayEntityId}`,
+      { headers: { "x-test-user-id": firms.primary.ownerId } },
+    );
+    const leapDayCsv = await leapDayCsvResponse.text();
+    assert.equal(leapDayCsvResponse.status, 200);
+    assert(leapDayCsv.includes(leapDayActions.leapDayStart));
+    assert(leapDayCsv.includes(leapDayActions.finalDateEnd));
+    assert(!leapDayCsv.includes(leapDayActions.beforeStart));
+    assert(!leapDayCsv.includes(leapDayActions.afterEnd));
   } finally {
     if (insertedActivityIds.length) {
       await db
