@@ -147,12 +147,21 @@ describe('activity pagination', () => {
     fireEvent.change(screen.getByTestId('select-activity-record'), {
       target: { value: 'client:10' },
     });
+    fireEvent.change(screen.getByTestId('input-activity-start-date'), {
+      target: { value: '2026-10-01' },
+    });
+    fireEvent.change(screen.getByTestId('input-activity-end-date'), {
+      target: { value: '2026-10-14' },
+    });
     fireEvent.click(screen.getByTestId('button-export-activity'));
 
     await waitFor(() => expect(apiMocks.exportActivity).toHaveBeenCalledWith({
+      snapshotId: 41,
       actorName: 'A. Morgan',
       entityType: 'client',
       entityId: 10,
+      startDate: '2026-10-01',
+      endDate: '2026-10-14',
     }));
     await screen.findByText('Activity history downloaded.');
     expect(click).toHaveBeenCalledOnce();

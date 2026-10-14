@@ -9,6 +9,11 @@ import type { ExportActivityEntityType } from './exportActivityEntityType';
 
 export type ExportActivityParams = {
 /**
+ * Include only events at or below this firm-wide activity snapshot ID.
+ * @minimum 0
+ */
+snapshotId?: number;
+/**
  * Restrict results to activity by this exact actor name in the current firm's history.
  * @maxLength 255
  */

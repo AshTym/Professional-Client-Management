@@ -2012,6 +2012,15 @@ test("activity pagination keeps page boundaries and firm isolation", async () =>
       .returning({ id: activitiesTable.id });
     insertedActivityIds.push(...lateActivity.map(({ id }) => id));
 
+    const snapshotCsvResponse = await fetch(
+      `${baseUrl}/activity/export.csv?snapshotId=${snapshotId}`,
+      { headers: { "x-test-user-id": firms.primary.ownerId } },
+    );
+    const snapshotCsv = await snapshotCsvResponse.text();
+    assert.equal(snapshotCsvResponse.status, 200);
+    assert(snapshotCsv.includes(primaryActions[0]));
+    assert(!snapshotCsv.includes("primary page event added after snapshot"));
+
     const secondPage = await request(
       `/activity?limit=2&offset=2&snapshotId=${snapshotId}`,
       {

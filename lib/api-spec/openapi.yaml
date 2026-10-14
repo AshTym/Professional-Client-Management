@@ -585,6 +585,13 @@ paths:
       tags: [activity]
       summary: Export the current firm's activity history
       parameters:
+        - name: snapshotId
+          in: query
+          required: false
+          description: Include only events at or below this firm-wide activity snapshot ID.
+          schema:
+            type: integer
+            minimum: 0
         - name: actorName
           in: query
           required: false

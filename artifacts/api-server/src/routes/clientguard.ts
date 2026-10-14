@@ -2881,6 +2881,9 @@ router.get("/activity/export.csv", async (req, res): Promise<void> => {
   }
 
   const filters = [eq(activitiesTable.workspaceId, access.workspaceId)];
+  if (parsed.data.snapshotId !== undefined) {
+    filters.push(lte(activitiesTable.id, parsed.data.snapshotId));
+  }
   if (parsed.data.actorName !== undefined) {
     filters.push(eq(activitiesTable.actor, parsed.data.actorName));
   }
