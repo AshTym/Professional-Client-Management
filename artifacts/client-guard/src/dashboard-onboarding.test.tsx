@@ -369,7 +369,7 @@ describe('new-firm dashboard onboarding', () => {
     expect(screen.queryByRole('button', { name: 'Reloading activity' })).toBeNull();
   });
 
-  it('keeps firm details and offers a retry when workspace setup fails', () => {
+  it('recovers from an uncertain setup save and opens the completed workspace', () => {
     const mutate = vi.fn();
     apiMocks.useCreateWorkspace.mockReturnValue({ mutate, isPending: false });
     window.history.replaceState({}, '', '/workspace/setup');
@@ -379,7 +379,10 @@ describe('new-firm dashboard onboarding', () => {
     render(
       <QueryClientProvider client={queryClient}>
         <Router>
-          <SetupPage />
+          <Switch>
+            <Route path="/workspace/setup" component={SetupPage} />
+            <Route path="/dashboard" component={Dashboard} />
+          </Switch>
         </Router>
       </QueryClientProvider>,
     );
@@ -407,5 +410,26 @@ describe('new-firm dashboard onboarding', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(mutate).toHaveBeenCalledTimes(2);
+
+    const savedContext = {
+      userId: 'owner-1',
+      email: 'owner@example.test',
+      name: 'Test Owner',
+      workspace: {
+        id: 48,
+        name: 'Northline Advisory',
+        practiceType: 'law' as const,
+        createdAt: new Date('2026-10-14T00:00:00.000Z'),
+      },
+      role: 'owner' as const,
+    };
+    act(() => {
+      mutate.mock.calls[1][1].onSuccess(savedContext);
+    });
+
+    expect(queryClient.getQueryData(['workspace'])).toEqual(savedContext);
+    expect(window.location.pathname).toBe('/dashboard');
+    expect(screen.getByTestId('dashboard-empty-onboarding')).toBeTruthy();
+    expect(screen.getByText('Good morning.')).toBeTruthy();
   });
 });

@@ -575,6 +575,19 @@ before(async () => {
     ).log = { error: () => {}, warn: () => {} };
     next();
   });
+  app.use((req, res, next) => {
+    if (
+      req.method === "POST" &&
+      req.path === "/api/workspace" &&
+      req.header("x-test-drop-workspace-response") === "true"
+    ) {
+      res.json = (() => {
+        res.destroy();
+        return res;
+      }) as typeof res.json;
+    }
+    next();
+  });
   const { default: router } = await import("../src/routes/clientguard.ts");
   const { default: workflowRouter } = await import(
     "../src/routes/clientguard-workflows.ts"
@@ -792,6 +805,73 @@ test("concurrent workspace setup requests create one firm for the signed-in owne
   assert.equal(setupActivities.length, 1);
   assert.equal(setupActivities[0].workspaceId, workspaceIds[0]);
   assert.equal(setupActivities[0].action, "created the firm workspace");
+});
+
+test("retrying setup after a committed save loses its response returns the same firm", async () => {
+  const userId = `workspace-setup-lost-response-${randomUUID()}`;
+  const workspaceName = `Lost Response Workspace ${randomUUID()}`;
+
+  await assert.rejects(
+    fetch(`${baseUrl}/workspace`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-test-user-id": userId,
+        "x-test-drop-workspace-response": "true",
+      },
+      body: JSON.stringify({ name: workspaceName, practiceType: "law" }),
+    }),
+    "the first save commits but its HTTP response is dropped",
+  );
+
+  const firstSaveWorkspaces = await db
+    .select()
+    .from(workspacesTable)
+    .where(eq(workspacesTable.name, workspaceName));
+  const firstSaveMemberships = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, userId));
+  assert.equal(firstSaveWorkspaces.length, 1);
+  assert.equal(firstSaveMemberships.length, 1);
+  assert.equal(firstSaveMemberships[0].workspaceId, firstSaveWorkspaces[0].id);
+  assert.equal(firstSaveMemberships[0].role, "owner");
+
+  const retry = await request("/workspace", {
+    userId,
+    method: "POST",
+    body: { name: workspaceName, practiceType: "law" },
+  });
+  assert.equal(retry.response.status, 200);
+  const retryContext = retry.body as {
+    workspace: { id: number; name: string } | null;
+    role: string | null;
+  };
+  assert.equal(retryContext.workspace?.id, firstSaveWorkspaces[0].id);
+  assert.equal(retryContext.workspace?.name, workspaceName);
+  assert.equal(retryContext.role, "owner");
+
+  const completedContext = await request("/workspace", { userId });
+  assert.equal(completedContext.response.status, 200);
+  assert.deepEqual(completedContext.body, retry.body);
+
+  const finalWorkspaces = await db
+    .select()
+    .from(workspacesTable)
+    .where(eq(workspacesTable.name, workspaceName));
+  const finalMemberships = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, userId));
+  const setupActivities = await db
+    .select()
+    .from(activitiesTable)
+    .where(eq(activitiesTable.clerkUserId, userId));
+  assert.equal(finalWorkspaces.length, 1);
+  assert.equal(finalMemberships.length, 1);
+  assert.equal(finalMemberships[0].workspaceId, firstSaveWorkspaces[0].id);
+  assert.equal(finalMemberships[0].role, "owner");
+  assert.equal(setupActivities.length, 1);
 });
 
 test("workspace setup returns a stable conflict when another writer adds the membership first", async () => {
