@@ -2636,6 +2636,8 @@ export const ListEngagementLettersResponseItem = zod.object({
   "clientEmail": zod.string().email(),
   "scope": zod.string(),
   "billingTerms": zod.string(),
+  "templateName": zod.string(),
+  "templateTerms": zod.string(),
   "revision": zod.number().int(),
   "status": zod.enum(['draft', 'sent', 'completed', 'declined', 'voided', 'error']),
   "provider": zod.enum(['docusign']),
@@ -2651,7 +2653,81 @@ export const ListEngagementLettersResponse = zod.array(ListEngagementLettersResp
 
 
 /**
- * @summary Create a matter engagement letter draft from matter and billing terms
+ * @summary List active firm engagement templates (admins also see archived templates)
+ */
+export const ListEngagementLetterTemplatesResponseItem = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "terms": zod.string(),
+  "active": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListEngagementLetterTemplatesResponse = zod.array(ListEngagementLetterTemplatesResponseItem)
+
+
+/**
+ * @summary Create a reusable firm engagement letter template
+ */
+export const createEngagementLetterTemplateBodyNameMin = 2;
+export const createEngagementLetterTemplateBodyNameMax = 120;
+
+export const createEngagementLetterTemplateBodyTermsMin = 10;
+export const createEngagementLetterTemplateBodyTermsMax = 12000;
+
+
+
+export const CreateEngagementLetterTemplateBody = zod.object({
+  "name": zod.string().min(createEngagementLetterTemplateBodyNameMin).max(createEngagementLetterTemplateBodyNameMax),
+  "terms": zod.string().min(createEngagementLetterTemplateBodyTermsMin).max(createEngagementLetterTemplateBodyTermsMax)
+})
+
+export const CreateEngagementLetterTemplateResponse = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "terms": zod.string(),
+  "active": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update or archive a reusable firm engagement letter template
+ */
+
+
+
+export const UpdateEngagementLetterTemplateParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const updateEngagementLetterTemplateBodyNameMin = 2;
+export const updateEngagementLetterTemplateBodyNameMax = 120;
+
+export const updateEngagementLetterTemplateBodyTermsMin = 10;
+export const updateEngagementLetterTemplateBodyTermsMax = 12000;
+
+
+
+export const UpdateEngagementLetterTemplateBody = zod.object({
+  "name": zod.string().min(updateEngagementLetterTemplateBodyNameMin).max(updateEngagementLetterTemplateBodyNameMax),
+  "terms": zod.string().min(updateEngagementLetterTemplateBodyTermsMin).max(updateEngagementLetterTemplateBodyTermsMax),
+  "active": zod.boolean().optional()
+})
+
+export const UpdateEngagementLetterTemplateResponse = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "terms": zod.string(),
+  "active": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Create a matter engagement letter draft from a template, scope, and billing terms
  */
 
 
@@ -2667,9 +2743,11 @@ export const createEngagementLetterBodyScopeMax = 12000;
 
 
 
+
 export const CreateEngagementLetterBody = zod.object({
   "clientEmail": zod.string().email().max(createEngagementLetterBodyClientEmailMax),
-  "scope": zod.string().min(createEngagementLetterBodyScopeMin).max(createEngagementLetterBodyScopeMax)
+  "scope": zod.string().min(createEngagementLetterBodyScopeMin).max(createEngagementLetterBodyScopeMax),
+  "templateId": zod.number().int().min(1).nullish()
 })
 
 export const CreateEngagementLetterResponse = zod.object({
@@ -2680,6 +2758,8 @@ export const CreateEngagementLetterResponse = zod.object({
   "clientEmail": zod.string().email(),
   "scope": zod.string(),
   "billingTerms": zod.string(),
+  "templateName": zod.string(),
+  "templateTerms": zod.string(),
   "revision": zod.number().int(),
   "status": zod.enum(['draft', 'sent', 'completed', 'declined', 'voided', 'error']),
   "provider": zod.enum(['docusign']),
@@ -2711,6 +2791,8 @@ export const SendEngagementLetterResponse = zod.object({
   "clientEmail": zod.string().email(),
   "scope": zod.string(),
   "billingTerms": zod.string(),
+  "templateName": zod.string(),
+  "templateTerms": zod.string(),
   "revision": zod.number().int(),
   "status": zod.enum(['draft', 'sent', 'completed', 'declined', 'voided', 'error']),
   "provider": zod.enum(['docusign']),
@@ -2742,6 +2824,8 @@ export const SyncEngagementLetterResponse = zod.object({
   "clientEmail": zod.string().email(),
   "scope": zod.string(),
   "billingTerms": zod.string(),
+  "templateName": zod.string(),
+  "templateTerms": zod.string(),
   "revision": zod.number().int(),
   "status": zod.enum(['draft', 'sent', 'completed', 'declined', 'voided', 'error']),
   "provider": zod.enum(['docusign']),

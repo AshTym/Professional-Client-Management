@@ -2006,6 +2006,66 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/EngagementLetter"
+  /engagement-letter-templates:
+    get:
+      operationId: listEngagementLetterTemplates
+      tags: [engagements]
+      summary: List active firm engagement templates (admins also see archived templates)
+      responses:
+        "200":
+          description: Firm engagement letter templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EngagementLetterTemplate"
+    post:
+      operationId: createEngagementLetterTemplate
+      tags: [engagements]
+      summary: Create a reusable firm engagement letter template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EngagementLetterTemplateInput"
+      responses:
+        "201":
+          description: Created engagement letter template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EngagementLetterTemplate"
+        "403":
+          description: Only firm owners and admins can maintain templates
+  /engagement-letter-templates/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    patch:
+      operationId: updateEngagementLetterTemplate
+      tags: [engagements]
+      summary: Update or archive a reusable firm engagement letter template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EngagementLetterTemplateUpdate"
+      responses:
+        "200":
+          description: Updated engagement letter template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EngagementLetterTemplate"
+        "403":
+          description: Only firm owners and admins can maintain templates
+        "404":
+          description: Template not found in this firm
   /matters/{id}/engagement-letter:
     parameters:
       - name: id
@@ -2015,7 +2075,7 @@ paths:
     post:
       operationId: createEngagementLetter
       tags: [engagements]
-      summary: Create a matter engagement letter draft from matter and billing terms
+      summary: Create a matter engagement letter draft from a template, scope, and billing terms
       requestBody:
         required: true
         content:
@@ -3468,9 +3528,33 @@ components:
       properties:
         clientEmail: { type: string, format: email, maxLength: 254 }
         scope: { type: string, minLength: 10, maxLength: 12000 }
+        templateId: { type: ["integer", "null"], minimum: 1 }
+    EngagementLetterTemplateInput:
+      type: object
+      required: [name, terms]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        terms: { type: string, minLength: 10, maxLength: 12000 }
+    EngagementLetterTemplateUpdate:
+      type: object
+      required: [name, terms]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        terms: { type: string, minLength: 10, maxLength: 12000 }
+        active: { type: boolean }
+    EngagementLetterTemplate:
+      type: object
+      required: [id, name, terms, active, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        terms: { type: string }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     EngagementLetter:
       type: object
-      required: [id, matterId, matterTitle, clientName, clientEmail, scope, billingTerms, revision, status, provider, envelopeId, draftDocumentId, signedDocumentId, sentAt, signedAt, requiresSignatureToOpen, createdAt]
+      required: [id, matterId, matterTitle, clientName, clientEmail, scope, billingTerms, templateName, templateTerms, revision, status, provider, envelopeId, draftDocumentId, signedDocumentId, sentAt, signedAt, requiresSignatureToOpen, createdAt]
       properties:
         id: { type: integer }
         matterId: { type: integer }
@@ -3479,6 +3563,8 @@ components:
         clientEmail: { type: string, format: email }
         scope: { type: string }
         billingTerms: { type: string }
+        templateName: { type: string }
+        templateTerms: { type: string }
         revision: { type: integer }
         status: { type: string, enum: [draft, sent, completed, declined, voided, error] }
         provider: { type: string, enum: [docusign] }

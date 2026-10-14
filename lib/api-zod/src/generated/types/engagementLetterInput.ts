@@ -14,4 +14,9 @@ export interface EngagementLetterInput {
      * @maxLength 12000
      */
   scope: string;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  templateId?: number | null;
 }

@@ -2,13 +2,15 @@ import { useEffect, useState, type FormEvent, type ChangeEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   getGetPracticeSettingsQueryKey, getGetTrustOverviewQueryKey, getListEngagementLettersQueryKey,
+  getListEngagementLetterTemplatesQueryKey,
   useCreateEngagementLetter, useCreateTrustAccount,
+  useCreateEngagementLetterTemplate, useUpdateEngagementLetterTemplate,
   useCreateTrustEntry, useDecideTrustEntry, useGetPracticeSettings, useGetTrustAccountStatement,
   getGetTrustAccountStatementQueryKey, useGetTrustOverview, useImportTrustStatement,
-  useListEngagementLetters, useListMatters, useListWorkspaceIntegrations, useMatchTrustStatementLine,
+  useListEngagementLetters, useListEngagementLetterTemplates, useListMatters, useListWorkspaceIntegrations, useMatchTrustStatementLine,
   useSendEngagementLetter, useSyncEngagementLetter, useUpdatePracticeSettings, useGetWorkspace,
 } from '@workspace/api-client-react';
-import type { GetTrustAccountStatementParams, TrustStatementLineInput } from '@workspace/api-client-react';
+import type { EngagementLetterTemplate, GetTrustAccountStatementParams, TrustStatementLineInput } from '@workspace/api-client-react';
 import { AlertTriangle, FileSignature, Landmark, Plus, Printer, RefreshCw, ShieldCheck } from 'lucide-react';
 import CloseoutChecklistSettings from './CloseoutChecklistSettings';
 
@@ -59,12 +61,15 @@ export default function PracticeOperations() {
   const qc = useQueryClient();
   const settings = useGetPracticeSettings();
   const letters = useListEngagementLetters();
+  const templates = useListEngagementLetterTemplates();
   const trust = useGetTrustOverview();
   const matters = useListMatters();
   const integrations = useListWorkspaceIntegrations();
   const workspace = useGetWorkspace();
   const saveSettings = useUpdatePracticeSettings();
   const createLetter = useCreateEngagementLetter();
+  const createTemplate = useCreateEngagementLetterTemplate();
+  const updateTemplate = useUpdateEngagementLetterTemplate();
   const sendLetter = useSendEngagementLetter();
   const syncLetter = useSyncEngagementLetter();
   const createAccount = useCreateTrustAccount();
@@ -77,6 +82,12 @@ export default function PracticeOperations() {
   const [settingsReady, setSettingsReady] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null);
+  const [templateName, setTemplateName] = useState('');
+  const [templateTerms, setTemplateTerms] = useState('');
+  const [reviewingLetterId, setReviewingLetterId] = useState<number | null>(null);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState('');
   const [selectedMatter, setSelectedMatter] = useState('');
   const [period, setPeriod] = useState({ from: '', to: '' });
@@ -111,8 +122,34 @@ export default function PracticeOperations() {
     const form = e.currentTarget;
     const f = new FormData(form);
     const id = Number(f.get('matterId'));
-    createLetter.mutate({ id, data: { clientEmail: String(f.get('clientEmail')).trim(), scope: String(f.get('scope')).trim() } }, {
-      onSuccess: () => { qc.invalidateQueries({ queryKey: getListEngagementLettersQueryKey() }); setSuccess('Draft engagement letter created from the matter scope and billing snapshot.'); form.reset(); },
+    createLetter.mutate({ id, data: { clientEmail: String(f.get('clientEmail')).trim(), scope: String(f.get('scope')).trim(), ...(selectedTemplate ? { templateId: Number(selectedTemplate) } : {}) } }, {
+      onSuccess: () => { qc.invalidateQueries({ queryKey: getListEngagementLettersQueryKey() }); setSuccess('Draft engagement letter created from the selected template and matter-specific scope and billing snapshot.'); form.reset(); setSelectedTemplate(''); },
+      onError: e => setError(errText(e)),
+    });
+  }
+  function saveTemplate(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault(); setError(''); setSuccess('');
+    const form = e.currentTarget;
+    const data = { name: templateName.trim(), terms: templateTerms.trim() };
+    const onSuccess = () => {
+      qc.invalidateQueries({ queryKey: getListEngagementLetterTemplatesQueryKey() });
+      setSuccess(editingTemplateId ? 'Engagement template updated. Existing letters retain their original text.' : 'Engagement template created.');
+      setEditingTemplateId(null); setTemplateName(''); setTemplateTerms(''); form.reset();
+    };
+    if (editingTemplateId) {
+      const existing = templates.data?.find(item => item.id === editingTemplateId);
+      updateTemplate.mutate({ id: editingTemplateId, data: { ...data, active: existing?.active ?? true } }, { onSuccess, onError: e => setError(errText(e)) });
+    } else {
+      createTemplate.mutate({ data }, { onSuccess, onError: e => setError(errText(e)) });
+    }
+  }
+  function toggleTemplate(template: EngagementLetterTemplate) {
+    updateTemplate.mutate({ id: template.id, data: { name: template.name, terms: template.terms, active: !template.active } }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListEngagementLetterTemplatesQueryKey() });
+        if (selectedTemplate === String(template.id) && template.active) setSelectedTemplate('');
+        setSuccess(template.active ? 'Template archived. Existing letters are unchanged.' : 'Template restored for staff use.');
+      },
       onError: e => setError(errText(e)),
     });
   }
@@ -242,8 +279,8 @@ export default function PracticeOperations() {
     });
   }
 
-  if (settings.isLoading || letters.isLoading || trust.isLoading) return <div className="space-y-4" aria-label="Loading practice operations">{[1,2,3].map(i => <div key={i} className="h-36 animate-pulse rounded-md bg-[#e8e4d9]" />)}</div>;
-  if (settings.isError || letters.isError || trust.isError) return <div role="alert" className="rounded-md border border-[#e6c7c1] bg-[#fff9f6] p-5 text-sm text-[#843f38]">Practice records could not be loaded. <button onClick={() => { settings.refetch(); letters.refetch(); trust.refetch(); }} className="ml-2 underline">Try again</button></div>;
+  if (settings.isLoading || letters.isLoading || templates.isLoading || trust.isLoading) return <div className="space-y-4" aria-label="Loading practice operations">{[1,2,3].map(i => <div key={i} className="h-36 animate-pulse rounded-md bg-[#e8e4d9]" />)}</div>;
+  if (settings.isError || letters.isError || templates.isError || trust.isError) return <div role="alert" className="rounded-md border border-[#e6c7c1] bg-[#fff9f6] p-5 text-sm text-[#843f38]">Practice records could not be loaded. <button onClick={() => { settings.refetch(); letters.refetch(); templates.refetch(); trust.refetch(); }} className="ml-2 underline">Try again</button></div>;
 
   return <div data-testid="page-practice-operations">
     <header className="mb-7"><div className="mono mb-2 text-[10px] uppercase tracking-[.18em] text-[#987747]">Firm policy / client money custody</div><h1 className="serif text-3xl font-bold md:text-[38px]">Practice operations</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-[#72807f]">Set the rules of engagement, issue letters for provider-confirmed signature, and keep a precise record of client money.</p></header>
@@ -260,9 +297,43 @@ export default function PracticeOperations() {
 
     <section className={`${panel} mb-5 overflow-hidden`}><div className="flex items-start justify-between gap-4 border-b border-[#e9e4d9] px-5 py-4"><div className="flex gap-3"><FileSignature className="mt-0.5 h-5 w-5 text-[#9a7945]" /><div><h2 className="serif text-lg font-bold">Engagement letters</h2><p className="mt-1 text-xs text-[#788581]">Draft scope and billing terms from a matter record; signature state follows provider confirmation.</p></div></div><span className={`h-fit rounded-full px-2.5 py-1 text-[9px] font-bold uppercase ${docusign?.connected && docusign.ready ? 'bg-[#e5eee7] text-[#47725b]' : 'bg-[#fff1db] text-[#845d24]'}`}>{docusign?.connected ? (docusign.ready ? 'DocuSign connected' : 'Setup required') : 'Sandbox'}</span></div>
       {(!docusign?.connected || !docusign.ready) && <div className="mx-5 mt-4 rounded border border-[#ead9b8] bg-[#fff8eb] px-3 py-2.5 text-xs leading-5 text-[#755a2d]">DocuSign is in sandbox until this firm connects and configures its own OAuth app. Sending is disabled until the provider is ready. <a href="/settings/integrations" className="font-bold underline">Review integration settings</a></div>}
-      <form onSubmit={makeLetter} className="grid gap-3 p-5 md:grid-cols-[1fr_1fr_1.4fr_auto] md:items-end"><label className="text-xs font-semibold text-[#53625f]">Matter<select required name="matterId" className="field mt-1.5"><option value="">Choose matter</option>{(matters.data || []).filter(m => m.status !== 'closed').map(m => <option key={m.id} value={m.id}>{m.title} · {m.clientName}</option>)}</select></label><label className="text-xs font-semibold text-[#53625f]">Client email<input required name="clientEmail" type="email" className="field mt-1.5" placeholder="client@example.com" /></label><label className="text-xs font-semibold text-[#53625f]">Scope summary<textarea required minLength={10} maxLength={12000} name="scope" className="field mt-1.5 h-10 min-h-10 py-2" placeholder="Describe the work covered by this engagement" /></label><button className={button} disabled={createLetter.isPending}><Plus className="h-4 w-4" />{createLetter.isPending ? 'Drafting…' : 'Draft letter'}</button></form>
-      <div className="overflow-x-auto border-t border-[#e9e4d9]"><table className="w-full min-w-[800px] text-left text-xs"><thead className="bg-[#f2f0e9] text-[9px] uppercase tracking-[.12em] text-[#7d8985]"><tr><th className="px-5 py-3">Matter / client</th><th className="px-3 py-3">Revision</th><th className="px-3 py-3">Scope & billing snapshot</th><th className="px-3 py-3">Status / dates</th><th className="px-5 py-3">Action</th></tr></thead><tbody>{(letters.data || []).map(letter => <tr key={letter.id} className="border-t border-[#eee9df] align-top"><td className="px-5 py-3"><strong>{letter.matterTitle}</strong><div className="mt-1 text-[#87918d]">{letter.clientName} · {letter.clientEmail}</div></td><td className="px-3 py-3">r{letter.revision}</td><td className="max-w-[280px] px-3 py-3"><div className="line-clamp-2">{letter.scope}</div><div className="mt-1 text-[#87918d]">{letter.billingTerms}</div>{letter.signedDocumentId && <div className="mt-1 text-[#47725b]">Signed PDF attached to matter</div>}</td><td className="px-3 py-3"><span className="rounded-full bg-[#eaece7] px-2 py-1 font-bold capitalize text-[#53635c]">{letter.status}</span><div className="mt-2 text-[#87918d]">Sent {dateLabel(letter.sentAt)}</div><div className="mt-1 text-[#87918d]">Signed {dateLabel(letter.signedAt)}</div></td><td className="px-5 py-3"><div className="flex gap-2">{letter.status === 'draft' && <button className={outlined} disabled={!docusign?.ready || !docusign.connected || sendLetter.isPending} onClick={() => letterAction(letter.id, 'send')}>Send</button>}{letter.status === 'sent' && <button className={outlined} disabled={!docusign?.ready || syncLetter.isPending} onClick={() => letterAction(letter.id, 'sync')}><RefreshCw className="h-3 w-3" />Sync status</button>}</div></td></tr>)}</tbody></table>{!letters.data?.length && <div className="p-8 text-center text-sm text-[#788581]">No engagement letters recorded for this firm.</div>}</div>
+       {(workspace.data?.role === 'owner' || workspace.data?.role === 'admin') && <div className="border-b border-[#e9e4d9] bg-[#f7f5ee] p-5">
+         <div className="mb-3"><h3 className="text-sm font-bold">Reusable firm templates</h3><p className="mt-1 text-xs text-[#788581]">Save standard terms once. Each new letter copies the selected terms, so later edits never change earlier drafts or signed letters.</p></div>
+         <div className="grid gap-3 lg:grid-cols-[1fr_1.4fr]">
+           <form onSubmit={saveTemplate} className="grid gap-2 rounded border border-[#e4dfd3] bg-[#fbfaf5] p-3">
+             <label className="text-xs font-semibold text-[#53625f]">Template name<input required minLength={2} maxLength={120} value={templateName} onChange={e => setTemplateName(e.target.value)} className="field mt-1.5" placeholder="Standard advisory engagement" /></label>
+             <label className="text-xs font-semibold text-[#53625f]">Standard terms<textarea required minLength={10} maxLength={12000} value={templateTerms} onChange={e => setTemplateTerms(e.target.value)} className="field mt-1.5 min-h-28" placeholder="Describe the firm's standard engagement terms" /></label>
+             <div className="flex gap-2"><button className={button} disabled={createTemplate.isPending || updateTemplate.isPending}><Plus className="h-4 w-4" />{editingTemplateId ? 'Save template' : 'Create template'}</button>{editingTemplateId && <button type="button" className={outlined} onClick={() => { setEditingTemplateId(null); setTemplateName(''); setTemplateTerms(''); }}>Cancel</button>}</div>
+           </form>
+           <div className="divide-y divide-[#e4dfd3] rounded border border-[#e4dfd3] bg-[#fbfaf5]">
+             {(templates.data || []).map(template => <div key={template.id} className="flex flex-wrap items-start justify-between gap-3 p-3">
+               <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><strong className="text-xs">{template.name}</strong><span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${template.active ? 'bg-[#e5eee7] text-[#47725b]' : 'bg-[#ecebe5] text-[#788581]'}`}>{template.active ? 'Active' : 'Archived'}</span></div><p className="mt-1 line-clamp-2 whitespace-pre-wrap text-[10px] leading-4 text-[#788581]">{template.terms}</p></div>
+               <div className="flex gap-2"><button type="button" className={outlined} onClick={() => { setEditingTemplateId(template.id); setTemplateName(template.name); setTemplateTerms(template.terms); }}>Edit</button><button type="button" className={outlined} disabled={updateTemplate.isPending} onClick={() => toggleTemplate(template)}>{template.active ? 'Archive' : 'Restore'}</button></div>
+             </div>)}
+             {!templates.data?.length && <p className="p-5 text-center text-xs text-[#788581]">No engagement templates yet.</p>}
+           </div>
+         </div>
+       </div>}
+       <form onSubmit={makeLetter} className="grid gap-3 p-5 md:grid-cols-[1fr_1fr_1fr_1.4fr_auto] md:items-end">
+         <label className="text-xs font-semibold text-[#53625f]">Matter<select required name="matterId" className="field mt-1.5"><option value="">Choose matter</option>{(matters.data || []).filter(m => m.status !== 'closed').map(m => <option key={m.id} value={m.id}>{m.title} · {m.clientName}</option>)}</select></label>
+         <label className="text-xs font-semibold text-[#53625f]">Client email<input required name="clientEmail" type="email" className="field mt-1.5" placeholder="client@example.com" /></label>
+         <label className="text-xs font-semibold text-[#53625f]">Firm template<select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)} className="field mt-1.5"><option value="">No reusable template</option>{(templates.data || []).filter(template => template.active).map(template => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
+         <label className="text-xs font-semibold text-[#53625f]">Scope summary<textarea required minLength={10} maxLength={12000} name="scope" className="field mt-1.5 h-10 min-h-10 py-2" placeholder="Describe the work covered by this engagement" /></label>
+         <button className={button} disabled={createLetter.isPending}><Plus className="h-4 w-4" />{createLetter.isPending ? 'Drafting…' : 'Draft letter'}</button>
+       </form>
+       <div className="overflow-x-auto border-t border-[#e9e4d9]"><table className="w-full min-w-[800px] text-left text-xs"><thead className="bg-[#f2f0e9] text-[9px] uppercase tracking-[.12em] text-[#7d8985]"><tr><th className="px-5 py-3">Matter / client</th><th className="px-3 py-3">Revision</th><th className="px-3 py-3">Scope & billing snapshot</th><th className="px-3 py-3">Status / dates</th><th className="px-5 py-3">Action</th></tr></thead><tbody>{(letters.data || []).map(letter => <tr key={letter.id} className="border-t border-[#eee9df] align-top"><td className="px-5 py-3"><strong>{letter.matterTitle}</strong><div className="mt-1 text-[#87918d]">{letter.clientName} · {letter.clientEmail}</div>{letter.templateName && <div className="mt-1 text-[#92754a]">Template: {letter.templateName}</div>}</td><td className="px-3 py-3">r{letter.revision}</td><td className="max-w-[280px] px-3 py-3"><div className="line-clamp-2">{letter.scope}</div><div className="mt-1 text-[#87918d]">{letter.billingTerms}</div>{letter.templateTerms && <div className="mt-1 line-clamp-2 whitespace-pre-wrap text-[#788581]">{letter.templateTerms}</div>}{letter.signedDocumentId && <div className="mt-1 text-[#47725b]">Signed PDF attached to matter</div>}</td><td className="px-3 py-3"><span className="rounded-full bg-[#eaece7] px-2 py-1 font-bold capitalize text-[#53635c]">{letter.status}</span><div className="mt-2 text-[#87918d]">Sent {dateLabel(letter.sentAt)}</div><div className="mt-1 text-[#87918d]">Signed {dateLabel(letter.signedAt)}</div></td><td className="px-5 py-3"><div className="flex gap-2">{letter.status === 'draft' && <button className={outlined} disabled={!docusign?.ready || !docusign.connected || sendLetter.isPending} onClick={() => { setReviewingLetterId(letter.id); setReviewConfirmed(false); }}>Review & send</button>}{letter.status === 'sent' && <button className={outlined} disabled={!docusign?.ready || syncLetter.isPending} onClick={() => letterAction(letter.id, 'sync')}><RefreshCw className="h-3 w-3" />Sync status</button>}</div></td></tr>)}</tbody></table>{!letters.data?.length && <div className="p-8 text-center text-sm text-[#788581]">No engagement letters recorded for this firm.</div>}</div>
       <p className="border-t border-[#e9e4d9] px-5 py-3 text-[10px] leading-5 text-[#89918c]">A sent envelope is not a signed engagement. ClientGuard records a signed state only after DocuSign confirms it; linked signed PDFs remain private to the matter.</p>
+       {(() => {
+         const letter = letters.data?.find(item => item.id === reviewingLetterId);
+         if (!letter) return null;
+         return <div className="fixed inset-0 z-50 grid place-items-center bg-[#142d35]/55 p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setReviewingLetterId(null); }}>
+           <section role="dialog" aria-modal="true" aria-labelledby="engagement-review-title" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-md border border-[#e0dace] bg-[#fbfaf5] shadow-xl">
+             <header className="border-b border-[#e9e4d9] px-5 py-4"><h3 id="engagement-review-title" className="serif text-xl font-bold">Review engagement letter</h3><p className="mt-1 text-xs text-[#788581]">{letter.matterTitle} · {letter.clientName} · {letter.clientEmail}</p></header>
+             <div className="space-y-4 p-5 text-xs leading-5"><div><h4 className="font-bold uppercase tracking-wide text-[#687773]">Generated PDF</h4>{letter.draftDocumentId ? <><iframe title="Generated engagement letter PDF" src={`/api/documents/${letter.draftDocumentId}/file`} className="mt-2 h-[min(50vh,520px)] w-full rounded border border-[#ded9cd] bg-white" /><a className="mt-2 inline-block font-semibold text-[#40575b] underline" href={`/api/documents/${letter.draftDocumentId}/file`} target="_blank" rel="noreferrer">Open PDF in a new tab</a></> : <p className="mt-2 rounded bg-[#fff8eb] p-3 text-[#755a2d]">This draft has no PDF available. Create a new letter revision before sending.</p>}</div><div><h4 className="font-bold uppercase tracking-wide text-[#687773]">Matter-specific scope</h4><p className="mt-1 whitespace-pre-wrap rounded bg-[#f2f0e9] p-3">{letter.scope}</p></div><div><h4 className="font-bold uppercase tracking-wide text-[#687773]">Billing terms</h4><p className="mt-1 whitespace-pre-wrap rounded bg-[#f2f0e9] p-3">{letter.billingTerms}</p></div>{letter.templateTerms && <div><h4 className="font-bold uppercase tracking-wide text-[#687773]">Firm terms{letter.templateName ? ` · ${letter.templateName}` : ''}</h4><p className="mt-1 whitespace-pre-wrap rounded bg-[#f2f0e9] p-3">{letter.templateTerms}</p></div>}<label className="flex items-start gap-2 rounded border border-[#d9d4c8] p-3"><input type="checkbox" checked={reviewConfirmed} onChange={e => setReviewConfirmed(e.target.checked)} className="mt-1 accent-[#294651]" /><span>I reviewed the generated letter, including its matter scope and billing details, and confirm it is ready to send.</span></label></div>
+             <footer className="flex justify-end gap-2 border-t border-[#e9e4d9] px-5 py-4"><button className={outlined} onClick={() => setReviewingLetterId(null)}>Back</button><button className={button} disabled={!reviewConfirmed || sendLetter.isPending || !docusign?.ready || !docusign.connected} onClick={() => { letterAction(letter.id, 'send'); setReviewingLetterId(null); }}>Confirm & send</button></footer>
+           </section>
+         </div>;
+       })()}
     </section>
 
     <section className={`${panel} mb-5 overflow-hidden`}><div className="flex gap-3 border-b border-[#e9e4d9] px-5 py-4"><Landmark className="mt-0.5 h-5 w-5 text-[#527861]" /><div><h2 className="serif text-lg font-bold">Trust & client-money records</h2><p className="mt-1 text-xs text-[#788581]">Ledger entries are records only. ClientGuard does not move money.</p></div></div>

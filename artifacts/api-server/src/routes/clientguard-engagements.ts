@@ -8,6 +8,7 @@ import {
   clientsTable,
   documentsTable,
   engagementLettersTable,
+  engagementLetterTemplatesTable,
   mattersTable,
   practiceSettingsTable,
   providerConnectionsTable,
@@ -79,6 +80,8 @@ function renderLetterPdf(letter: {
   clientEmail: string;
   scope: string;
   billingTerms: string;
+  templateName: string;
+  templateTerms: string;
   revision: number;
 }) {
   return new Promise<Buffer>((resolve, reject) => {
@@ -102,6 +105,13 @@ function renderLetterPdf(letter: {
     pdf.font("Helvetica-Bold").fontSize(13).text("Billing terms");
     pdf.moveDown(0.4);
     pdf.font("Helvetica").fontSize(11).text(letter.billingTerms, { lineGap: 4 });
+    if (letter.templateTerms) {
+      pdf.moveDown(1.2);
+      pdf.font("Helvetica-Bold").fontSize(13)
+        .text(letter.templateName || "Firm engagement terms");
+      pdf.moveDown(0.4);
+      pdf.font("Helvetica").fontSize(11).text(letter.templateTerms, { lineGap: 4 });
+    }
     pdf.moveDown(1.5);
     pdf.fontSize(9).fillColor("#58686b")
       .text("Please review this letter and the scope and billing terms with your professional before signing.");
@@ -203,6 +213,8 @@ function mapLetter(
     clientEmail: letter.clientEmail,
     scope: letter.scope,
     billingTerms: letter.billingTerms,
+    templateName: letter.templateName,
+    templateTerms: letter.templateTerms,
     revision: letter.revision,
     status: letter.status,
     provider: "docusign" as const,
@@ -249,6 +261,99 @@ router.get("/engagement-letters", async (req, res): Promise<void> => {
   )));
 });
 
+function isFirmAdmin(role: string) {
+  return role === "owner" || role === "admin";
+}
+
+function mapEngagementTemplate(template: typeof engagementLetterTemplatesTable.$inferSelect) {
+  return {
+    id: template.id,
+    name: template.name,
+    terms: template.terms,
+    active: template.active,
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
+  };
+}
+
+router.get("/engagement-letter-templates", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res);
+  if (!access) return;
+  const templates = await db.select().from(engagementLetterTemplatesTable)
+    .where(and(
+      eq(engagementLetterTemplatesTable.workspaceId, access.workspaceId),
+      ...(isFirmAdmin(access.role) ? [] : [eq(engagementLetterTemplatesTable.active, true)]),
+    ))
+    .orderBy(engagementLetterTemplatesTable.name);
+  res.json(api.ListEngagementLetterTemplatesResponse.parse(
+    templates.map(mapEngagementTemplate),
+  ));
+});
+
+router.post("/engagement-letter-templates", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res, true);
+  if (!access) return;
+  if (!isFirmAdmin(access.role)) {
+    res.status(403).json({ error: "Only a firm owner or admin can maintain engagement letter templates." });
+    return;
+  }
+  const body = api.CreateEngagementLetterTemplateBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  const [template] = await db.insert(engagementLetterTemplatesTable).values({
+    workspaceId: access.workspaceId,
+    name: body.data.name.trim(),
+    terms: body.data.terms.trim(),
+    createdByClerkUserId: access.userId,
+    updatedByClerkUserId: access.userId,
+  }).returning();
+  await logAuditEvent(access, "engagement_letter_template_created", "engagement_letter_template", template.id, template.name, {});
+  res.status(201).json(api.CreateEngagementLetterTemplateResponse.parse(
+    mapEngagementTemplate(template),
+  ));
+});
+
+router.patch("/engagement-letter-templates/:id", async (req, res): Promise<void> => {
+  const access = await firmAccess(req, res, true);
+  if (!access) return;
+  if (!isFirmAdmin(access.role)) {
+    res.status(403).json({ error: "Only a firm owner or admin can maintain engagement letter templates." });
+    return;
+  }
+  const params = api.UpdateEngagementLetterTemplateParams.safeParse(req.params);
+  const body = api.UpdateEngagementLetterTemplateBody.safeParse(req.body);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  const [template] = await db.update(engagementLetterTemplatesTable).set({
+    name: body.data.name.trim(),
+    terms: body.data.terms.trim(),
+    ...(body.data.active == null ? {} : { active: body.data.active }),
+    updatedByClerkUserId: access.userId,
+    updatedAt: new Date(),
+  }).where(and(
+    eq(engagementLetterTemplatesTable.id, params.data.id),
+    eq(engagementLetterTemplatesTable.workspaceId, access.workspaceId),
+  )).returning();
+  if (!template) {
+    res.status(404).json({ error: "Engagement letter template not found." });
+    return;
+  }
+  await logAuditEvent(access, "engagement_letter_template_updated", "engagement_letter_template", template.id, template.name, {
+    active: template.active,
+  });
+  res.json(api.UpdateEngagementLetterTemplateResponse.parse(
+    mapEngagementTemplate(template),
+  ));
+});
+
 router.post("/matters/:id/engagement-letter", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res, true);
   if (!access) return;
@@ -275,6 +380,21 @@ router.post("/matters/:id/engagement-letter", async (req, res): Promise<void> =>
     res.status(409).json({ error: "Add a billing profile to the matter before drafting its engagement letter." });
     return;
   }
+  let templateName = "";
+  let templateTerms = "";
+  if (body.data.templateId != null) {
+    const [template] = await db.select().from(engagementLetterTemplatesTable).where(and(
+      eq(engagementLetterTemplatesTable.id, body.data.templateId),
+      eq(engagementLetterTemplatesTable.workspaceId, access.workspaceId),
+      eq(engagementLetterTemplatesTable.active, true),
+    )).limit(1);
+    if (!template) {
+      res.status(404).json({ error: "That engagement letter template is unavailable. Refresh the template list and try again." });
+      return;
+    }
+    templateName = template.name;
+    templateTerms = template.terms;
+  }
   const [latest] = await db.select({ revision: engagementLettersTable.revision })
     .from(engagementLettersTable)
     .where(and(
@@ -290,6 +410,8 @@ router.post("/matters/:id/engagement-letter", async (req, res): Promise<void> =>
     clientEmail: body.data.clientEmail.trim(),
     scope: body.data.scope.trim(),
     billingTerms: billingTermsFor(profile),
+    templateName,
+    templateTerms,
     revision,
   };
   const pdf = await renderLetterPdf(values);

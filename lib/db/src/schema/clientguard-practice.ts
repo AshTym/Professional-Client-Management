@@ -72,6 +72,35 @@ export const closeoutChecklistSettingsTable = pgTable(
   ],
 );
 
+export const engagementLetterTemplatesTable = pgTable(
+  "clientguard_engagement_letter_templates",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspace_id")
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    terms: text("terms").notNull(),
+    active: boolean("active").notNull().default(true),
+    createdByClerkUserId: text("created_by_clerk_user_id").notNull(),
+    updatedByClerkUserId: text("updated_by_clerk_user_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("clientguard_engagement_template_workspace_idx").on(
+      table.workspaceId,
+      table.active,
+      table.name,
+    ),
+  ],
+);
+
 export const engagementLettersTable = pgTable(
   "clientguard_engagement_letters",
   {
@@ -88,6 +117,8 @@ export const engagementLettersTable = pgTable(
     matterTitle: text("matter_title").notNull(),
     scope: text("scope").notNull(),
     billingTerms: text("billing_terms").notNull(),
+    templateName: text("template_name").notNull().default(""),
+    templateTerms: text("template_terms").notNull().default(""),
     status: text("status").notNull().default("draft"),
     provider: text("provider").notNull().default("docusign"),
     envelopeId: text("envelope_id"),

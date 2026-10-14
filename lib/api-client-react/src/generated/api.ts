@@ -63,6 +63,9 @@ import type {
   DocumentUploadInput,
   EngagementLetter,
   EngagementLetterInput,
+  EngagementLetterTemplate,
+  EngagementLetterTemplateInput,
+  EngagementLetterTemplateUpdate,
   ExportActivityParams,
   GetOperationsReportParams,
   GetPortalRequestsParams,
@@ -8921,6 +8924,284 @@ export function useListEngagementLetters<TData = Awaited<ReturnType<typeof listE
 
 
 
+export const getListEngagementLetterTemplatesUrl = () => {
+
+
+
+
+  return `/api/engagement-letter-templates`
+}
+
+/**
+ * @summary List active firm engagement templates (admins also see archived templates)
+ */
+export const listEngagementLetterTemplates = async ( options?: Parameters<typeof customFetch>[1]): Promise<EngagementLetterTemplate[]> => {
+
+  return customFetch<EngagementLetterTemplate[]>(getListEngagementLetterTemplatesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListEngagementLetterTemplatesQueryKey = () => {
+    return [
+    `/api/engagement-letter-templates`
+    ] as const;
+    }
+
+
+export const getListEngagementLetterTemplatesQueryOptions = <TData = Awaited<ReturnType<typeof listEngagementLetterTemplates>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listEngagementLetterTemplates>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListEngagementLetterTemplatesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEngagementLetterTemplates>>> = ({ signal }) => listEngagementLetterTemplates({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listEngagementLetterTemplates>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListEngagementLetterTemplatesQueryResult = NonNullable<Awaited<ReturnType<typeof listEngagementLetterTemplates>>>
+export type ListEngagementLetterTemplatesQueryError = ErrorType<unknown>
+
+
+export function useListEngagementLetterTemplates<TData = Awaited<ReturnType<typeof listEngagementLetterTemplates>>, TError = ErrorType<unknown>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listEngagementLetterTemplates>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listEngagementLetterTemplates>>,
+          TError,
+          Awaited<ReturnType<typeof listEngagementLetterTemplates>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListEngagementLetterTemplates<TData = Awaited<ReturnType<typeof listEngagementLetterTemplates>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listEngagementLetterTemplates>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listEngagementLetterTemplates>>,
+          TError,
+          Awaited<ReturnType<typeof listEngagementLetterTemplates>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListEngagementLetterTemplates<TData = Awaited<ReturnType<typeof listEngagementLetterTemplates>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listEngagementLetterTemplates>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List active firm engagement templates (admins also see archived templates)
+ */
+
+export function useListEngagementLetterTemplates<TData = Awaited<ReturnType<typeof listEngagementLetterTemplates>>, TError = ErrorType<unknown>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listEngagementLetterTemplates>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListEngagementLetterTemplatesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateEngagementLetterTemplateUrl = () => {
+
+
+
+
+  return `/api/engagement-letter-templates`
+}
+
+/**
+ * @summary Create a reusable firm engagement letter template
+ */
+export const createEngagementLetterTemplate = async (engagementLetterTemplateInput: EngagementLetterTemplateInput, options?: Parameters<typeof customFetch>[1]): Promise<EngagementLetterTemplate> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<EngagementLetterTemplate>(getCreateEngagementLetterTemplateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(engagementLetterTemplateInput)
+  }
+);}
+
+
+
+
+
+export const getCreateEngagementLetterTemplateMutationKey = () => ['createEngagementLetterTemplate'] as const;
+
+export const getCreateEngagementLetterTemplateMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEngagementLetterTemplate>>, TError,CreateEngagementLetterTemplateMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createEngagementLetterTemplate>>, TError,CreateEngagementLetterTemplateMutationVariables, TContext> => {
+
+const mutationKey = getCreateEngagementLetterTemplateMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createEngagementLetterTemplate>>, CreateEngagementLetterTemplateMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createEngagementLetterTemplate(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateEngagementLetterTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof createEngagementLetterTemplate>>>
+    export type CreateEngagementLetterTemplateMutationBody = BodyType<EngagementLetterTemplateInput>
+    export type CreateEngagementLetterTemplateMutationError = ErrorType<void>
+    export type CreateEngagementLetterTemplateMutationVariables = {data: BodyType<EngagementLetterTemplateInput>}
+
+    /**
+ * @summary Create a reusable firm engagement letter template
+ */
+export const useCreateEngagementLetterTemplate = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEngagementLetterTemplate>>, TError,CreateEngagementLetterTemplateMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createEngagementLetterTemplate>>,
+        TError,
+        CreateEngagementLetterTemplateMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateEngagementLetterTemplateMutationOptions(options), queryClient);
+    }
+
+export const getUpdateEngagementLetterTemplateUrl = (id: number,) => {
+
+
+
+
+  return `/api/engagement-letter-templates/${id}`
+}
+
+/**
+ * @summary Update or archive a reusable firm engagement letter template
+ */
+export const updateEngagementLetterTemplate = async (id: number,
+    engagementLetterTemplateUpdate: EngagementLetterTemplateUpdate, options?: Parameters<typeof customFetch>[1]): Promise<EngagementLetterTemplate> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<EngagementLetterTemplate>(getUpdateEngagementLetterTemplateUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(engagementLetterTemplateUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateEngagementLetterTemplateMutationKey = () => ['updateEngagementLetterTemplate'] as const;
+
+export const getUpdateEngagementLetterTemplateMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEngagementLetterTemplate>>, TError,UpdateEngagementLetterTemplateMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateEngagementLetterTemplate>>, TError,UpdateEngagementLetterTemplateMutationVariables, TContext> => {
+
+const mutationKey = getUpdateEngagementLetterTemplateMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateEngagementLetterTemplate>>, UpdateEngagementLetterTemplateMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateEngagementLetterTemplate(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateEngagementLetterTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof updateEngagementLetterTemplate>>>
+    export type UpdateEngagementLetterTemplateMutationBody = BodyType<EngagementLetterTemplateUpdate>
+    export type UpdateEngagementLetterTemplateMutationError = ErrorType<void>
+    export type UpdateEngagementLetterTemplateMutationVariables = {id: number;data: BodyType<EngagementLetterTemplateUpdate>}
+
+    /**
+ * @summary Update or archive a reusable firm engagement letter template
+ */
+export const useUpdateEngagementLetterTemplate = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEngagementLetterTemplate>>, TError,UpdateEngagementLetterTemplateMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateEngagementLetterTemplate>>,
+        TError,
+        UpdateEngagementLetterTemplateMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateEngagementLetterTemplateMutationOptions(options), queryClient);
+    }
+
 export const getCreateEngagementLetterUrl = (id: number,) => {
 
 
@@ -8930,7 +9211,7 @@ export const getCreateEngagementLetterUrl = (id: number,) => {
 }
 
 /**
- * @summary Create a matter engagement letter draft from matter and billing terms
+ * @summary Create a matter engagement letter draft from a template, scope, and billing terms
  */
 export const createEngagementLetter = async (id: number,
     engagementLetterInput: EngagementLetterInput, options?: Parameters<typeof customFetch>[1]): Promise<EngagementLetter> => {
@@ -8997,7 +9278,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateEngagementLetterMutationVariables = {id: number;data: BodyType<EngagementLetterInput>}
 
     /**
- * @summary Create a matter engagement letter draft from matter and billing terms
+ * @summary Create a matter engagement letter draft from a template, scope, and billing terms
  */
 export const useCreateEngagementLetter = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEngagementLetter>>, TError,CreateEngagementLetterMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}

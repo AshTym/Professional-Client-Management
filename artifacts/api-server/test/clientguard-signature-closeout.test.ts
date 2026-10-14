@@ -25,6 +25,8 @@ let clientsTable: typeof import("@workspace/db").clientsTable;
 let mattersTable: typeof import("@workspace/db").mattersTable;
 let practiceSettingsTable: typeof import("@workspace/db").practiceSettingsTable;
 let engagementLettersTable: typeof import("@workspace/db").engagementLettersTable;
+let engagementLetterTemplatesTable: typeof import("@workspace/db").engagementLetterTemplatesTable;
+let billingProfilesTable: typeof import("@workspace/db").billingProfilesTable;
 let documentsTable: typeof import("@workspace/db").documentsTable;
 let providerConnectionsTable: typeof import("@workspace/db").providerConnectionsTable;
 let auditEventsTable: typeof import("@workspace/db").auditEventsTable;
@@ -95,11 +97,28 @@ before(async () => {
       id serial PRIMARY KEY, workspace_id integer NOT NULL, matter_id integer NOT NULL,
       revision integer NOT NULL DEFAULT 1, client_name text NOT NULL, client_email text NOT NULL,
       matter_title text NOT NULL, scope text NOT NULL, billing_terms text NOT NULL,
+      template_name text NOT NULL DEFAULT '', template_terms text NOT NULL DEFAULT '',
       status text NOT NULL DEFAULT 'draft', provider text NOT NULL DEFAULT 'docusign',
       envelope_id text, draft_document_id integer, signed_document_id integer,
       created_by_clerk_user_id text NOT NULL, sent_at timestamptz, signed_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
       UNIQUE (workspace_id, matter_id, revision)
+    );
+    CREATE TABLE "${schemaName}".clientguard_engagement_letter_templates (
+      id serial PRIMARY KEY, workspace_id integer NOT NULL, name text NOT NULL, terms text NOT NULL,
+      active boolean NOT NULL DEFAULT true, created_by_clerk_user_id text NOT NULL,
+      updated_by_clerk_user_id text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE "${schemaName}".clientguard_billing_profiles (
+      id serial PRIMARY KEY, workspace_id integer NOT NULL, matter_id integer NOT NULL,
+      fee_type text NOT NULL DEFAULT 'hourly', currency text NOT NULL DEFAULT 'AUD',
+      hourly_rate_cents integer, fixed_fee_cents integer,
+      fee_description text NOT NULL DEFAULT 'Professional services',
+      billing_cycle text NOT NULL DEFAULT 'monthly', tax_rate_bps integer NOT NULL DEFAULT 0,
+      schedule_enabled boolean NOT NULL DEFAULT false, period_start_at timestamptz NOT NULL DEFAULT now(),
+      next_draft_at timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE "${schemaName}".clientguard_provider_connections (
       id serial PRIMARY KEY, workspace_id integer NOT NULL, provider text NOT NULL,
@@ -169,6 +188,8 @@ before(async () => {
     mattersTable,
     practiceSettingsTable,
     engagementLettersTable,
+    engagementLetterTemplatesTable,
+    billingProfilesTable,
     documentsTable,
     providerConnectionsTable,
     auditEventsTable,
@@ -328,6 +349,94 @@ async function mockStorage(t: TestContext) {
   );
   mock.method(ObjectStorageService.prototype, "trySetObjectEntityAclPolicy", async () => "/objects/uploads/signed.pdf");
 }
+
+test("engagement templates are admin-managed and letters keep their saved terms after template edits", async (t) => {
+  await mockStorage(t);
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.startsWith("https://storage.googleapis.com/test-bucket/")) {
+      return new Response(null, { status: 200 });
+    }
+    return originalFetch(input, init);
+  });
+
+  const createdTemplate = await request("/engagement-letter-templates", "POST", {
+    name: "Standard advisory",
+    terms: "The firm will provide the agreed professional services.",
+  });
+  assert.equal(createdTemplate.status, 201);
+  const template = await createdTemplate.json() as { id: number; name: string; terms: string; active: boolean };
+  assert.equal(template.active, true);
+
+  await db.update(membershipsTable).set({ role: "professional" })
+    .where(eq(membershipsTable.clerkUserId, userId));
+  const deniedCreate = await request("/engagement-letter-templates", "POST", {
+    name: "Unauthorized",
+    terms: "This template must not be saved by a professional.",
+  });
+  assert.equal(deniedCreate.status, 403);
+  await db.update(membershipsTable).set({ role: "owner" })
+    .where(eq(membershipsTable.clerkUserId, userId));
+
+  const matter = await createMatter();
+  await db.insert(billingProfilesTable).values({
+    workspaceId,
+    matterId: matter.id,
+    feeType: "fixed",
+    currency: "USD",
+    fixedFeeCents: 125000,
+    nextDraftAt: new Date(),
+  });
+  const draftResponse = await request(`/matters/${matter.id}/engagement-letter`, "POST", {
+    clientEmail: "client@example.test",
+    scope: "Prepare the initial advisory review and written recommendations.",
+    templateId: template.id,
+  });
+  assert.equal(draftResponse.status, 201);
+  const draft = await draftResponse.json() as {
+    id: number;
+    templateName: string;
+    templateTerms: string;
+    scope: string;
+    billingTerms: string;
+  };
+  assert.equal(draft.templateName, "Standard advisory");
+  assert.equal(draft.templateTerms, "The firm will provide the agreed professional services.");
+  assert.match(draft.billingTerms, /1250 USD fixed fee/);
+
+  await db.update(engagementLettersTable).set({
+    status: "completed",
+    sentAt: new Date(),
+    signedAt: new Date(),
+  }).where(eq(engagementLettersTable.id, draft.id));
+  const editedTemplate = await request(`/engagement-letter-templates/${template.id}`, "PATCH", {
+    name: "Updated advisory",
+    terms: "Updated standard terms for future engagement letters.",
+    active: true,
+  });
+  assert.equal(editedTemplate.status, 200);
+  const persistedLetter = (await db.select().from(engagementLettersTable)
+    .where(eq(engagementLettersTable.id, draft.id)))[0];
+  assert.equal(persistedLetter.status, "completed");
+  assert.equal(persistedLetter.templateName, "Standard advisory");
+  assert.equal(persistedLetter.templateTerms, "The firm will provide the agreed professional services.");
+  assert.equal(persistedLetter.scope, draft.scope);
+  assert.equal(persistedLetter.billingTerms, draft.billingTerms);
+
+  const archived = await request(`/engagement-letter-templates/${template.id}`, "PATCH", {
+    name: "Updated advisory",
+    terms: "Updated standard terms for future engagement letters.",
+    active: false,
+  });
+  assert.equal(archived.status, 200);
+  await db.update(membershipsTable).set({ role: "professional" })
+    .where(eq(membershipsTable.clerkUserId, userId));
+  const availableTemplates = await request("/engagement-letter-templates");
+  assert.deepEqual(await availableTemplates.json(), []);
+  await db.update(membershipsTable).set({ role: "owner" })
+    .where(eq(membershipsTable.clerkUserId, userId));
+});
 
 test("required engagement signatures gate opening and signed matters can then be opened", async () => {
   const matter = await createMatter();

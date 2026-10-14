@@ -16,6 +16,8 @@ export interface EngagementLetter {
   clientEmail: string;
   scope: string;
   billingTerms: string;
+  templateName: string;
+  templateTerms: string;
   revision: number;
   status: EngagementLetterStatus;
   provider: EngagementLetterProvider;

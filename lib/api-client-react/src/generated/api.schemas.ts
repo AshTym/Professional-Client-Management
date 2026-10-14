@@ -1634,6 +1634,47 @@ export interface EngagementLetterInput {
      * @maxLength 12000
      */
   scope: string;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  templateId?: number | null;
+}
+
+export interface EngagementLetterTemplateInput {
+  /**
+     * @minLength 2
+     * @maxLength 120
+     */
+  name: string;
+  /**
+     * @minLength 10
+     * @maxLength 12000
+     */
+  terms: string;
+}
+
+export interface EngagementLetterTemplateUpdate {
+  /**
+     * @minLength 2
+     * @maxLength 120
+     */
+  name: string;
+  /**
+     * @minLength 10
+     * @maxLength 12000
+     */
+  terms: string;
+  active?: boolean;
+}
+
+export interface EngagementLetterTemplate {
+  id: number;
+  name: string;
+  terms: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type EngagementLetterStatus = typeof EngagementLetterStatus[keyof typeof EngagementLetterStatus];
@@ -1663,6 +1704,8 @@ export interface EngagementLetter {
   clientEmail: string;
   scope: string;
   billingTerms: string;
+  templateName: string;
+  templateTerms: string;
   revision: number;
   status: EngagementLetterStatus;
   provider: EngagementLetterProvider;
