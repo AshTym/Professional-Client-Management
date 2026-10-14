@@ -12,6 +12,7 @@ const apiMocks = vi.hoisted(() => ({
   useListMatters: vi.fn(),
   exportActivity: vi.fn(),
   eventTotal: 41,
+  filteredEventTotal: 43,
 }));
 const originalCreateObjectURL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
 const originalRevokeObjectURL = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL');
@@ -49,24 +50,29 @@ function renderActivityPage() {
     defaultOptions: { queries: { retry: false } },
   });
 
-  return render(
+  const tree = () => (
     <QueryClientProvider client={queryClient}>
       <Router>
         <ActivityPage />
       </Router>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const view = render(tree());
+  return { ...view, rerenderActivity: () => view.rerender(tree()) };
 }
 
 describe('activity pagination', () => {
   beforeEach(() => {
     apiMocks.exportActivity.mockReset().mockResolvedValue('');
     apiMocks.eventTotal = 41;
+    apiMocks.filteredEventTotal = 43;
     apiMocks.useListActivity.mockImplementation(
       ({ limit, offset, snapshotId, actorName, entityType, entityId }) => {
         const isFilteredRecord =
           actorName === 'Former Teammate' && entityType === 'client' && entityId === 10;
-        const matchingEventTotal = isFilteredRecord ? 43 : apiMocks.eventTotal;
+        const matchingEventTotal = isFilteredRecord
+          ? apiMocks.filteredEventTotal
+          : apiMocks.eventTotal;
         const currentSnapshot = snapshotId ?? matchingEventTotal;
         const newestEventId = Math.min(matchingEventTotal, currentSnapshot);
         return {
@@ -364,6 +370,58 @@ describe('activity pagination', () => {
     fireEvent.click(screen.getByTestId('button-refresh-activity'));
     expect(screen.getByTestId('activity-item-43')).toBeTruthy();
     expect(screen.getByTestId('text-activity-count').textContent).toBe('Events 1–40');
+  });
+
+  it('recovers from a later page after filtered history shrinks without changing page size or filters', () => {
+    const { rerenderActivity } = renderActivityPage();
+    fireEvent.change(screen.getByTestId('select-activity-limit'), {
+      target: { value: '20' },
+    });
+    fireEvent.change(screen.getByTestId('select-activity-actor'), {
+      target: { value: 'Former Teammate' },
+    });
+    fireEvent.change(screen.getByTestId('select-activity-record'), {
+      target: { value: 'client:10' },
+    });
+    fireEvent.click(screen.getByTestId('button-activity-next'));
+
+    expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        limit: 21,
+        offset: 20,
+        snapshotId: 43,
+        actorName: 'Former Teammate',
+        entityType: 'client',
+        entityId: 10,
+      }),
+      expect.any(Object),
+    );
+
+    apiMocks.filteredEventTotal = 15;
+    rerenderActivity();
+
+    expect(screen.getByTestId('activity-page-out-of-range')).toBeTruthy();
+    expect(screen.getByTestId('select-activity-limit')).toHaveProperty('value', '20');
+    expect(screen.getByTestId('select-activity-actor')).toHaveProperty(
+      'value',
+      'Former Teammate',
+    );
+    expect(screen.getByTestId('select-activity-record')).toHaveProperty('value', 'client:10');
+
+    fireEvent.click(screen.getByTestId('button-activity-recover-page'));
+
+    expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        limit: 21,
+        offset: 0,
+        snapshotId: 43,
+        actorName: 'Former Teammate',
+        entityType: 'client',
+        entityId: 10,
+      }),
+      expect.any(Object),
+    );
+    expect(screen.getByTestId('text-activity-count').textContent).toBe('Events 1–15');
   });
 
   it('distinguishes an empty filtered result from an empty audit trail', () => {
