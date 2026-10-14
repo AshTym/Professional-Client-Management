@@ -80,6 +80,8 @@ export default function Intake() {
   const [selectedClientId, setSelectedClientId] = useState<number | null>(initialClientId);
   const [formOpen, setFormOpen] = useState(searchParams.get('create') === '1');
   const intakeFormRef = useRef<HTMLFormElement>(null);
+  const formBaselineRef = useRef<string | null>(null);
+  const [discardConfirmationOpen, setDiscardConfirmationOpen] = useState(false);
   const prefilledClientIdRef = useRef<number | null>(null);
   const firstMatterClientPrefillAttemptedRef = useRef(false);
   const [selected, setSelected] = useState<IntakeCase | null>(null);
@@ -141,7 +143,35 @@ export default function Intake() {
     for (const rule of rules) setValue(`answer-${rule.key}`, data.answers[rule.key] || '');
   }, [activeDraft, assignmentMembers.data, formOpen, rules]);
 
+  useEffect(() => {
+    if (!formOpen) {
+      formBaselineRef.current = null;
+      return;
+    }
+    if (formBaselineRef.current !== null) return;
+    if (!activeDraft && selectedClientId !== null && clients.isLoading) return;
+    if (!activeDraft && selectedClientId !== null
+      && clients.data?.some(client => client.id === selectedClientId)
+      && prefilledClientIdRef.current !== selectedClientId) return;
+    if (!activeDraft && isFirstMatterShortcut && clients.data?.length === 1
+      && selectedClientId === null) return;
+    const form = intakeFormRef.current;
+    if (!form) return;
+    const initialData = activeDraft?.data ?? readDraftData(form);
+    formBaselineRef.current = JSON.stringify({
+      ...initialData,
+      answers: Object.fromEntries(rules.map(rule => [rule.key, initialData.answers[rule.key] || ''])),
+    });
+  }, [activeDraft, clients.data, clients.isLoading, formOpen, isFirstMatterShortcut, rules, selectedClientId]);
+
+  function hasUnsavedChanges() {
+    const form = intakeFormRef.current;
+    return !!form && formBaselineRef.current !== null
+      && JSON.stringify(readDraftData(form)) !== formBaselineRef.current;
+  }
+
   function closeForm() {
+    setDiscardConfirmationOpen(false);
     setFormOpen(false);
     const params = new URLSearchParams(window.location.search);
     params.delete('create');
@@ -151,6 +181,38 @@ export default function Intake() {
     setActiveDraft(null);
     prefilledClientIdRef.current = null;
   }
+
+  function requestCloseForm() {
+    if (hasUnsavedChanges()) {
+      setDiscardConfirmationOpen(true);
+      return;
+    }
+    closeForm();
+  }
+
+  useEffect(() => {
+    if (!formOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (discardConfirmationOpen) {
+        setDiscardConfirmationOpen(false);
+      } else {
+        requestCloseForm();
+      }
+    };
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges()) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [discardConfirmationOpen, formOpen]);
 
   function readDraftData(form: HTMLFormElement): IntakeDraftData {
     const values = new FormData(form);
@@ -302,12 +364,13 @@ export default function Intake() {
         </article>)}</div>
       )}
     </section>
-      {formOpen && <div className="fixed inset-0 z-40 grid place-items-center bg-[#1b3035]/45 p-3" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)closeForm();}}><section role="dialog" aria-modal="true" aria-labelledby="intake-dialog-title" className="max-h-[94dvh] w-full max-w-3xl overflow-y-auto rounded-lg border border-[#dcd6c9] bg-[#fbfaf5] p-5 shadow-2xl md:p-7"><div className="mb-5 flex items-start justify-between"><div><div className="mono text-[10px] uppercase tracking-[.16em] text-[#987747]">01 / Relationship details</div><h2 id="intake-dialog-title" className="serif mt-2 text-2xl font-bold">{activeDraft ? 'Resume client intake draft' : 'Start a client intake'}</h2><p className="mt-1 text-sm text-[#788581]">Submitting does not open a matter. A professional must review the findings first.</p></div><button onClick={closeForm} aria-label="Close intake" className="rounded px-2 py-1 text-xl">×</button></div><form ref={intakeFormRef} onSubmit={submitIntake} className="space-y-5">
+      {formOpen && <div className="fixed inset-0 z-40 grid place-items-center bg-[#1b3035]/45 p-3" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)requestCloseForm();}}><section role="dialog" aria-modal="true" aria-labelledby="intake-dialog-title" className="max-h-[94dvh] w-full max-w-3xl overflow-y-auto rounded-lg border border-[#dcd6c9] bg-[#fbfaf5] p-5 shadow-2xl md:p-7"><div className="mb-5 flex items-start justify-between"><div><div className="mono text-[10px] uppercase tracking-[.16em] text-[#987747]">01 / Relationship details</div><h2 id="intake-dialog-title" className="serif mt-2 text-2xl font-bold">{activeDraft ? 'Resume client intake draft' : 'Start a client intake'}</h2><p className="mt-1 text-sm text-[#788581]">Submitting does not open a matter. A professional must review the findings first.</p></div><button onClick={requestCloseForm} aria-label="Close intake" className="rounded px-2 py-1 text-xl">×</button></div><form ref={intakeFormRef} onSubmit={submitIntake} className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold sm:col-span-2">Existing client relationship, if applicable<select name="clientId" className={`${inputClass} mt-1.5`} data-testid="select-intake-client" value={selectedClientId ?? ''} onChange={event=>{const id=Number(event.currentTarget.value);const client=clients.data?.find(item=>item.id===id);setSelectedClientId(client?.id??null);if(client&&event.currentTarget.form){prefillClientFields(event.currentTarget.form,client);prefilledClientIdRef.current=client.id;}else{prefilledClientIdRef.current=null;if(event.currentTarget.form)clearClientFields(event.currentTarget.form);}}}><option value="">New client prospect</option>{activeDraft?.data.clientId && !clients.data?.some(client=>client.id===activeDraft.data.clientId) && <option value={activeDraft.data.clientId}>Previously selected client (unavailable)</option>}{(clients.data||[]).map(client=><option key={client.id} value={client.id}>{client.name} · {client.email||client.clientType}</option>)}</select><span className="mt-1 block text-[10px] font-normal text-[#87918d]">Select an existing relationship to prefill its record. New prospects will be checked against existing records during review.</span></label><label className="text-xs font-semibold">Client / entity name<input required name="clientName" className={`${inputClass} mt-1.5`} maxLength={200} /></label><label className="text-xs font-semibold">Client type<select name="clientType" className={`${inputClass} mt-1.5`}><option value="individual">Individual</option><option value="organization">Organization</option></select></label><label className="text-xs font-semibold">Email<input name="email" type="email" className={`${inputClass} mt-1.5`} /></label><label className="text-xs font-semibold">Phone<input name="phone" className={`${inputClass} mt-1.5`} /></label><label className="text-xs font-semibold sm:col-span-2">Industry / practice area<input name="industry" className={`${inputClass} mt-1.5`} maxLength={160} /></label></div>
        <div className="border-t border-[#e9e4d9] pt-4"><h3 className="serif text-lg font-bold">Proposed matter</h3><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold">Matter title<input required name="matterTitle" className={`${inputClass} mt-1.5`} maxLength={240} /></label><label className="text-xs font-semibold">Matter type<input required name="matterType" className={`${inputClass} mt-1.5`} maxLength={160} placeholder="Advisory, transaction, estate…" /></label><label className="text-xs font-semibold">Responsible teammate<select required name="responsibleMemberId" className={`${inputClass} mt-1.5`} defaultValue="" data-testid="select-intake-responsible" disabled={assignmentMembers.isLoading || assignmentMembers.isError}><option value="">Select a teammate</option>{activeDraft?.data.responsibleMemberId && !assignmentMembers.data?.some(member=>member.id===activeDraft.data.responsibleMemberId) && <option value={activeDraft.data.responsibleMemberId}>Previously selected teammate (unavailable)</option>}{(assignmentMembers.data || []).map(member=><option key={member.id} value={member.id}>{member.name || member.email} · {member.role}</option>)}</select>{assignmentMembers.isError&&<span className="mt-1 block font-normal text-[#9b4941]">Teammates could not be loaded. <button type="button" className="underline" onClick={()=>assignmentMembers.refetch()}>Try again</button></span>}</label><label className="text-xs font-semibold">Target due date<input name="dueAt" type="date" className={`${inputClass} mt-1.5`} /></label><label className="text-xs font-semibold sm:col-span-2">Related parties, one per line<textarea name="partyNames" className={`${inputClass} mt-1.5 h-20 py-2`} placeholder="Names to include in conflict screening" /></label></div></div>
       <div className="border-t border-[#e9e4d9] pt-4"><h3 className="serif text-lg font-bold">Onboarding checks</h3><div className="mt-3 grid gap-3 sm:grid-cols-2">{rules.map(rule=><label key={rule.key} className="text-xs font-semibold">{rule.label}{rule.required&&<span className="ml-1 text-[#987747]">Required</span>}<textarea name={`answer-${rule.key}`} required={rule.required} className={`${inputClass} mt-1.5 h-16 py-2`} placeholder={rule.description} /></label>)}</div></div>
-        {error&&<p role="alert" className="text-xs text-[#9b4941]">{error}</p>}<div className="flex flex-wrap justify-end gap-2 border-t border-[#e9e4d9] pt-4"><button type="button" onClick={closeForm} className="rounded border border-[#d9d4c8] px-4 py-2.5 text-xs font-bold">Close</button>{activeDraft&&<button type="button" disabled={deleteDraft.isPending} onClick={()=>discardDraft(activeDraft)} className="rounded border border-[#e5c8c2] px-4 py-2.5 text-xs font-bold text-[#98483f] disabled:opacity-50">Discard draft</button>}<button type="button" disabled={createDraft.isPending||updateDraft.isPending||deleteDraft.isPending} onClick={saveCurrentDraft} className="rounded border border-[#294651] px-4 py-2.5 text-xs font-bold text-[#294651] disabled:opacity-50" data-testid="button-save-intake-draft">{createDraft.isPending||updateDraft.isPending?'Saving…':activeDraft?'Save changes':'Save draft'}</button><button disabled={create.isPending||submitDraft.isPending} className="rounded bg-[#294651] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50" data-testid="button-submit-intake">{create.isPending||submitDraft.isPending?'Submitting…':'Submit for review'}</button></div>
+        {error&&<p role="alert" className="text-xs text-[#9b4941]">{error}</p>}<div className="flex flex-wrap justify-end gap-2 border-t border-[#e9e4d9] pt-4"><button type="button" onClick={requestCloseForm} className="rounded border border-[#d9d4c8] px-4 py-2.5 text-xs font-bold">Close</button>{activeDraft&&<button type="button" disabled={deleteDraft.isPending} onClick={()=>discardDraft(activeDraft)} className="rounded border border-[#e5c8c2] px-4 py-2.5 text-xs font-bold text-[#98483f] disabled:opacity-50">Discard draft</button>}<button type="button" disabled={createDraft.isPending||updateDraft.isPending||deleteDraft.isPending} onClick={saveCurrentDraft} className="rounded border border-[#294651] px-4 py-2.5 text-xs font-bold text-[#294651] disabled:opacity-50" data-testid="button-save-intake-draft">{createDraft.isPending||updateDraft.isPending?'Saving…':activeDraft?'Save changes':'Save draft'}</button><button disabled={create.isPending||submitDraft.isPending} className="rounded bg-[#294651] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50" data-testid="button-submit-intake">{create.isPending||submitDraft.isPending?'Submitting…':'Submit for review'}</button></div>
     </form></section></div>}
+      {discardConfirmationOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-[#1b3035]/55 p-4" role="presentation"><section role="alertdialog" aria-modal="true" aria-labelledby="discard-intake-title" aria-describedby="discard-intake-description" className="w-full max-w-md rounded-lg border border-[#dcd6c9] bg-[#fbfaf5] p-6 shadow-2xl"><h2 id="discard-intake-title" className="serif text-xl font-bold">Discard unsaved intake changes?</h2><p id="discard-intake-description" className="mt-2 text-sm leading-6 text-[#697873]">Your latest edits have not been saved. Keep editing or discard these changes and close the intake.</p><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setDiscardConfirmationOpen(false)} className="rounded border border-[#d9d4c8] px-4 py-2.5 text-xs font-bold">Keep editing</button><button type="button" onClick={closeForm} className="rounded bg-[#98483f] px-4 py-2.5 text-xs font-bold text-white">Discard changes</button></div></section></div>}
     {selected&&<div className="fixed inset-0 z-40 grid place-items-center bg-[#1b3035]/45 p-3"><section role="dialog" aria-modal="true" className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-lg border border-[#dcd6c9] bg-[#fbfaf5] p-6 shadow-2xl"><div className="flex justify-between"><div><div className="mono text-[10px] uppercase tracking-wide text-[#987747]">Professional review · #{selected.id}</div><h2 className="serif mt-2 text-2xl font-bold">{selected.clientName}</h2></div><button onClick={()=>setSelected(null)} aria-label="Close review">Close</button></div><div className="mt-5 grid gap-3 sm:grid-cols-2">{[['Proposed matter',selected.matterTitle],['Type',selected.matterType],['Responsible',selected.responsible],['Due date',date(selected.dueAt)],['Email',selected.email||'Not provided'],['Phone',selected.phone||'Not provided']].map(([label,value])=><div key={label} className="rounded bg-[#f2efe6] p-3"><div className="text-[10px] uppercase tracking-wide text-[#8a938c]">{label}</div><div className="mt-1 text-sm font-semibold">{value}</div></div>)}</div><div className="mt-4"><h3 className="text-xs font-bold uppercase tracking-wide text-[#75817e]">Intake responses</h3>{Object.entries(selected.answers).map(([key,value])=><div key={key} className="border-b border-[#e9e4d9] py-3"><div className="text-xs font-semibold">{rules.find(r=>r.key===key)?.label||key}</div><p className="mt-1 whitespace-pre-wrap text-sm text-[#637370]">{value||'No response'}</p></div>)}</div>{selected.conflictFindings.length>0&&<div className="mt-4 rounded border border-[#e8d6b0] bg-[#faf4e6] p-4"><h3 className="text-xs font-bold text-[#775b2d]">Potential matches to resolve</h3>{selected.conflictFindings.map((f,i)=><p key={i} className="mt-2 text-sm">{f.name} — {f.recordLabel} ({f.recordType})</p>)}</div>}<div className="mt-6 flex flex-wrap justify-end gap-2"><button onClick={()=>decision(selected,'rejected')} disabled={review.isPending||selected.status!=='review_required'} className="rounded border border-[#e5c8c2] px-4 py-2.5 text-xs font-bold text-[#98483f] disabled:opacity-50">Reject</button><button onClick={()=>decision(selected,'cleared')} disabled={review.isPending||selected.status!=='review_required'} className="rounded bg-[#294651] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50"><Check className="mr-1 inline h-3.5 w-3.5" />Clear for opening</button></div></section></div>}
   </div>;
 }

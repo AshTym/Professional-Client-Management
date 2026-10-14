@@ -368,6 +368,101 @@ describe('dashboard shortcuts and matter exports', () => {
     expect(screen.queryByRole('dialog', { name: 'Start a client intake' })).toBeNull();
   });
 
+  it('asks before discarding changed intake fields and lets staff keep editing or discard', () => {
+    renderAt('/intake?create=1');
+    fireEvent.change(screen.getByLabelText('Client / entity name'), {
+      target: { value: 'Unsaved prospect' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close intake' }));
+    expect(screen.getByRole('alertdialog', { name: 'Discard unsaved intake changes?' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+    expect(screen.getByRole('dialog', { name: 'Start a client intake' })).toBeTruthy();
+    expect((screen.getByLabelText('Client / entity name') as HTMLInputElement).value).toBe('Unsaved prospect');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close intake' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+    expect(screen.queryByRole('dialog', { name: 'Start a client intake' })).toBeNull();
+  });
+
+  it('guards backdrop and Escape dismissal when intake changes are unsaved', () => {
+    renderAt('/intake?create=1');
+    fireEvent.change(screen.getByLabelText('Client / entity name'), {
+      target: { value: 'Unsaved prospect' },
+    });
+
+    fireEvent.mouseDown(screen.getByRole('presentation'));
+    expect(screen.getByRole('alertdialog', { name: 'Discard unsaved intake changes?' })).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Start a client intake' })).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByRole('alertdialog', { name: 'Discard unsaved intake changes?' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+    expect(screen.queryByRole('dialog', { name: 'Start a client intake' })).toBeNull();
+  });
+
+  it('does not warn when closing an unchanged saved draft', async () => {
+    const draft = {
+      id: 34,
+      data: {
+        clientId: null,
+        clientName: 'Saved client',
+        clientType: 'organization',
+        email: 'saved@example.test',
+        phone: '555-0134',
+        industry: 'Technology',
+        matterTitle: 'Saved matter',
+        matterType: 'Advisory',
+        responsibleMemberId: 1,
+        dueAt: '2026-11-14',
+        partyNames: ['Related party'],
+        answers: { identity: 'Identity captured' },
+      },
+      createdAt: '2026-10-01T00:00:00.000Z',
+      updatedAt: '2026-10-10T00:00:00.000Z',
+    };
+    mocks.useGetIntakeDrafts.mockReturnValue({
+      data: [draft],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    mocks.useGetIntakeOverview.mockReturnValue({
+      data: {
+        intakes: [],
+        checks: [{ key: 'identity', label: 'Identity', description: 'Identity check', required: false, category: 'Review' }],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderAt('/intake');
+    fireEvent.click(screen.getByTestId('button-resume-intake-draft-34'));
+    await waitFor(() => {
+      expect((screen.getByLabelText('Client / entity name') as HTMLInputElement).value).toBe('Saved client');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Close intake' }));
+
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Resume client intake draft' })).toBeNull();
+  });
+
+  it('warns before leaving the page while intake edits are unsaved', () => {
+    renderAt('/intake?create=1');
+    fireEvent.change(screen.getByLabelText('Client / entity name'), {
+      target: { value: 'Unsaved prospect' },
+    });
+
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+  });
+
   it('saves an incomplete intake as a draft instead of submitting it for review', () => {
     const saveDraft = vi.fn();
     const submitIntake = vi.fn();
