@@ -501,10 +501,10 @@ paths:
     get:
       operationId: listActivityActors
       tags: [activity]
-      summary: List actor names represented in the current firm's activity history
+      summary: List actors represented in the current firm's activity history
       responses:
         "200":
-          description: Distinct actor names from this firm's activity history
+          description: Distinct actors from this firm's activity history with firm-scoped opaque identifiers
           content:
             application/json:
               schema:
@@ -537,13 +537,15 @@ paths:
           schema:
             type: integer
             minimum: 0
-        - name: actorName
+        - name: actorId
           in: query
           required: false
-          description: Restrict results to activity by this exact actor name in the current firm's history.
+          description: Restrict results to this actor from the current firm's actor list.
           schema:
             type: string
-            maxLength: 255
+            minLength: 67
+            maxLength: 67
+            pattern: "^v1_[a-f0-9]{64}$"
         - name: entityType
           in: query
           required: false
@@ -592,13 +594,15 @@ paths:
           schema:
             type: integer
             minimum: 0
-        - name: actorName
+        - name: actorId
           in: query
           required: false
-          description: Restrict results to activity by this exact actor name in the current firm's history.
+          description: Restrict results to this actor from the current firm's actor list.
           schema:
             type: string
-            maxLength: 255
+            minLength: 67
+            maxLength: 67
+            pattern: "^v1_[a-f0-9]{64}$"
         - name: entityType
           in: query
           required: false
@@ -2682,8 +2686,14 @@ components:
         occurredAt: { type: string, format: date-time }
     ActivityActor:
       type: object
-      required: [name]
+      required: [id, name]
       properties:
+        id:
+          type: string
+          minLength: 67
+          maxLength: 67
+          pattern: "^v1_[a-f0-9]{64}$"
+          description: Opaque identifier scoped to the current firm; never an identity-provider ID.
         name: { type: string }
     ActivityActorsResponse:
       type: array

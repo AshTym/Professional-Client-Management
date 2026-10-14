@@ -2183,7 +2183,7 @@ export const getListActivityActorsUrl = () => {
 }
 
 /**
- * @summary List actor names represented in the current firm's activity history
+ * @summary List actors represented in the current firm's activity history
  */
 export const listActivityActors = async ( options?: Parameters<typeof customFetch>[1]): Promise<ActivityActorsResponse> => {
 
@@ -2254,7 +2254,7 @@ export function useListActivityActors<TData = Awaited<ReturnType<typeof listActi
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary List actor names represented in the current firm's activity history
+ * @summary List actors represented in the current firm's activity history
  */
 
 export function useListActivityActors<TData = Awaited<ReturnType<typeof listActivityActors>>, TError = ErrorType<unknown>>(

@@ -7,5 +7,12 @@
  */
 
 export interface ActivityActor {
+  /**
+     * Opaque identifier scoped to the current firm; never an identity-provider ID.
+     * @minLength 67
+     * @maxLength 67
+     * @pattern ^v1_[a-f0-9]{64}$
+     */
+  id: string;
   name: string;
 }

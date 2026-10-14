@@ -16,6 +16,9 @@ const apiMocks = vi.hoisted(() => ({
 }));
 const originalCreateObjectURL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
 const originalRevokeObjectURL = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL');
+const primaryActorId = `v1_${'a'.repeat(64)}`;
+const formerActorId = `v1_${'b'.repeat(64)}`;
+const secondFormerActorId = `v1_${'c'.repeat(64)}`;
 
 vi.mock('@workspace/api-client-react', () => ({
   ...apiMocks,
@@ -67,9 +70,9 @@ describe('activity pagination', () => {
     apiMocks.eventTotal = 41;
     apiMocks.filteredEventTotal = 43;
     apiMocks.useListActivity.mockImplementation(
-      ({ limit, offset, snapshotId, actorName, entityType, entityId }) => {
+      ({ limit, offset, snapshotId, actorId, entityType, entityId }) => {
         const isFilteredRecord =
-          actorName === 'Former Teammate' && entityType === 'client' && entityId === 10;
+          actorId === formerActorId && entityType === 'client' && entityId === 10;
         const matchingEventTotal = isFilteredRecord
           ? apiMocks.filteredEventTotal
           : apiMocks.eventTotal;
@@ -107,7 +110,11 @@ describe('activity pagination', () => {
       isError: false,
     });
     apiMocks.useListActivityActors.mockReturnValue({
-      data: [{ name: 'A. Morgan' }, { name: 'Former Teammate' }],
+      data: [
+        { id: primaryActorId, name: 'A. Morgan' },
+        { id: formerActorId, name: 'Former Teammate' },
+        { id: secondFormerActorId, name: 'Former Teammate' },
+      ],
       isLoading: false,
       isError: false,
     });
@@ -143,7 +150,7 @@ describe('activity pagination', () => {
 
     renderActivityPage();
     fireEvent.change(screen.getByTestId('select-activity-actor'), {
-      target: { value: 'A. Morgan' },
+      target: { value: primaryActorId },
     });
     fireEvent.change(screen.getByTestId('select-activity-record'), {
       target: { value: 'client:10' },
@@ -158,7 +165,7 @@ describe('activity pagination', () => {
 
     await waitFor(() => expect(apiMocks.exportActivity).toHaveBeenCalledWith({
       snapshotId: 41,
-      actorName: 'A. Morgan',
+      actorId: primaryActorId,
       entityType: 'client',
       entityId: 10,
       startDate: '2026-10-01',
@@ -292,10 +299,11 @@ describe('activity pagination', () => {
 
   it('filters by current or former actor name and record and resets pagination', () => {
     renderActivityPage();
-    expect(screen.getByRole('option', { name: 'Former Teammate' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Former Teammate · teammate 1' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Former Teammate · teammate 2' })).toBeTruthy();
     fireEvent.click(screen.getByTestId('button-activity-next'));
     fireEvent.change(screen.getByTestId('select-activity-actor'), {
-      target: { value: 'Former Teammate' },
+      target: { value: formerActorId },
     });
 
     expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
@@ -303,7 +311,7 @@ describe('activity pagination', () => {
         limit: 41,
         offset: 0,
         snapshotId: 41,
-        actorName: 'Former Teammate',
+        actorId: formerActorId,
       }),
       expect.any(Object),
     );
@@ -317,7 +325,7 @@ describe('activity pagination', () => {
         limit: 41,
         offset: 0,
         snapshotId: 43,
-        actorName: 'Former Teammate',
+        actorId: formerActorId,
         entityType: 'client',
         entityId: 10,
       }),
@@ -325,10 +333,22 @@ describe('activity pagination', () => {
     );
   });
 
+  it('keeps same-name teammates separately selectable', () => {
+    renderActivityPage();
+    fireEvent.change(screen.getByTestId('select-activity-actor'), {
+      target: { value: secondFormerActorId },
+    });
+
+    expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({ actorId: secondFormerActorId, offset: 0 }),
+      expect.any(Object),
+    );
+  });
+
   it('keeps teammate and record filters on forward and backward pages with filtered ranges', () => {
     renderActivityPage();
     fireEvent.change(screen.getByTestId('select-activity-actor'), {
-      target: { value: 'Former Teammate' },
+      target: { value: formerActorId },
     });
     fireEvent.change(screen.getByTestId('select-activity-record'), {
       target: { value: 'client:10' },
@@ -339,7 +359,7 @@ describe('activity pagination', () => {
         limit: 41,
         offset: 0,
         snapshotId: 43,
-        actorName: 'Former Teammate',
+        actorId: formerActorId,
         entityType: 'client',
         entityId: 10,
       }),
@@ -358,7 +378,7 @@ describe('activity pagination', () => {
         limit: 41,
         offset: 40,
         snapshotId: 43,
-        actorName: 'Former Teammate',
+        actorId: formerActorId,
         entityType: 'client',
         entityId: 10,
       }),
@@ -379,7 +399,7 @@ describe('activity pagination', () => {
         limit: 41,
         offset: 0,
         snapshotId: 43,
-        actorName: 'Former Teammate',
+        actorId: formerActorId,
         entityType: 'client',
         entityId: 10,
       }),
@@ -415,7 +435,7 @@ describe('activity pagination', () => {
       target: { value: '20' },
     });
     fireEvent.change(screen.getByTestId('select-activity-actor'), {
-      target: { value: 'Former Teammate' },
+      target: { value: formerActorId },
     });
     fireEvent.change(screen.getByTestId('select-activity-record'), {
       target: { value: 'client:10' },
@@ -427,7 +447,7 @@ describe('activity pagination', () => {
         limit: 21,
         offset: 20,
         snapshotId: 43,
-        actorName: 'Former Teammate',
+        actorId: formerActorId,
         entityType: 'client',
         entityId: 10,
       }),
@@ -441,7 +461,7 @@ describe('activity pagination', () => {
     expect(screen.getByTestId('select-activity-limit')).toHaveProperty('value', '20');
     expect(screen.getByTestId('select-activity-actor')).toHaveProperty(
       'value',
-      'Former Teammate',
+      formerActorId,
     );
     expect(screen.getByTestId('select-activity-record')).toHaveProperty('value', 'client:10');
 
@@ -452,7 +472,7 @@ describe('activity pagination', () => {
         limit: 21,
         offset: 0,
         snapshotId: 43,
-        actorName: 'Former Teammate',
+        actorId: formerActorId,
         entityType: 'client',
         entityId: 10,
       }),
@@ -473,7 +493,7 @@ describe('activity pagination', () => {
     expect(screen.getByText('No recorded events')).toBeTruthy();
 
     fireEvent.change(screen.getByTestId('select-activity-actor'), {
-      target: { value: 'A. Morgan' },
+      target: { value: primaryActorId },
     });
 
     expect(screen.getByText('No matching activity')).toBeTruthy();

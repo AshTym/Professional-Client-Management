@@ -2081,7 +2081,12 @@ test("activity filters stay firm-scoped and apply before pagination", async () =
     `filtered other firm event ${randomUUID()}`,
   ];
   const formerActorId = `former-actor-${randomUUID()}`;
-  const formerActorAction = `former teammate event ${randomUUID()}`;
+  const secondFormerActorId = `second-former-actor-${randomUUID()}`;
+  const formerActorActions = [
+    `former teammate older event ${randomUUID()}`,
+    `former teammate newer event ${randomUUID()}`,
+  ];
+  const secondFormerActorAction = `same-name former teammate event ${randomUUID()}`;
 
   try {
     const [primaryTeammate] = await db
@@ -2133,15 +2138,25 @@ test("activity filters stay firm-scoped and apply before pagination", async () =
           entityLabel: "Primary test client",
           occurredAt,
         },
-        {
+        ...formerActorActions.map((action, index) => ({
           workspaceId: firms.primary.workspaceId,
           clerkUserId: formerActorId,
           actor: "Former Teammate",
-          action: formerActorAction,
+          action,
           entityType: "client",
           entityId: firms.primary.clientId,
           entityLabel: "Primary test client",
-          occurredAt: new Date(occurredAt.getTime() + 120_000),
+          occurredAt: new Date(occurredAt.getTime() + 120_000 + index * 60_000),
+        })),
+        {
+          workspaceId: firms.primary.workspaceId,
+          clerkUserId: secondFormerActorId,
+          actor: "Former Teammate",
+          action: secondFormerActorAction,
+          entityType: "client",
+          entityId: firms.primary.clientId,
+          entityLabel: "Primary test client",
+          occurredAt: new Date(occurredAt.getTime() + 180_000),
         },
         {
           workspaceId: firms.other.workspaceId,
@@ -2161,16 +2176,44 @@ test("activity filters stay firm-scoped and apply before pagination", async () =
       userId: firms.primary.ownerId,
     });
     assert.equal(actorOptions.response.status, 200);
-    assert.deepEqual(actorOptions.body, [
-      { name: "Former Teammate" },
-      { name: "Primary Owner" },
-      { name: "Read Only User" },
-    ]);
+    const actorOptionsBody = actorOptions.body as Array<{
+      id: string;
+      name: string;
+    }>;
+    assert.deepEqual(
+      actorOptionsBody.map(({ name }) => name),
+      [
+        "Former Teammate",
+        "Former Teammate",
+        "Primary Owner",
+        "Read Only User",
+      ],
+    );
+    const formerActorOptions = actorOptionsBody.filter(
+      ({ name }) => name === "Former Teammate",
+    );
+    assert.equal(formerActorOptions.length, 2);
+    assert.notEqual(formerActorOptions[0].id, formerActorOptions[1].id);
+    assert(
+      formerActorOptions.every(({ id }) => /^v1_[a-f0-9]{64}$/.test(id)),
+    );
     assert(!JSON.stringify(actorOptions.body).includes(formerActorId));
+    assert(!JSON.stringify(actorOptions.body).includes(secondFormerActorId));
     assert(!JSON.stringify(actorOptions.body).includes(firms.other.ownerId));
+    const otherFirmActorOptions = await request("/activity/actors", {
+      userId: firms.other.ownerId,
+    });
+    const otherFirmActorId = (
+      otherFirmActorOptions.body as Array<{ id: string; name: string }>
+    ).find(({ name }) => name === "Other Firm Owner")?.id;
+    assert.ok(otherFirmActorId);
+    assert.notEqual(
+      otherFirmActorId,
+      actorOptionsBody.find(({ name }) => name === "Primary Owner")?.id,
+    );
 
     const firstPage = await request(
-      `/activity?actorName=${encodeURIComponent("Primary Owner")}&entityType=client&entityId=${firms.primary.clientId}&limit=2&offset=0`,
+      `/activity?actorId=${actorOptionsBody.find(({ name }) => name === "Primary Owner")?.id}&entityType=client&entityId=${firms.primary.clientId}&limit=2&offset=0`,
       { userId: firms.primary.ownerId },
     );
     assert.equal(firstPage.response.status, 200);
@@ -2181,7 +2224,7 @@ test("activity filters stay firm-scoped and apply before pagination", async () =
 
     const filteredSnapshotId = firstPage.body.snapshotId as number;
     const secondPage = await request(
-      `/activity?actorName=${encodeURIComponent("Primary Owner")}&entityType=client&entityId=${firms.primary.clientId}&limit=2&offset=2&snapshotId=${filteredSnapshotId}`,
+      `/activity?actorId=${actorOptionsBody.find(({ name }) => name === "Primary Owner")?.id}&entityType=client&entityId=${firms.primary.clientId}&limit=2&offset=2&snapshotId=${filteredSnapshotId}`,
       { userId: firms.primary.ownerId },
     );
     assert.equal(secondPage.response.status, 200);
@@ -2190,26 +2233,61 @@ test("activity filters stay firm-scoped and apply before pagination", async () =
       [ownerActions[0], "primary-only activity"],
     );
 
+    const formerActorPages = await Promise.all(
+      formerActorOptions.map(({ id }) =>
+        request(`/activity?actorId=${id}&limit=10&offset=0`, {
+          userId: firms.primary.ownerId,
+        }),
+      ),
+    );
+    assert(
+      formerActorPages.every(({ response }) => response.status === 200),
+    );
+    const formerActorGroups = formerActorPages.map(({ body }) =>
+      (body.items as Array<{ action: string }>).map(({ action }) => action),
+    );
+    assert.deepEqual(
+      formerActorGroups.map((actions) => actions.length).sort(),
+      [1, 2],
+    );
+    assert.deepEqual(
+      formerActorGroups.flat().sort(),
+      [...formerActorActions, secondFormerActorAction].sort(),
+    );
+    const firstFormerActorIndex = formerActorGroups.findIndex(
+      (actions) => actions.length === 2,
+    );
+    const selectedFormerActorId = formerActorOptions[firstFormerActorIndex].id;
     const formerActorFilter = await request(
-      `/activity?actorName=${encodeURIComponent("Former Teammate")}`,
+      `/activity?actorId=${selectedFormerActorId}&limit=1&offset=0`,
       { userId: firms.primary.ownerId },
     );
     assert.equal(formerActorFilter.response.status, 200);
     assert.deepEqual(
       (formerActorFilter.body.items as Array<{ action: string }>).map(({ action }) => action),
-      [formerActorAction],
+      [formerActorActions[1]],
+    );
+    const formerActorNextPage = await request(
+      `/activity?actorId=${selectedFormerActorId}&limit=1&offset=1&snapshotId=${formerActorFilter.body.snapshotId}`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.deepEqual(
+      (formerActorNextPage.body.items as Array<{ action: string }>).map(({ action }) => action),
+      [formerActorActions[0]],
     );
     const formerActorCsvResponse = await fetch(
-      `${baseUrl}/activity/export.csv?actorName=${encodeURIComponent("Former Teammate")}`,
+      `${baseUrl}/activity/export.csv?actorId=${selectedFormerActorId}&snapshotId=${formerActorFilter.body.snapshotId}`,
       { headers: { "x-test-user-id": firms.primary.ownerId } },
     );
     const formerActorCsv = await formerActorCsvResponse.text();
     assert.equal(formerActorCsvResponse.status, 200);
-    assert(formerActorCsv.includes(formerActorAction));
+    assert(formerActorCsv.includes(formerActorActions[0]));
+    assert(formerActorCsv.includes(formerActorActions[1]));
+    assert(!formerActorCsv.includes(secondFormerActorAction));
     assert(!formerActorCsv.includes(ownerActions[0]));
 
     const otherFirmActorFilter = await request(
-      `/activity?actorName=${encodeURIComponent("Other Firm Owner")}`,
+      `/activity?actorId=${otherFirmActorId}`,
       { userId: firms.primary.ownerId },
     );
     assert.equal(otherFirmActorFilter.response.status, 200);
@@ -2226,16 +2304,20 @@ test("activity filters stay firm-scoped and apply before pagination", async () =
     );
 
     const dateFilteredPage = await request(
-      `/activity?startDate=2099-01-02&endDate=2099-01-02&actorName=${encodeURIComponent("Primary Owner")}&entityType=client&entityId=${firms.primary.clientId}&limit=2&offset=0`,
+      `/activity?startDate=2099-01-02&endDate=2099-01-02&actorId=${actorOptionsBody.find(({ name }) => name === "Primary Owner")?.id}&entityType=client&entityId=${firms.primary.clientId}&limit=2&offset=0`,
       { userId: firms.primary.ownerId },
     );
-    assert.equal(dateFilteredPage.response.status, 200);
+    assert.equal(
+      dateFilteredPage.response.status,
+      200,
+      JSON.stringify(dateFilteredPage.body),
+    );
     assert.deepEqual(
       (dateFilteredPage.body.items as Array<{ action: string }>).map(({ action }) => action),
       [ownerActions[2], ownerActions[1]],
     );
     const dateFilteredSecondPage = await request(
-      `/activity?startDate=2099-01-02&endDate=2099-01-02&actorName=${encodeURIComponent("Primary Owner")}&entityType=client&entityId=${firms.primary.clientId}&limit=2&offset=2&snapshotId=${dateFilteredPage.body.snapshotId}`,
+      `/activity?startDate=2099-01-02&endDate=2099-01-02&actorId=${actorOptionsBody.find(({ name }) => name === "Primary Owner")?.id}&entityType=client&entityId=${firms.primary.clientId}&limit=2&offset=2&snapshotId=${dateFilteredPage.body.snapshotId}`,
       { userId: firms.primary.ownerId },
     );
     assert.equal(dateFilteredSecondPage.response.status, 200);

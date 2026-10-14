@@ -14,10 +14,12 @@ export type ExportActivityParams = {
  */
 snapshotId?: number;
 /**
- * Restrict results to activity by this exact actor name in the current firm's history.
- * @maxLength 255
+ * Restrict results to this actor from the current firm's actor list.
+ * @minLength 67
+ * @maxLength 67
+ * @pattern ^v1_[a-f0-9]{64}$
  */
-actorName?: string;
+actorId?: string;
 /**
  * Restrict results to a related client, matter, or workspace record.
  */

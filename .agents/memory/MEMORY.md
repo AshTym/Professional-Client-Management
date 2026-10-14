@@ -8,3 +8,4 @@
 - [Membership conflict review](membership-conflict-review.md) — each affected firm's owner/admin decides only on local access; no cross-firm identity details are exposed.
 - [ClientGuard medical-market pause](clientguard-medical-market.md) — current focus is legal and financial; Australia/general practice is deferred unless reopened.
 - [Post-merge database setup](post-merge-database-setup.md) — allow schema pushes a generous timeout after installs; keep the preflight and avoid forced pushes.
+- [Activity date query parsing](activity-date-query-parsing.md) — convert strict UTC date query strings to validated Date objects before filtering; generated schemas do not coerce them.

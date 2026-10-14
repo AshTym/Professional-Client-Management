@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { clerkClient } from "@clerk/express";
 import {
   and,
@@ -111,6 +111,41 @@ import {
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+
+function activityActorToken(workspaceId: number, clerkUserId: string): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error("SESSION_SECRET is required to create activity actor identifiers.");
+  }
+  const digest = createHmac("sha256", secret)
+    .update(`${workspaceId}\0${clerkUserId}`)
+    .digest("hex");
+  return `v1_${digest}`;
+}
+
+function parseActivityDate(value: unknown): { value: unknown; invalid: boolean } {
+  if (typeof value !== "string") return { value, invalid: false };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return { value, invalid: true };
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    return { value, invalid: true };
+  }
+  return { value: date, invalid: false };
+}
+
+async function findActivityActorUserId(
+  workspaceId: number,
+  actorId: string,
+): Promise<string | undefined> {
+  const actors = await db
+    .selectDistinct({ clerkUserId: activitiesTable.clerkUserId })
+    .from(activitiesTable)
+    .where(eq(activitiesTable.workspaceId, workspaceId));
+  return actors.find(
+    ({ clerkUserId }) =>
+      activityActorToken(workspaceId, clerkUserId) === actorId,
+  )?.clerkUserId;
+}
 
 async function attemptInvitationRevocation(
   req: Request,
@@ -2819,19 +2854,49 @@ router.get("/activity/actors", async (req, res): Promise<void> => {
   if (!access) return;
 
   const actors = await db
-    .selectDistinct({ name: activitiesTable.actor })
+    .selectDistinct({
+      clerkUserId: activitiesTable.clerkUserId,
+      name: activitiesTable.actor,
+    })
     .from(activitiesTable)
     .where(eq(activitiesTable.workspaceId, access.workspaceId))
-    .orderBy(asc(activitiesTable.actor));
-  res.json(ListActivityActorsResponse.parse(actors));
+    .orderBy(asc(activitiesTable.actor), asc(activitiesTable.clerkUserId));
+  const actorOptions = new Map<string, { id: string; name: string }>();
+  for (const actor of actors) {
+    if (!actorOptions.has(actor.clerkUserId)) {
+      actorOptions.set(actor.clerkUserId, {
+        id: activityActorToken(access.workspaceId, actor.clerkUserId),
+        name: actor.name,
+      });
+    }
+  }
+  res.json(ListActivityActorsResponse.parse([...actorOptions.values()]));
 });
 
 router.get("/activity", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
   if (!access) return;
-  const parsed = ListActivityQueryParams.safeParse(req.query);
+  const startDate = parseActivityDate(req.query.startDate);
+  const endDate = parseActivityDate(req.query.endDate);
+  if (startDate.invalid || endDate.invalid) {
+    res.status(400).json({ error: "Provide a valid date in YYYY-MM-DD format." });
+    return;
+  }
+  const parsed = ListActivityQueryParams.safeParse({
+    ...req.query,
+    startDate: startDate.value,
+    endDate: endDate.value,
+  });
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  if (
+    parsed.data.startDate !== undefined &&
+    parsed.data.endDate !== undefined &&
+    parsed.data.startDate > parsed.data.endDate
+  ) {
+    res.status(400).json({ error: "End date must be on or after the start date." });
     return;
   }
   const filters = [eq(activitiesTable.workspaceId, access.workspaceId)];
@@ -2851,8 +2916,16 @@ router.get("/activity", async (req, res): Promise<void> => {
       .where(eq(activitiesTable.workspaceId, access.workspaceId));
     latestSnapshotId = latestSnapshot?.snapshotId ?? 0;
   }
-  if (parsed.data.actorName !== undefined) {
-    filters.push(eq(activitiesTable.actor, parsed.data.actorName));
+  if (parsed.data.actorId !== undefined) {
+    const clerkUserId = await findActivityActorUserId(
+      access.workspaceId,
+      parsed.data.actorId,
+    );
+    filters.push(
+      clerkUserId
+        ? eq(activitiesTable.clerkUserId, clerkUserId)
+        : sql`false`,
+    );
   }
   if (parsed.data.entityType !== undefined) {
     filters.push(eq(activitiesTable.entityType, parsed.data.entityType));
@@ -2861,10 +2934,10 @@ router.get("/activity", async (req, res): Promise<void> => {
     filters.push(eq(activitiesTable.entityId, parsed.data.entityId));
   }
   if (parsed.data.startDate !== undefined) {
-    filters.push(gte(activitiesTable.occurredAt, new Date(`${parsed.data.startDate}T00:00:00.000Z`)));
+    filters.push(gte(activitiesTable.occurredAt, parsed.data.startDate));
   }
   if (parsed.data.endDate !== undefined) {
-    const endExclusive = new Date(`${parsed.data.endDate}T00:00:00.000Z`);
+    const endExclusive = new Date(parsed.data.endDate);
     endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
     filters.push(lt(activitiesTable.occurredAt, endExclusive));
   }
@@ -2882,9 +2955,27 @@ router.get("/activity", async (req, res): Promise<void> => {
 router.get("/activity/export.csv", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
   if (!access) return;
-  const parsed = ExportActivityQueryParams.safeParse(req.query);
+  const startDate = parseActivityDate(req.query.startDate);
+  const endDate = parseActivityDate(req.query.endDate);
+  if (startDate.invalid || endDate.invalid) {
+    res.status(400).json({ error: "Provide a valid date in YYYY-MM-DD format." });
+    return;
+  }
+  const parsed = ExportActivityQueryParams.safeParse({
+    ...req.query,
+    startDate: startDate.value,
+    endDate: endDate.value,
+  });
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  if (
+    parsed.data.startDate !== undefined &&
+    parsed.data.endDate !== undefined &&
+    parsed.data.startDate > parsed.data.endDate
+  ) {
+    res.status(400).json({ error: "End date must be on or after the start date." });
     return;
   }
 
@@ -2892,8 +2983,16 @@ router.get("/activity/export.csv", async (req, res): Promise<void> => {
   if (parsed.data.snapshotId !== undefined) {
     filters.push(lte(activitiesTable.id, parsed.data.snapshotId));
   }
-  if (parsed.data.actorName !== undefined) {
-    filters.push(eq(activitiesTable.actor, parsed.data.actorName));
+  if (parsed.data.actorId !== undefined) {
+    const clerkUserId = await findActivityActorUserId(
+      access.workspaceId,
+      parsed.data.actorId,
+    );
+    filters.push(
+      clerkUserId
+        ? eq(activitiesTable.clerkUserId, clerkUserId)
+        : sql`false`,
+    );
   }
   if (parsed.data.entityType !== undefined) {
     filters.push(eq(activitiesTable.entityType, parsed.data.entityType));
@@ -2902,10 +3001,10 @@ router.get("/activity/export.csv", async (req, res): Promise<void> => {
     filters.push(eq(activitiesTable.entityId, parsed.data.entityId));
   }
   if (parsed.data.startDate !== undefined) {
-    filters.push(gte(activitiesTable.occurredAt, new Date(`${parsed.data.startDate}T00:00:00.000Z`)));
+    filters.push(gte(activitiesTable.occurredAt, parsed.data.startDate));
   }
   if (parsed.data.endDate !== undefined) {
-    const endExclusive = new Date(`${parsed.data.endDate}T00:00:00.000Z`);
+    const endExclusive = new Date(parsed.data.endDate);
     endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
     filters.push(lt(activitiesTable.occurredAt, endExclusive));
   }

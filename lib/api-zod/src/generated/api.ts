@@ -468,9 +468,17 @@ export const GetDashboardResponse = zod.object({
 
 
 /**
- * @summary List actor names represented in the current firm's activity history
+ * @summary List actors represented in the current firm's activity history
  */
+export const listActivityActorsResponseIdMin = 67;
+export const listActivityActorsResponseIdMax = 67;
+
+
+export const listActivityActorsResponseIdRegExp = new RegExp('^v1_[a-f0-9]{64}$');
+
+
 export const ListActivityActorsResponseItem = zod.object({
+  "id": zod.string().min(listActivityActorsResponseIdMin).max(listActivityActorsResponseIdMax).regex(listActivityActorsResponseIdRegExp).describe('Opaque identifier scoped to the current firm; never an identity-provider ID.'),
   "name": zod.string()
 })
 export const ListActivityActorsResponse = zod.array(ListActivityActorsResponseItem)
@@ -487,8 +495,11 @@ export const listActivityQueryOffsetMin = 0;
 
 export const listActivityQuerySnapshotIdMin = 0;
 
-export const listActivityQueryActorNameMax = 255;
+export const listActivityQueryActorIdMin = 67;
+export const listActivityQueryActorIdMax = 67;
 
+
+export const listActivityQueryActorIdRegExp = new RegExp('^v1_[a-f0-9]{64}$');
 
 
 
@@ -496,7 +507,7 @@ export const ListActivityQueryParams = zod.object({
   "limit": zod.coerce.number().int().min(1).max(listActivityQueryLimitMax).default(listActivityQueryLimitDefault),
   "offset": zod.coerce.number().int().min(listActivityQueryOffsetMin).default(listActivityQueryOffsetDefault),
   "snapshotId": zod.coerce.number().int().min(listActivityQuerySnapshotIdMin).optional().describe('Include only events at or below this firm-wide activity snapshot ID.'),
-  "actorName": zod.coerce.string().max(listActivityQueryActorNameMax).optional().describe('Restrict results to activity by this exact actor name in the current firm\'s history.'),
+  "actorId": zod.coerce.string().min(listActivityQueryActorIdMin).max(listActivityQueryActorIdMax).regex(listActivityQueryActorIdRegExp).optional().describe('Restrict results to this actor from the current firm\'s actor list.'),
   "entityType": zod.enum(['client', 'matter', 'workspace']).optional().describe('Restrict results to a related client, matter, or workspace record.'),
   "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.'),
   "startDate": zod.date().optional().describe('Include events occurring on or after this UTC calendar date.'),
@@ -529,14 +540,17 @@ export const ListActivityResponse = zod.object({
  */
 export const exportActivityQuerySnapshotIdMin = 0;
 
-export const exportActivityQueryActorNameMax = 255;
+export const exportActivityQueryActorIdMin = 67;
+export const exportActivityQueryActorIdMax = 67;
 
+
+export const exportActivityQueryActorIdRegExp = new RegExp('^v1_[a-f0-9]{64}$');
 
 
 
 export const ExportActivityQueryParams = zod.object({
   "snapshotId": zod.coerce.number().int().min(exportActivityQuerySnapshotIdMin).optional().describe('Include only events at or below this firm-wide activity snapshot ID.'),
-  "actorName": zod.coerce.string().max(exportActivityQueryActorNameMax).optional().describe('Restrict results to activity by this exact actor name in the current firm\'s history.'),
+  "actorId": zod.coerce.string().min(exportActivityQueryActorIdMin).max(exportActivityQueryActorIdMax).regex(exportActivityQueryActorIdRegExp).optional().describe('Restrict results to this actor from the current firm\'s actor list.'),
   "entityType": zod.enum(['client', 'matter', 'workspace']).optional().describe('Restrict results to a related client, matter, or workspace record.'),
   "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.'),
   "startDate": zod.date().optional().describe('Include events occurring on or after this UTC calendar date.'),
