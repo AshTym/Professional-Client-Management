@@ -751,7 +751,7 @@ export const DeleteClientResponse = zod.void()
 
 export const ListMattersQueryParams = zod.object({
   "clientId": zod.coerce.number().int().min(1).optional().describe('Return only matters currently assigned to this client.'),
-  "search": zod.coerce.string().optional(),
+  "search": zod.coerce.string().optional().describe('Case-insensitive match in matter title or reference; firm-wide searches also match the client name.'),
   "status": zod.enum(['open', 'on_hold', 'closed']).optional()
 })
 

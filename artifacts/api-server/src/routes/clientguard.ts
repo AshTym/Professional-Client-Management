@@ -3423,7 +3423,9 @@ router.get("/matters", async (req, res): Promise<void> => {
             ? or(
                 ilike(mattersTable.title, `%${parsed.data.search.trim()}%`),
                 ilike(mattersTable.reference, `%${parsed.data.search.trim()}%`),
-                ilike(clientsTable.name, `%${parsed.data.search.trim()}%`),
+                ...(parsed.data.clientId === undefined
+                  ? [ilike(clientsTable.name, `%${parsed.data.search.trim()}%`)]
+                  : []),
               )
             : undefined,
         ),

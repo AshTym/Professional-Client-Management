@@ -805,6 +805,7 @@ paths:
         - name: search
           in: query
           required: false
+          description: Case-insensitive match in matter title or reference; firm-wide searches also match the client name.
           schema:
             type: string
         - name: status

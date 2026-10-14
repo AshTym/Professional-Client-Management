@@ -2323,6 +2323,9 @@ export type ListMattersParams = {
  * @minimum 1
  */
 clientId?: number;
+/**
+ * Case-insensitive match in matter title or reference; firm-wide searches also match the client name.
+ */
 search?: string;
 status?: ListMattersStatus;
 };

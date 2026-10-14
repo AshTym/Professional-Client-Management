@@ -279,6 +279,66 @@ describe('dashboard shortcuts and matter exports', () => {
     expect(screen.queryByTestId('link-client-matter-12')).toBeNull();
   });
 
+  it('combines client matter title or reference search with a status filter', () => {
+    const matters = [
+      firstMatter,
+      { ...firstMatter, id: 13, title: 'Employment renewal', reference: 'MAT-013', status: 'closed' },
+      secondMatter,
+    ];
+    mocks.useListMatters.mockImplementation((params?: { clientId?: number; search?: string; status?: string }) => ({
+      data: matters.filter(matter =>
+        matter.clientId === params?.clientId
+        && (!params.search || `${matter.title} ${matter.reference}`.toLowerCase().includes(params.search.toLowerCase()))
+        && (!params.status || matter.status === params.status),
+      ),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    }));
+
+    renderAt('/clients/5');
+    fireEvent.change(screen.getByTestId('input-search-client-matters'), { target: { value: 'MAT-013' } });
+    fireEvent.change(screen.getByTestId('select-client-matter-status'), { target: { value: 'closed' } });
+
+    expect(mocks.useListMatters).toHaveBeenLastCalledWith(
+      { clientId: 5, search: 'MAT-013', status: 'closed' },
+      { query: { enabled: true } },
+    );
+    expect(screen.getByTestId('link-client-matter-13')).toBeTruthy();
+    expect(screen.queryByTestId('link-client-matter-11')).toBeNull();
+    expect(screen.queryByTestId('link-client-matter-12')).toBeNull();
+
+    fireEvent.change(screen.getByTestId('input-search-client-matters'), { target: { value: 'Employment' } });
+
+    expect(mocks.useListMatters).toHaveBeenLastCalledWith(
+      { clientId: 5, search: 'Employment', status: 'closed' },
+      { query: { enabled: true } },
+    );
+    expect(screen.getByTestId('link-client-matter-13')).toBeTruthy();
+  });
+
+  it('shows a filter-specific empty state and lets staff clear client matter filters', () => {
+    mocks.useListMatters.mockImplementation((params?: { clientId?: number; search?: string; status?: string }) => ({
+      data: params?.search || params?.status ? [] : [firstMatter],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    }));
+
+    renderAt('/clients/5');
+    fireEvent.change(screen.getByTestId('input-search-client-matters'), { target: { value: 'not found' } });
+    fireEvent.change(screen.getByTestId('select-client-matter-status'), { target: { value: 'closed' } });
+
+    expect(screen.getByTestId('client-matters-no-matches').textContent).toContain('No matters match these filters');
+    expect(screen.getByTestId('button-clear-client-matter-filters')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('button-clear-client-matter-filters'));
+
+    expect((screen.getByTestId('input-search-client-matters') as HTMLInputElement).value).toBe('');
+    expect((screen.getByTestId('select-client-matter-status') as HTMLSelectElement).value).toBe('');
+    expect(screen.getByTestId('link-client-matter-11')).toBeTruthy();
+  });
+
   it('shows a clear empty state when the client has no matters', () => {
     mocks.useListMatters.mockReturnValue({
       data: [],
