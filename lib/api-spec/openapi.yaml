@@ -2691,12 +2691,16 @@ components:
         $ref: "#/components/schemas/ActivityActor"
     ActivityPage:
       type: object
-      required: [items, snapshotId]
+      required: [items, snapshotId, latestSnapshotId]
       properties:
         items:
           type: array
           items: { $ref: "#/components/schemas/Activity" }
         snapshotId: { type: integer, minimum: 0 }
+        latestSnapshotId:
+          type: integer
+          minimum: 0
+          description: Highest activity ID currently available in this firm.
     DashboardSummary:
       type: object
       required: [clientCount, activeClientCount, matterCount, openMatterCount, overdueMatterCount, recentActivity]

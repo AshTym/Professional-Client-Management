@@ -586,6 +586,11 @@ export interface ActivityPage {
   items: Activity[];
   /** @minimum 0 */
   snapshotId: number;
+  /**
+     * Highest activity ID currently available in this firm.
+     * @minimum 0
+     */
+  latestSnapshotId: number;
 }
 
 export interface DashboardSummary {

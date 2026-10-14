@@ -93,6 +93,7 @@ describe('activity pagination', () => {
                 ),
             ),
             snapshotId: currentSnapshot,
+            latestSnapshotId: matchingEventTotal,
           },
           isLoading: false,
           isError: false,
@@ -209,6 +210,33 @@ describe('activity pagination', () => {
       expect.objectContaining({ limit: 41, offset: 0, snapshotId: 41 }),
       expect.any(Object),
     );
+  });
+
+  it('keeps the displayed snapshot stable and offers refresh when newer activity arrives', () => {
+    const { rerenderActivity } = renderActivityPage();
+
+    expect(screen.queryByTestId('status-new-activity')).toBeNull();
+    expect(screen.getByText('Record 41')).toBeTruthy();
+
+    apiMocks.eventTotal = 43;
+    rerenderActivity();
+
+    expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({ limit: 41, offset: 0, snapshotId: 41 }),
+      expect.objectContaining({ query: expect.objectContaining({ refetchInterval: 30_000 }) }),
+    );
+    expect(screen.getByTestId('status-new-activity')).toBeTruthy();
+    expect(screen.getByText('Record 41')).toBeTruthy();
+    expect(screen.queryByText('Record 43')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('button-load-new-activity'));
+
+    expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({ limit: 41, offset: 0, snapshotId: 43 }),
+      expect.any(Object),
+    );
+    expect(screen.queryByTestId('status-new-activity')).toBeNull();
+    expect(screen.getByText('Record 43')).toBeTruthy();
   });
 
   it.each([20, 40, 80])(
