@@ -138,6 +138,7 @@ export * from './operationsReportTotals';
 export * from './operationsReportUpcomingDeadlinesItem';
 export * from './ownershipNoticeFailure';
 export * from './ownershipNoticeFailureRecipientRole';
+export * from './ownershipNoticeFailureStatus';
 export * from './ownershipNoticeRetryResult';
 export * from './plannerItem';
 export * from './plannerItemKind';

@@ -6,11 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { OwnershipNoticeFailureRecipientRole } from './ownershipNoticeFailureRecipientRole';
+import type { OwnershipNoticeFailureStatus } from './ownershipNoticeFailureStatus';
 
 export interface OwnershipNoticeFailure {
   transferId: string;
   recipientRole: OwnershipNoticeFailureRecipientRole;
   recipientName: string;
   otherOwnerName: string;
-  failedAt: Date;
+  status: OwnershipNoticeFailureStatus;
+  recordedAt: Date;
 }

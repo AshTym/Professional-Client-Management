@@ -325,20 +325,21 @@ export const TransferWorkspaceOwnershipResponse = zod.object({
 
 
 /**
- * @summary List ownership-transfer notices that still need delivery
+ * @summary List ownership-transfer notices with failed or unconfirmed delivery
  */
 export const ListOwnershipNoticeFailuresResponseItem = zod.object({
   "transferId": zod.string(),
   "recipientRole": zod.enum(['former_owner', 'new_owner']),
   "recipientName": zod.string(),
   "otherOwnerName": zod.string(),
-  "failedAt": zod.coerce.date()
+  "status": zod.enum(['failed', 'pending']),
+  "recordedAt": zod.coerce.date()
 })
 export const ListOwnershipNoticeFailuresResponse = zod.array(ListOwnershipNoticeFailuresResponseItem)
 
 
 /**
- * @summary Retry one failed ownership-transfer notice without changing firm access
+ * @summary Retry one failed or unconfirmed ownership-transfer notice without changing firm access
  */
 
 

@@ -103,12 +103,21 @@ export const OwnershipNoticeFailureRecipientRole = {
   new_owner: 'new_owner',
 } as const;
 
+export type OwnershipNoticeFailureStatus = typeof OwnershipNoticeFailureStatus[keyof typeof OwnershipNoticeFailureStatus];
+
+
+export const OwnershipNoticeFailureStatus = {
+  failed: 'failed',
+  pending: 'pending',
+} as const;
+
 export interface OwnershipNoticeFailure {
   transferId: string;
   recipientRole: OwnershipNoticeFailureRecipientRole;
   recipientName: string;
   otherOwnerName: string;
-  failedAt: string;
+  status: OwnershipNoticeFailureStatus;
+  recordedAt: string;
 }
 
 export interface OwnershipNoticeRetryResult {

@@ -203,7 +203,7 @@ function canManageInvitations(role: string): boolean {
 }
 
 type OwnershipNoticeRole = "former_owner" | "new_owner";
-type OwnershipNoticeStatus = "failed" | "sent";
+type OwnershipNoticeStatus = "pending" | "failed" | "sent";
 
 function ownershipNoticeString(
   details: Record<string, string | number | boolean | null>,
@@ -218,7 +218,9 @@ function ownershipNoticeRole(value: string | undefined): OwnershipNoticeRole | u
 }
 
 function ownershipNoticeStatus(value: string | undefined): OwnershipNoticeStatus | undefined {
-  return value === "failed" || value === "sent" ? value : undefined;
+  return value === "pending" || value === "failed" || value === "sent"
+    ? value
+    : undefined;
 }
 
 function ownershipNoticeAuditDetails(input: {
@@ -1186,6 +1188,34 @@ router.post(
         )
         .returning();
 
+      const previousOwnerNotice = {
+        clerkUserId: currentOwner.clerkUserId,
+        displayName: currentOwner.displayName || currentOwner.email,
+      };
+      const newOwnerNotice = {
+        clerkUserId: newOwner.clerkUserId,
+        displayName: newOwner.displayName || newOwner.email,
+      };
+      await tx.insert(auditEventsTable).values(
+        (["former_owner", "new_owner"] as const).map((recipientRole) => ({
+          workspaceId: access.workspaceId,
+          clerkUserId: access.userId,
+          actor: access.name || access.email || "Firm user",
+          action: "ownership_notice_delivery",
+          entityType: "workspace",
+          entityId: access.workspaceId,
+          entityLabel: access.workspaceName,
+          details: ownershipNoticeAuditDetails({
+            transferId,
+            recipientRole,
+            status: "pending",
+            workspaceName: access.workspaceName,
+            previousOwner: previousOwnerNotice,
+            newOwner: newOwnerNotice,
+          }),
+        })),
+      );
+
       await tx.insert(activitiesTable).values({
         workspaceId: access.workspaceId,
         clerkUserId: access.userId,
@@ -1247,16 +1277,12 @@ router.post(
         );
       }
     }
-    try {
-      await Promise.all(
-        noticeResults.map((notice) =>
-          logAuditEvent(
-            access,
-            "ownership_notice_delivery",
-            "workspace",
-            access.workspaceId,
-            access.workspaceName,
-            ownershipNoticeAuditDetails({
+    const deliveryStatusWrites = await Promise.allSettled(
+      noticeResults.map((notice) =>
+        db
+          .update(auditEventsTable)
+          .set({
+            details: ownershipNoticeAuditDetails({
               transferId,
               recipientRole: notice.recipientRole,
               status: notice.error ? "failed" : "sent",
@@ -1264,15 +1290,31 @@ router.post(
               previousOwner,
               newOwner,
             }),
+          })
+          .where(
+            and(
+              eq(auditEventsTable.workspaceId, access.workspaceId),
+              eq(auditEventsTable.action, "ownership_notice_delivery"),
+              sql`${auditEventsTable.details}->>'transferId' = ${transferId}`,
+              sql`${auditEventsTable.details}->>'recipientRole' = ${notice.recipientRole}`,
+              sql`${auditEventsTable.details}->>'status' = 'pending'`,
+            ),
           ),
-        ),
-      );
-    } catch (error) {
-      logger.warn(
-        { workspaceId: access.workspaceId, transferId, err: error },
-        "Could not record firm ownership notice delivery results",
-      );
-    }
+      ),
+    );
+    deliveryStatusWrites.forEach((write, index) => {
+      if (write.status === "rejected") {
+        logger.warn(
+          {
+            workspaceId: access.workspaceId,
+            transferId,
+            recipientRole: noticeResults[index]?.recipientRole,
+            err: write.reason,
+          },
+          "Could not record firm ownership notice delivery result",
+        );
+      }
+    });
     res.json(TransferWorkspaceOwnershipResponse.parse(memberResponse(result.member)));
   },
 );
@@ -1322,7 +1364,7 @@ router.get("/workspace/ownership-notices", async (req, res): Promise<void> => {
     if (
       !transferId ||
       !recipientRole ||
-      status !== "failed" ||
+      (status !== "failed" && status !== "pending") ||
       !recipientName ||
       !otherOwnerName
     ) {
@@ -1333,7 +1375,8 @@ router.get("/workspace/ownership-notices", async (req, res): Promise<void> => {
       recipientRole,
       recipientName,
       otherOwnerName,
-      failedAt: event.occurredAt,
+      status,
+      recordedAt: event.occurredAt,
     }];
   });
 
@@ -1382,11 +1425,10 @@ router.post(
       );
 
       if (!latestEvent) return { kind: "not_found" as const };
-      if (
-        ownershipNoticeStatus(
-          ownershipNoticeString(latestEvent.details, "status"),
-        ) !== "failed"
-      ) {
+      const latestStatus = ownershipNoticeStatus(
+        ownershipNoticeString(latestEvent.details, "status"),
+      );
+      if (latestStatus !== "failed" && latestStatus !== "pending") {
         return { kind: "not_retryable" as const };
       }
 
@@ -1422,14 +1464,14 @@ router.post(
         displayName: previousOwnerName,
       };
       const newOwner = { clerkUserId: newOwnerId, displayName: newOwnerName };
-      const delivery = await sendOwnershipTransferNotice({
+      const pendingDetails = ownershipNoticeAuditDetails({
         transferId: params.data.transferId,
+        recipientRole: params.data.recipientRole,
+        status: "pending",
         workspaceName,
         previousOwner,
         newOwner,
-        recipientRole: params.data.recipientRole,
       });
-      const status = delivery.error ? "failed" : "sent";
       await tx.insert(auditEventsTable).values({
         workspaceId: access.workspaceId,
         clerkUserId: access.userId,
@@ -1438,15 +1480,47 @@ router.post(
         entityType: "workspace",
         entityId: access.workspaceId,
         entityLabel: access.workspaceName,
-        details: ownershipNoticeAuditDetails({
-          transferId: params.data.transferId,
-          recipientRole: params.data.recipientRole,
-          status,
-          workspaceName,
-          previousOwner,
-          newOwner,
-        }),
+        details: pendingDetails,
       });
+      const delivery = await sendOwnershipTransferNotice({
+        transferId: params.data.transferId,
+        workspaceName,
+        previousOwner,
+        newOwner,
+        recipientRole: params.data.recipientRole,
+      });
+      const status = delivery.error ? "failed" : "sent";
+      try {
+        await tx.transaction(async (statusTx) => {
+          await statusTx.insert(auditEventsTable).values({
+            workspaceId: access.workspaceId,
+            clerkUserId: access.userId,
+            actor: access.name || access.email || "Firm user",
+            action: "ownership_notice_delivery",
+            entityType: "workspace",
+            entityId: access.workspaceId,
+            entityLabel: access.workspaceName,
+            details: ownershipNoticeAuditDetails({
+              transferId: params.data.transferId,
+              recipientRole: params.data.recipientRole,
+              status,
+              workspaceName,
+              previousOwner,
+              newOwner,
+            }),
+          });
+        });
+      } catch (error) {
+        logger.warn(
+          {
+            workspaceId: access.workspaceId,
+            transferId: params.data.transferId,
+            recipientRole: params.data.recipientRole,
+            err: error,
+          },
+          "Could not record ownership notice retry delivery result",
+        );
+      }
       return delivery.error
         ? { kind: "failed" as const, error: delivery.error }
         : { kind: "sent" as const };

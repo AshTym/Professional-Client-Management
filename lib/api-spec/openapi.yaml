@@ -339,10 +339,10 @@ paths:
     get:
       operationId: listOwnershipNoticeFailures
       tags: [members]
-      summary: List ownership-transfer notices that still need delivery
+      summary: List ownership-transfer notices with failed or unconfirmed delivery
       responses:
         "200":
-          description: Failed ownership notices for the current firm
+          description: Ownership notices with failed or unconfirmed delivery for the current firm
           content:
             application/json:
               schema:
@@ -366,7 +366,7 @@ paths:
     post:
       operationId: retryOwnershipNotice
       tags: [members]
-      summary: Retry one failed ownership-transfer notice without changing firm access
+      summary: Retry one failed or unconfirmed ownership-transfer notice without changing firm access
       responses:
         "200":
           description: The notice was sent
@@ -381,7 +381,7 @@ paths:
         "404":
           description: The failed notice was not found in this firm
         "409":
-          description: The notice has already been sent or is not currently failed
+          description: The notice has already been sent or is not awaiting delivery confirmation
         "502":
           description: Clerk could not send the notice; the failed state remains available for another retry
   /workspace/invitations/{id}/resend:
@@ -2329,7 +2329,7 @@ components:
         createdAt: { type: string, format: date-time }
     OwnershipNoticeFailure:
       type: object
-      required: [transferId, recipientRole, recipientName, otherOwnerName, failedAt]
+      required: [transferId, recipientRole, recipientName, otherOwnerName, status, recordedAt]
       properties:
         transferId: { type: string }
         recipientRole:
@@ -2337,7 +2337,10 @@ components:
           enum: [former_owner, new_owner]
         recipientName: { type: string }
         otherOwnerName: { type: string }
-        failedAt: { type: string, format: date-time }
+        status:
+          type: string
+          enum: [failed, pending]
+        recordedAt: { type: string, format: date-time }
     OwnershipNoticeRetryResult:
       type: object
       required: [sent]

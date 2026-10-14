@@ -908,7 +908,7 @@ function TeamPage() {
       (ownershipNoticeFailures.data?.length ?? 0) > 0 || ownershipNoticeMessage) && <section className="mt-6 overflow-hidden rounded-md border border-[#e5d4b1] bg-[#fbf5e8]" aria-labelledby="ownership-notice-heading" data-testid="panel-ownership-notice-failures">
       <div className="border-b border-[#eadcbe] px-5 py-4">
         <h2 id="ownership-notice-heading" className="serif text-xl font-bold text-[#725a31]">Ownership notices</h2>
-        <p className="mt-1 text-xs text-[#766b55]">Ownership changes are complete even when an email could not be delivered.</p>
+        <p className="mt-1 text-xs text-[#766b55]">Ownership changes are complete; review any notice with failed or unconfirmed delivery.</p>
       </div>
       {ownershipNoticeMessage && <p className="px-5 pt-4 text-sm text-[#446b55]" role="status" data-testid="status-ownership-notice-action">{ownershipNoticeMessage}</p>}
       {ownershipNoticeFailures.isLoading ? <div className="p-5 text-sm text-[#766b55]">Checking ownership notices…</div> :
@@ -918,7 +918,9 @@ function TeamPage() {
           const recipientLabel = notice.recipientRole === 'former_owner' ? 'outgoing owner' : 'incoming owner';
           return <div key={`${notice.transferId}-${notice.recipientRole}`} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between" data-testid={`ownership-notice-failure-${notice.transferId}-${notice.recipientRole}`}>
             <div className="text-sm text-[#53625f]">
-              <span className="font-semibold">{notice.recipientName}</span> ({recipientLabel}) wasn’t emailed after ownership transferred to <span className="font-semibold">{notice.otherOwnerName}</span>.
+              {notice.status === 'pending' ?
+                <>Delivery to <span className="font-semibold">{notice.recipientName}</span> ({recipientLabel}) could not be confirmed after ownership transferred to <span className="font-semibold">{notice.otherOwnerName}</span>.</> :
+                <><span className="font-semibold">{notice.recipientName}</span> ({recipientLabel}) wasn’t emailed after ownership transferred to <span className="font-semibold">{notice.otherOwnerName}</span>.</>}
             </div>
             {(workspace.data?.role === 'owner' || workspace.data?.role === 'admin') && <Button variant="outline" disabled={retryOwnershipNotice.isPending} testId={`button-retry-ownership-notice-${notice.transferId}-${notice.recipientRole}`} onClick={() => retryFailedOwnershipNotice(notice.transferId, notice.recipientRole, notice.recipientName)}>
               <RefreshCw className="h-4 w-4" />{retryOwnershipNotice.isPending ? 'Sending…' : 'Retry notice'}

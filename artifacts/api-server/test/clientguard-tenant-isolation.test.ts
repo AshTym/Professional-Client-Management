@@ -2532,6 +2532,200 @@ test("one failed ownership notice does not suppress the other owner's notice or 
   }
 });
 
+test("ownership notice delivery stays retryable when delivery status logging fails", async (t) => {
+  const successorId = `ownership-log-failure-${randomUUID()}`;
+  const successorName = `Unconfirmed Notice Successor ${randomUUID()}`;
+  const [currentOwner] = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.clerkUserId, firms.primary.ownerId))
+    .limit(1);
+  const [successor] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: successorId,
+      email: "ownership-log-failure@example.test",
+      displayName: successorName,
+      role: "professional",
+    })
+    .returning();
+  const previousNotificationSender = process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL;
+  process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL = "notifications@example.test";
+  let retryAllowed = false;
+  const sentRecipients: string[] = [];
+  const createEmail = t.mock.method(
+    clerkClient.emails,
+    "create",
+    async (params) => {
+      const email = params as { to: { userId?: string } };
+      const recipientId = email.to.userId ?? "";
+      sentRecipients.push(recipientId);
+      if (recipientId === successorId && !retryAllowed) {
+        throw new Error("Email provider unavailable for new owner");
+      }
+      return {} as never;
+    },
+  );
+
+  try {
+    await appPool!.query(`
+      CREATE FUNCTION "${schemaName}".reject_ownership_notice_status_update()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        IF TG_OP = 'INSERT' THEN
+          IF NEW.action = 'ownership_notice_delivery'
+            AND NEW.details->>'status' IN ('failed', 'sent') THEN
+            RAISE EXCEPTION 'simulated ownership notice result logging failure';
+          END IF;
+        ELSIF OLD.action = 'ownership_notice_delivery'
+          AND OLD.details->>'status' = 'pending'
+          AND NEW.details->>'status' IN ('failed', 'sent') THEN
+          RAISE EXCEPTION 'simulated ownership notice result logging failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$;
+      CREATE TRIGGER reject_ownership_notice_status_update
+      BEFORE INSERT OR UPDATE ON "${schemaName}".clientguard_audit_events
+      FOR EACH ROW
+      EXECUTE FUNCTION "${schemaName}".reject_ownership_notice_status_update();
+    `);
+
+    const transferred = await request(
+      `/workspace/members/${successor.id}/transfer-ownership`,
+      { userId: firms.primary.ownerId, method: "POST" },
+    );
+    assert.equal(transferred.response.status, 200);
+    assert.equal(createEmail.mock.callCount(), 2);
+    assert(sentRecipients.includes(firms.primary.ownerId));
+    assert(sentRecipients.includes(successorId));
+
+    const noticeEvents = await db
+      .select()
+      .from(auditEventsTable)
+      .where(
+        and(
+          eq(auditEventsTable.workspaceId, firms.primary.workspaceId),
+          eq(auditEventsTable.action, "ownership_notice_delivery"),
+        ),
+      );
+    const transferEvents = noticeEvents.filter(
+      (event) => event.details.newOwnerId === successorId,
+    );
+    assert.equal(transferEvents.length, 2);
+    const transferId = String(transferEvents[0]!.details.transferId);
+    assert(transferEvents.every((event) => event.details.status === "pending"));
+
+    const visibleNotices = await request("/workspace/ownership-notices", {
+      userId: firms.primary.ownerId,
+    });
+    assert.equal(visibleNotices.response.status, 200);
+    assert.deepEqual(
+      (visibleNotices.body as Array<{ transferId: string; status: string }>)
+        .filter((notice) => notice.transferId === transferId)
+        .map(({ status }) => status),
+      ["pending", "pending"],
+    );
+
+    retryAllowed = true;
+    const retry = await request(
+      `/workspace/ownership-notices/${transferId}/new_owner/retry`,
+      { userId: firms.primary.ownerId, method: "POST" },
+    );
+    assert.equal(retry.response.status, 200);
+    assert.equal(createEmail.mock.callCount(), 3);
+    assert.equal(sentRecipients.at(-1), successorId);
+
+    const stillUnconfirmed = await request("/workspace/ownership-notices", {
+      userId: firms.primary.ownerId,
+    });
+    assert.deepEqual(
+      (stillUnconfirmed.body as Array<{ transferId: string; status: string }>)
+        .filter((notice) => notice.transferId === transferId)
+        .map(({ status }) => status),
+      ["pending", "pending"],
+    );
+
+    await appPool!.query(`
+      DROP TRIGGER reject_ownership_notice_status_update
+      ON "${schemaName}".clientguard_audit_events;
+      DROP FUNCTION "${schemaName}".reject_ownership_notice_status_update();
+    `);
+
+    const retryAfterLoggingRecovers = await request(
+      `/workspace/ownership-notices/${transferId}/new_owner/retry`,
+      { userId: firms.primary.ownerId, method: "POST" },
+    );
+    assert.equal(retryAfterLoggingRecovers.response.status, 200);
+    assert.equal(createEmail.mock.callCount(), 4);
+
+    const remainingNotices = await request("/workspace/ownership-notices", {
+      userId: firms.primary.ownerId,
+    });
+    assert.deepEqual(
+      (remainingNotices.body as Array<{ transferId: string; recipientRole: string }>)
+        .filter((notice) => notice.transferId === transferId)
+        .map(({ recipientRole }) => recipientRole),
+      ["former_owner"],
+    );
+  } finally {
+    await appPool!.query(`
+      DROP TRIGGER IF EXISTS reject_ownership_notice_status_update
+      ON "${schemaName}".clientguard_audit_events;
+      DROP FUNCTION IF EXISTS "${schemaName}".reject_ownership_notice_status_update();
+    `);
+    const noticeEvents = await db
+      .select()
+      .from(auditEventsTable)
+      .where(
+        and(
+          eq(auditEventsTable.workspaceId, firms.primary.workspaceId),
+          eq(auditEventsTable.action, "ownership_notice_delivery"),
+        ),
+      );
+    const transferEventIds = noticeEvents
+      .filter((event) => event.details.newOwnerId === successorId)
+      .map(({ id }) => id);
+    if (transferEventIds.length) {
+      await db
+        .delete(auditEventsTable)
+        .where(inArray(auditEventsTable.id, transferEventIds));
+    }
+    const transferActivities = await db
+      .select({ id: activitiesTable.id })
+      .from(activitiesTable)
+      .where(
+        and(
+          eq(activitiesTable.workspaceId, firms.primary.workspaceId),
+          eq(
+            activitiesTable.action,
+            `transferred firm ownership from ${currentOwner.displayName || currentOwner.email} to ${successorName}`,
+          ),
+        ),
+      );
+    if (transferActivities.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, transferActivities.map(({ id }) => id)));
+    }
+    await db
+      .update(membershipsTable)
+      .set({ role: "owner" })
+      .where(eq(membershipsTable.id, currentOwner.id));
+    await db
+      .delete(membershipsTable)
+      .where(eq(membershipsTable.id, successor.id));
+    if (previousNotificationSender === undefined) {
+      delete process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL;
+    } else {
+      process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL = previousNotificationSender;
+    }
+  }
+});
+
 test("failed ownership notices can be retried separately without repeating the transfer", async (t) => {
   const successorId = `ownership-notice-failure-${randomUUID()}`;
   const viewerId = `ownership-notice-viewer-${randomUUID()}`;
@@ -2829,7 +3023,7 @@ test("concurrent ownership notice retries from two admins only send once and kee
     const thisNoticeEvents = noticeEvents.filter(
       (event) => event.details.transferId === transferId,
     );
-    assert.equal(thisNoticeEvents.length, 2);
+    assert.equal(thisNoticeEvents.length, 3);
     const orderedNoticeEvents = thisNoticeEvents.sort((a, b) => a.id - b.id);
     assert.equal(orderedNoticeEvents.at(-1)?.details.status, "sent");
   } finally {

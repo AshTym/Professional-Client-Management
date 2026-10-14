@@ -1595,7 +1595,7 @@ export const getListOwnershipNoticeFailuresUrl = () => {
 }
 
 /**
- * @summary List ownership-transfer notices that still need delivery
+ * @summary List ownership-transfer notices with failed or unconfirmed delivery
  */
 export const listOwnershipNoticeFailures = async ( options?: Parameters<typeof customFetch>[1]): Promise<OwnershipNoticeFailure[]> => {
 
@@ -1666,7 +1666,7 @@ export function useListOwnershipNoticeFailures<TData = Awaited<ReturnType<typeof
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary List ownership-transfer notices that still need delivery
+ * @summary List ownership-transfer notices with failed or unconfirmed delivery
  */
 
 export function useListOwnershipNoticeFailures<TData = Awaited<ReturnType<typeof listOwnershipNoticeFailures>>, TError = ErrorType<void>>(
@@ -1697,7 +1697,7 @@ export const getRetryOwnershipNoticeUrl = (transferId: string,
 }
 
 /**
- * @summary Retry one failed ownership-transfer notice without changing firm access
+ * @summary Retry one failed or unconfirmed ownership-transfer notice without changing firm access
  */
 export const retryOwnershipNotice = async (transferId: string,
     recipientRole: 'former_owner' | 'new_owner', options?: Parameters<typeof customFetch>[1]): Promise<OwnershipNoticeRetryResult> => {
@@ -1750,7 +1750,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type RetryOwnershipNoticeMutationVariables = {transferId: string;recipientRole: 'former_owner' | 'new_owner'}
 
     /**
- * @summary Retry one failed ownership-transfer notice without changing firm access
+ * @summary Retry one failed or unconfirmed ownership-transfer notice without changing firm access
  */
 export const useRetryOwnershipNotice = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryOwnershipNotice>>, TError,RetryOwnershipNoticeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
