@@ -2720,6 +2720,150 @@ test("failed ownership notices can be retried separately without repeating the t
   }
 });
 
+test("concurrent ownership notice retries from two admins only send once and keep the sent status", async (t) => {
+  const adminId = `ownership-notice-admin-${randomUUID()}`;
+  const transferId = `ownership-notice-concurrent-${randomUUID()}`;
+  const previousOwner = {
+    clerkUserId: firms.primary.ownerId,
+    displayName: "Current Firm Owner",
+  };
+  const newOwner = {
+    clerkUserId: `ownership-notice-successor-${randomUUID()}`,
+    displayName: "New Firm Owner",
+  };
+  const [firstAdmin] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: adminId,
+      email: "ownership-notice-admin-one@example.test",
+      displayName: "Notice Retry Admin One",
+      role: "admin",
+    })
+    .returning();
+  const secondAdminId = `ownership-notice-admin-${randomUUID()}`;
+  const [secondAdmin] = await db
+    .insert(membershipsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: secondAdminId,
+      email: "ownership-notice-admin-two@example.test",
+      displayName: "Notice Retry Admin Two",
+      role: "admin",
+    })
+    .returning();
+  await db
+    .insert(auditEventsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      clerkUserId: firms.primary.ownerId,
+      actor: "Current Firm Owner",
+      action: "ownership_notice_delivery",
+      entityType: "workspace",
+      entityId: firms.primary.workspaceId,
+      entityLabel: "Primary Test Firm",
+      details: {
+        transferId,
+        recipientRole: "former_owner",
+        status: "failed",
+        workspaceName: "Primary Test Firm",
+        previousOwnerId: previousOwner.clerkUserId,
+        previousOwnerName: previousOwner.displayName,
+        newOwnerId: newOwner.clerkUserId,
+        newOwnerName: newOwner.displayName,
+      },
+    })
+    .returning();
+  const previousNotificationSender = process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL;
+  process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL = "notifications@example.test";
+  const sendStarted = deferred<void>();
+  const releaseSend = deferred<void>();
+  const createEmail = t.mock.method(
+    clerkClient.emails,
+    "create",
+    async () => {
+      sendStarted.resolve();
+      await releaseSend.promise;
+      return {} as never;
+    },
+  );
+  const retryPath =
+    `/workspace/ownership-notices/${transferId}/former_owner/retry`;
+
+  try {
+    const firstAdminRetry = request(retryPath, {
+      userId: firstAdmin.clerkUserId,
+      method: "POST",
+    });
+    await sendStarted.promise;
+    const secondAdminRetry = request(retryPath, {
+      userId: secondAdmin.clerkUserId,
+      method: "POST",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    releaseSend.resolve();
+
+    const [firstResult, secondResult] = await Promise.all([
+      firstAdminRetry,
+      secondAdminRetry,
+    ]);
+    assert.equal(firstResult.response.status, 200);
+    assert.equal(secondResult.response.status, 409);
+    assert.equal(createEmail.mock.callCount(), 1);
+
+    const listedFailures = await request("/workspace/ownership-notices", {
+      userId: firstAdmin.clerkUserId,
+    });
+    assert.equal(listedFailures.response.status, 200);
+    assert.deepEqual(listedFailures.body, []);
+
+    const noticeEvents = await db
+      .select()
+      .from(auditEventsTable)
+      .where(
+        and(
+          eq(auditEventsTable.workspaceId, firms.primary.workspaceId),
+          eq(auditEventsTable.action, "ownership_notice_delivery"),
+        ),
+      );
+    const thisNoticeEvents = noticeEvents.filter(
+      (event) => event.details.transferId === transferId,
+    );
+    assert.equal(thisNoticeEvents.length, 2);
+    const orderedNoticeEvents = thisNoticeEvents.sort((a, b) => a.id - b.id);
+    assert.equal(orderedNoticeEvents.at(-1)?.details.status, "sent");
+  } finally {
+    releaseSend.resolve();
+    const relatedEvents = await db
+      .select({ id: auditEventsTable.id, details: auditEventsTable.details })
+      .from(auditEventsTable)
+      .where(
+        and(
+          eq(auditEventsTable.workspaceId, firms.primary.workspaceId),
+          eq(auditEventsTable.action, "ownership_notice_delivery"),
+        ),
+      );
+    const relatedEventIds = relatedEvents
+      .filter((event) => event.details.transferId === transferId)
+      .map(({ id }) => id);
+    if (relatedEventIds.length) {
+      await db
+        .delete(auditEventsTable)
+        .where(inArray(auditEventsTable.id, relatedEventIds));
+    }
+    await db
+      .delete(membershipsTable)
+      .where(
+        inArray(membershipsTable.id, [firstAdmin.id, secondAdmin.id]),
+      );
+    if (previousNotificationSender === undefined) {
+      delete process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL;
+    } else {
+      process.env.CLIENTGUARD_NOTIFICATION_FROM_EMAIL = previousNotificationSender;
+    }
+  }
+});
+
 test("simultaneous ownership transfers leave one owner and one matching audit event", async () => {
   const firstSuccessorName = `Ownership Candidate One ${randomUUID()}`;
   const secondSuccessorName = `Ownership Candidate Two ${randomUUID()}`;

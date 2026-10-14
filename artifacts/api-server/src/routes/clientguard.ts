@@ -1356,87 +1356,89 @@ router.post(
       return;
     }
 
-    const events = await db
-      .select()
-      .from(auditEventsTable)
-      .where(
-        and(
-          eq(auditEventsTable.workspaceId, access.workspaceId),
-          eq(auditEventsTable.action, "ownership_notice_delivery"),
-        ),
-      )
-      .orderBy(desc(auditEventsTable.occurredAt), desc(auditEventsTable.id));
-    const latestEvent = events.find(
-      (event) =>
-        ownershipNoticeString(event.details, "transferId") ===
-          params.data.transferId &&
-        ownershipNoticeRole(
-          ownershipNoticeString(event.details, "recipientRole"),
-        ) === params.data.recipientRole,
-    );
+    const retryResult = await db.transaction(async (tx) => {
+      const noticeLockKey =
+        `clientguard:ownership-notice:${access.workspaceId}:${params.data.transferId}:${params.data.recipientRole}`;
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${noticeLockKey}))`,
+      );
+      const events = await tx
+        .select()
+        .from(auditEventsTable)
+        .where(
+          and(
+            eq(auditEventsTable.workspaceId, access.workspaceId),
+            eq(auditEventsTable.action, "ownership_notice_delivery"),
+          ),
+        )
+        .orderBy(desc(auditEventsTable.occurredAt), desc(auditEventsTable.id));
+      const latestEvent = events.find(
+        (event) =>
+          ownershipNoticeString(event.details, "transferId") ===
+            params.data.transferId &&
+          ownershipNoticeRole(
+            ownershipNoticeString(event.details, "recipientRole"),
+          ) === params.data.recipientRole,
+      );
 
-    if (!latestEvent) {
-      res.status(404).json({ error: "That failed ownership notice was not found in your firm." });
-      return;
-    }
-    if (
-      ownershipNoticeStatus(
-        ownershipNoticeString(latestEvent.details, "status"),
-      ) !== "failed"
-    ) {
-      res.status(409).json({ error: "That ownership notice is no longer awaiting delivery." });
-      return;
-    }
+      if (!latestEvent) return { kind: "not_found" as const };
+      if (
+        ownershipNoticeStatus(
+          ownershipNoticeString(latestEvent.details, "status"),
+        ) !== "failed"
+      ) {
+        return { kind: "not_retryable" as const };
+      }
 
-    const previousOwnerId = ownershipNoticeString(
-      latestEvent.details,
-      "previousOwnerId",
-    );
-    const previousOwnerName = ownershipNoticeString(
-      latestEvent.details,
-      "previousOwnerName",
-    );
-    const newOwnerId = ownershipNoticeString(latestEvent.details, "newOwnerId");
-    const newOwnerName = ownershipNoticeString(
-      latestEvent.details,
-      "newOwnerName",
-    );
-    const workspaceName = ownershipNoticeString(
-      latestEvent.details,
-      "workspaceName",
-    );
-    if (
-      !previousOwnerId ||
-      !previousOwnerName ||
-      !newOwnerId ||
-      !newOwnerName ||
-      !workspaceName
-    ) {
-      res.status(404).json({ error: "That failed ownership notice could not be recovered." });
-      return;
-    }
+      const previousOwnerId = ownershipNoticeString(
+        latestEvent.details,
+        "previousOwnerId",
+      );
+      const previousOwnerName = ownershipNoticeString(
+        latestEvent.details,
+        "previousOwnerName",
+      );
+      const newOwnerId = ownershipNoticeString(latestEvent.details, "newOwnerId");
+      const newOwnerName = ownershipNoticeString(
+        latestEvent.details,
+        "newOwnerName",
+      );
+      const workspaceName = ownershipNoticeString(
+        latestEvent.details,
+        "workspaceName",
+      );
+      if (
+        !previousOwnerId ||
+        !previousOwnerName ||
+        !newOwnerId ||
+        !newOwnerName ||
+        !workspaceName
+      ) {
+        return { kind: "unrecoverable" as const };
+      }
 
-    const previousOwner = {
-      clerkUserId: previousOwnerId,
-      displayName: previousOwnerName,
-    };
-    const newOwner = { clerkUserId: newOwnerId, displayName: newOwnerName };
-    const delivery = await sendOwnershipTransferNotice({
-      transferId: params.data.transferId,
-      workspaceName,
-      previousOwner,
-      newOwner,
-      recipientRole: params.data.recipientRole,
-    });
-    const status = delivery.error ? "failed" : "sent";
-    try {
-      await logAuditEvent(
-        access,
-        "ownership_notice_delivery",
-        "workspace",
-        access.workspaceId,
-        access.workspaceName,
-        ownershipNoticeAuditDetails({
+      const previousOwner = {
+        clerkUserId: previousOwnerId,
+        displayName: previousOwnerName,
+      };
+      const newOwner = { clerkUserId: newOwnerId, displayName: newOwnerName };
+      const delivery = await sendOwnershipTransferNotice({
+        transferId: params.data.transferId,
+        workspaceName,
+        previousOwner,
+        newOwner,
+        recipientRole: params.data.recipientRole,
+      });
+      const status = delivery.error ? "failed" : "sent";
+      await tx.insert(auditEventsTable).values({
+        workspaceId: access.workspaceId,
+        clerkUserId: access.userId,
+        actor: access.name || access.email || "Firm user",
+        action: "ownership_notice_delivery",
+        entityType: "workspace",
+        entityId: access.workspaceId,
+        entityLabel: access.workspaceName,
+        details: ownershipNoticeAuditDetails({
           transferId: params.data.transferId,
           recipientRole: params.data.recipientRole,
           status,
@@ -1444,26 +1446,31 @@ router.post(
           previousOwner,
           newOwner,
         }),
-      );
-    } catch (error) {
-      logger.warn(
-        {
-          workspaceId: access.workspaceId,
-          transferId: params.data.transferId,
-          recipientRole: params.data.recipientRole,
-          err: error,
-        },
-        "Could not record firm ownership notice retry result",
-      );
-    }
+      });
+      return delivery.error
+        ? { kind: "failed" as const, error: delivery.error }
+        : { kind: "sent" as const };
+    });
 
-    if (delivery.error) {
+    if (retryResult.kind === "not_found") {
+      res.status(404).json({ error: "That failed ownership notice was not found in your firm." });
+      return;
+    }
+    if (retryResult.kind === "unrecoverable") {
+      res.status(404).json({ error: "That failed ownership notice could not be recovered." });
+      return;
+    }
+    if (retryResult.kind === "not_retryable") {
+      res.status(409).json({ error: "That ownership notice is no longer awaiting delivery." });
+      return;
+    }
+    if (retryResult.kind === "failed") {
       logger.warn(
         {
           workspaceId: access.workspaceId,
           transferId: params.data.transferId,
           recipientRole: params.data.recipientRole,
-          err: delivery.error,
+          err: retryResult.error,
         },
         "Could not retry firm ownership transfer notice",
       );
