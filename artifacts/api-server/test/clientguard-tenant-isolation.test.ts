@@ -3538,6 +3538,7 @@ test("a new invitation can be created after an older invitation expires", async 
       invitedByClerkUserId: firms.primary.ownerId,
       tokenHash: createHash("sha256").update(oldToken).digest("hex"),
       expiresAt: new Date(Date.now() - 60_000),
+      createdAt: new Date(Date.now() - 20 * 60 * 1000),
     })
     .returning();
   const createInvitation = t.mock.method(
@@ -3614,7 +3615,7 @@ test("firm admins can resend a pending invitation and invalidate its previous li
     role: "admin",
   });
   const oldToken = randomUUID();
-  const oldCreatedAt = new Date(Date.now() - 60_000);
+  const oldCreatedAt = new Date(Date.now() - 20 * 60 * 1000);
   const [pending] = await db
     .insert(invitationsTable)
     .values({
@@ -3707,6 +3708,162 @@ test("firm admins can resend a pending invitation and invalidate its previous li
   assert.equal(oldLink.response.status, 404);
 });
 
+test("invitation resends are limited per firm and invitee, then allowed after the cooldown", async (t) => {
+  const sharedEmail = `scoped-resend-${randomUUID()}@example.test`;
+  const otherEmail = `unrelated-resend-${randomUUID()}@example.test`;
+  const staleCreatedAt = new Date(Date.now() - 20 * 60 * 1000);
+  const invitationToken = () => createHash("sha256").update(randomUUID()).digest("hex");
+  const [primaryShared, primaryOther, otherFirmShared] = await db
+    .insert(invitationsTable)
+    .values([
+      {
+        workspaceId: firms.primary.workspaceId,
+        email: sharedEmail,
+        role: "assistant",
+        invitedByClerkUserId: firms.primary.ownerId,
+        tokenHash: invitationToken(),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        createdAt: staleCreatedAt,
+      },
+      {
+        workspaceId: firms.primary.workspaceId,
+        email: otherEmail,
+        role: "assistant",
+        invitedByClerkUserId: firms.primary.ownerId,
+        tokenHash: invitationToken(),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        createdAt: staleCreatedAt,
+      },
+      {
+        workspaceId: firms.other.workspaceId,
+        email: sharedEmail,
+        role: "assistant",
+        invitedByClerkUserId: firms.other.ownerId,
+        tokenHash: invitationToken(),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        createdAt: staleCreatedAt,
+      },
+    ])
+    .returning();
+  let sendCount = 0;
+  t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async () => ({ id: `scoped_resend_${++sendCount}` }) as never,
+  );
+
+  const initialAttempts = await Promise.all([
+    request(`/workspace/invitations/${primaryShared.id}/resend`, {
+      userId: firms.primary.ownerId,
+      method: "POST",
+    }),
+    request(`/workspace/invitations/${primaryShared.id}/resend`, {
+      userId: firms.primary.ownerId,
+      method: "POST",
+    }),
+  ]);
+  const firstSend = initialAttempts.find(({ response }) => response.status === 200);
+  const repeatedSend = initialAttempts.find(({ response }) => response.status === 429);
+  assert(firstSend);
+  assert(repeatedSend);
+  assert.equal(firstSend.response.status, 200);
+
+  assert.equal(repeatedSend.response.status, 429);
+  assert.match(
+    (repeatedSend.body as { error: string }).error,
+    /sent recently.*wait before sending another email/i,
+  );
+  const retryAfterSeconds = (repeatedSend.body as { retryAfterSeconds: number })
+    .retryAfterSeconds;
+  assert(retryAfterSeconds > 0 && retryAfterSeconds <= 15 * 60);
+  assert.equal(repeatedSend.response.headers.get("retry-after"), String(retryAfterSeconds));
+  assert.equal(sendCount, 1);
+
+  const differentInvitee = await request(`/workspace/invitations/${primaryOther.id}/resend`, {
+    userId: firms.primary.ownerId,
+    method: "POST",
+  });
+  assert.equal(differentInvitee.response.status, 200);
+
+  const sameInviteeOtherFirm = await request(
+    `/workspace/invitations/${otherFirmShared.id}/resend`,
+    { userId: firms.other.ownerId, method: "POST" },
+  );
+  assert.equal(sameInviteeOtherFirm.response.status, 200);
+
+  await db
+    .update(invitationsTable)
+    .set({ createdAt: new Date(Date.now() - 16 * 60 * 1000) })
+    .where(eq(invitationsTable.id, primaryShared.id));
+  const afterCooldown = await request(`/workspace/invitations/${primaryShared.id}/resend`, {
+    userId: firms.primary.ownerId,
+    method: "POST",
+  });
+  assert.equal(afterCooldown.response.status, 200);
+  assert.equal(sendCount, 4);
+});
+
+test("withdrawing an invitation does not bypass the firm's resend cooldown", async (t) => {
+  const email = `withdrawn-resend-${randomUUID()}@example.test`;
+  const [pending] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email,
+      role: "assistant",
+      invitedByClerkUserId: firms.primary.ownerId,
+      clerkInvitationId: "withdrawn_resend_old_invitation",
+      tokenHash: createHash("sha256").update(randomUUID()).digest("hex"),
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      createdAt: new Date(Date.now() - 20 * 60 * 1000),
+    })
+    .returning();
+  let sendCount = 0;
+  t.mock.method(
+    clerkClient.invitations,
+    "createInvitation",
+    async () => ({ id: `withdrawn_resend_${++sendCount}` }) as never,
+  );
+  t.mock.method(
+    clerkClient.invitations,
+    "revokeInvitation",
+    async (id) => ({ id }) as never,
+  );
+
+  const resent = await request(`/workspace/invitations/${pending.id}/resend`, {
+    userId: firms.primary.ownerId,
+    method: "POST",
+  });
+  assert.equal(resent.response.status, 200);
+
+  const withdrawn = await request(`/workspace/invitations/${pending.id}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+  });
+  assert.equal(withdrawn.response.status, 200);
+
+  const recreatedTooSoon = await request("/workspace/invitations", {
+    userId: firms.primary.ownerId,
+    method: "POST",
+    body: { email, role: "assistant" },
+  });
+  assert.equal(recreatedTooSoon.response.status, 429);
+  assert.equal(recreatedTooSoon.response.headers.get("retry-after") !== null, true);
+  assert.equal(sendCount, 1);
+
+  await db
+    .update(invitationsTable)
+    .set({ createdAt: new Date(Date.now() - 16 * 60 * 1000) })
+    .where(eq(invitationsTable.id, pending.id));
+  const recreatedAfterCooldown = await request("/workspace/invitations", {
+    userId: firms.primary.ownerId,
+    method: "POST",
+    body: { email, role: "assistant" },
+  });
+  assert.equal(recreatedAfterCooldown.response.status, 201);
+  assert.equal(sendCount, 2);
+});
+
 test("a failed superseded Clerk revocation is visible and the old link cannot create membership", async (t) => {
   const adminId = `revocation-admin-${randomUUID()}`;
   const joiningUserId = `revocation-target-${randomUUID()}`;
@@ -3728,6 +3885,7 @@ test("a failed superseded Clerk revocation is visible and the old link cannot cr
       clerkInvitationId: "unrevoked_superseded_clerk_invitation",
       tokenHash: createHash("sha256").update(oldToken).digest("hex"),
       expiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date(Date.now() - 20 * 60 * 1000),
     })
     .returning();
   let newToken = "";
@@ -4091,6 +4249,7 @@ test("renewing an expired invitation does not replace another live invitation", 
       clerkInvitationId: "expired_conflict_clerk_invitation",
       tokenHash: createHash("sha256").update(expiredToken).digest("hex"),
       expiresAt: new Date(Date.now() - 60_000),
+      createdAt: new Date(Date.now() - 20 * 60 * 1000),
     })
     .returning();
   const [live] = await db
@@ -4151,6 +4310,7 @@ test("firm owners can renew expired invitations", async (t) => {
       invitedByClerkUserId: firms.primary.ownerId,
       tokenHash: createHash("sha256").update(oldToken).digest("hex"),
       expiresAt: new Date(Date.now() - 60_000),
+      createdAt: new Date(Date.now() - 20 * 60 * 1000),
     })
     .returning();
   const createInvitation = t.mock.method(
@@ -4308,6 +4468,7 @@ test("acceptance can finish while a resend email is slow and the new Clerk invit
       invitedByClerkUserId: firms.primary.ownerId,
       tokenHash: createHash("sha256").update(token).digest("hex"),
       expiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date(Date.now() - 20 * 60 * 1000),
     })
     .returning();
   t.mock.method(clerkClient.users, "getUser", async () => ({
@@ -4381,6 +4542,7 @@ test("withdrawal can finish while a resend email is slow and the new Clerk invit
       clerkInvitationId: "slow_resend_old_clerk_invitation",
       tokenHash: createHash("sha256").update(token).digest("hex"),
       expiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date(Date.now() - 20 * 60 * 1000),
     })
     .returning();
   const emailCreationStarted = deferred<void>();
@@ -4444,6 +4606,7 @@ test("a resend racing with acceptance rejects the superseded link without creati
       invitedByClerkUserId: firms.primary.ownerId,
       tokenHash: createHash("sha256").update(token).digest("hex"),
       expiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date(Date.now() - 20 * 60 * 1000),
     })
     .returning();
   const verificationStarted = deferred<void>();

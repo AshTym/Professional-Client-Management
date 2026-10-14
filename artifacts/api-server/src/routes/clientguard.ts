@@ -197,6 +197,7 @@ router.post("/workspace", async (req, res): Promise<void> => {
 });
 
 const invitationLifetimeMs = 7 * 24 * 60 * 60 * 1000;
+const invitationResendCooldownMs = 15 * 60 * 1000;
 
 function canManageInvitations(role: string): boolean {
   return role === "owner" || role === "admin";
@@ -1883,7 +1884,31 @@ router.post("/workspace/invitations", async (req, res): Promise<void> => {
         ),
       )
       .limit(1);
-    if (existingInvitation) return { conflict: true as const };
+    if (existingInvitation) return { kind: "conflict" as const };
+
+    const now = new Date();
+    const [recentInvitation] = await tx
+      .select({ createdAt: invitationsTable.createdAt })
+      .from(invitationsTable)
+      .where(
+        and(
+          eq(invitationsTable.workspaceId, access.workspaceId),
+          sql`lower(${invitationsTable.email}) = ${email}`,
+        ),
+      )
+      .orderBy(desc(invitationsTable.createdAt))
+      .limit(1);
+    if (recentInvitation) {
+      const retryAt = new Date(
+        recentInvitation.createdAt.getTime() + invitationResendCooldownMs,
+      );
+      if (retryAt > now) {
+        return {
+          kind: "rateLimited" as const,
+          retryAfterSeconds: Math.ceil((retryAt.getTime() - now.getTime()) / 1000),
+        };
+      }
+    }
 
     const [invitation] = await tx
       .insert(invitationsTable)
@@ -1896,10 +1921,18 @@ router.post("/workspace/invitations", async (req, res): Promise<void> => {
         expiresAt,
       })
       .returning();
-    return { conflict: false as const, invitation };
+    return { kind: "created" as const, invitation };
   });
-  if (creation.conflict) {
+  if (creation.kind === "conflict") {
     res.status(409).json({ error: "A pending invitation already exists for that email address." });
+    return;
+  }
+  if (creation.kind === "rateLimited") {
+    res.setHeader("Retry-After", String(creation.retryAfterSeconds));
+    res.status(429).json({
+      error: "An invitation was sent recently. Please wait before sending another email to this address.",
+      retryAfterSeconds: creation.retryAfterSeconds,
+    });
     return;
   }
   const { invitation } = creation;
@@ -1952,11 +1985,10 @@ router.post(
 
     const token = randomUUID();
     const tokenHash = createHash("sha256").update(token).digest("hex");
-    const now = new Date();
     let createdClerkInvitationId: string | undefined;
 
     try {
-      const initialCheck = await db.transaction(async (tx) => {
+      const result = await db.transaction(async (tx) => {
         const [pending] = await tx
           .select()
           .from(invitationsTable)
@@ -1975,7 +2007,22 @@ router.post(
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtext(${`clientguard:invitation:${access.workspaceId}:${email}`}))`,
         );
-        const [otherPending] = await tx
+        const [currentPending] = await tx
+          .select()
+          .from(invitationsTable)
+          .where(
+            and(
+              eq(invitationsTable.id, pending.id),
+              eq(invitationsTable.workspaceId, access.workspaceId),
+              isNull(invitationsTable.acceptedAt),
+              isNull(invitationsTable.revokedAt),
+            ),
+          )
+          .limit(1);
+        if (!currentPending) return { kind: "missing" as const };
+
+        const now = new Date();
+        const [latestOtherPending] = await tx
           .select({ id: invitationsTable.id })
           .from(invitationsTable)
           .where(
@@ -1989,41 +2036,46 @@ router.post(
             ),
           )
           .limit(1);
-        if (otherPending) return { kind: "conflict" as const };
+        if (latestOtherPending) return { kind: "conflict" as const };
 
-        return { kind: "ready" as const, pending, email };
-      });
+        const [lastSentInvitation] = await tx
+          .select({ createdAt: invitationsTable.createdAt })
+          .from(invitationsTable)
+          .where(
+            and(
+              eq(invitationsTable.workspaceId, access.workspaceId),
+              sql`lower(${invitationsTable.email}) = ${email}`,
+            ),
+          )
+          .orderBy(desc(invitationsTable.createdAt))
+          .limit(1);
+        if (lastSentInvitation) {
+          const retryAt = new Date(
+            lastSentInvitation.createdAt.getTime() + invitationResendCooldownMs,
+          );
+          if (retryAt > now) {
+            return {
+              kind: "rateLimited" as const,
+              retryAfterSeconds: Math.ceil((retryAt.getTime() - now.getTime()) / 1000),
+            };
+          }
+        }
 
-      if (initialCheck.kind === "missing") {
-        res.status(404).json({ error: "This invitation is no longer pending in your firm." });
-        return;
-      }
-      if (initialCheck.kind === "conflict") {
-        res.status(409).json({
-          error: "A pending invitation already exists for that email address.",
+        const clerkInvitation = await clerkClient.invitations.createInvitation({
+          emailAddress: currentPending.email,
+          expiresInDays: 7,
+          ignoreExisting: true,
+          notify: true,
+          redirectUrl: `/invite?token=${encodeURIComponent(token)}`,
         });
-        return;
-      }
+        createdClerkInvitationId = clerkInvitation.id;
 
-      const clerkInvitation = await clerkClient.invitations.createInvitation({
-        emailAddress: initialCheck.pending.email,
-        expiresInDays: 7,
-        ignoreExisting: true,
-        notify: true,
-        redirectUrl: `/invite?token=${encodeURIComponent(token)}`,
-      });
-      createdClerkInvitationId = clerkInvitation.id;
-
-      const result = await db.transaction(async (tx) => {
-        await tx.execute(
-          sql`SELECT pg_advisory_xact_lock(hashtext(${`clientguard:invitation:${access.workspaceId}:${initialCheck.email}`}))`,
-        );
         const [current] = await tx
           .select()
           .from(invitationsTable)
           .where(
             and(
-              eq(invitationsTable.id, initialCheck.pending.id),
+              eq(invitationsTable.id, currentPending.id),
               eq(invitationsTable.workspaceId, access.workspaceId),
             ),
           )
@@ -2033,7 +2085,7 @@ router.post(
           !current ||
           current.acceptedAt ||
           current.revokedAt ||
-          current.tokenHash !== initialCheck.pending.tokenHash
+          current.tokenHash !== currentPending.tokenHash
         ) {
           return { kind: "stale" as const };
         }
@@ -2044,7 +2096,7 @@ router.post(
           .where(
             and(
               eq(invitationsTable.workspaceId, access.workspaceId),
-              sql`lower(${invitationsTable.email}) = ${initialCheck.email}`,
+              sql`lower(${invitationsTable.email}) = ${email}`,
               sql`${invitationsTable.id} <> ${current.id}`,
               isNull(invitationsTable.acceptedAt),
               isNull(invitationsTable.revokedAt),
@@ -2072,15 +2124,25 @@ router.post(
       });
 
       if (result.kind !== "updated") {
-        try {
-          await clerkClient.invitations.revokeInvitation(createdClerkInvitationId);
-        } catch (error) {
-          req.log.warn(
-            { invitationId: params.data.id, error },
-            "Could not revoke a Clerk invitation created for a resend that lost its state check",
-          );
+        if (createdClerkInvitationId) {
+          try {
+            await clerkClient.invitations.revokeInvitation(createdClerkInvitationId);
+          } catch (error) {
+            req.log.warn(
+              { invitationId: params.data.id, error },
+              "Could not revoke a Clerk invitation created for a resend that lost its state check",
+            );
+          }
+          createdClerkInvitationId = undefined;
         }
-        createdClerkInvitationId = undefined;
+        if (result.kind === "rateLimited") {
+          res.setHeader("Retry-After", String(result.retryAfterSeconds));
+          res.status(429).json({
+            error: "An invitation was sent recently. Please wait before sending another email to this address.",
+            retryAfterSeconds: result.retryAfterSeconds,
+          });
+          return;
+        }
         if (result.kind === "conflict") {
           res.status(409).json({
             error: "A pending invitation already exists for that email address.",
