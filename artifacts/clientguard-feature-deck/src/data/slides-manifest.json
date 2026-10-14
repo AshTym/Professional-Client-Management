@@ -1,0 +1,122 @@
+[
+  {
+    "id": "00000001-0000-4000-8000-000000000001",
+    "position": 1,
+    "filepath": "src/pages/slides/Slide01.tsx",
+    "title": "ClientGuard",
+    "description": "Client and matter management for law firms and financial-service providers.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "00000002-0000-4000-8000-000000000002",
+    "position": 2,
+    "filepath": "src/pages/slides/Slide02.tsx",
+    "title": "A clearer path from intake to closeout",
+    "description": "Gather parties and client details before a matter opens; review potential conflicts; manage matter work; close with billing and retention review.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "00000003-0000-4000-8000-000000000003",
+    "position": 3,
+    "filepath": "src/pages/slides/Slide03.tsx",
+    "title": "Client and matter work, one view",
+    "description": "Create and search records, drill into details, follow activity, and export selected or all matters as PDFs.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "00000004-0000-4000-8000-000000000004",
+    "position": 4,
+    "filepath": "src/pages/slides/Slide04.tsx",
+    "title": "Intake that keeps professional judgment in the loop",
+    "description": "Capture parties and details, configure onboarding checks, flag conflicts for review, and require clearance before opening a matter.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "00000005-0000-4000-8000-000000000005",
+    "position": 5,
+    "filepath": "src/pages/slides/Slide05.tsx",
+    "title": "Billing drafts with saved terms and review",
+    "description": "Save matter billing terms, record time, prepare scheduled draft bills, and review before accounting sync.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "00000006-0000-4000-8000-000000000006",
+    "position": 6,
+    "filepath": "src/pages/slides/Slide06.tsx",
+    "title": "Documents become proposed work—not automatic tasks",
+    "description": "Store private documents and confirm source-backed task and calendar suggestions before they reach the planner.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "00000007-0000-4000-8000-000000000007",
+    "position": 7,
+    "filepath": "src/pages/slides/Slide07.tsx",
+    "title": "Client updates, drafted from real matter activity",
+    "description": "Schedule activity-based update drafts and edit, review, publish, or explicitly send them.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "00000008-0000-4000-8000-000000000008",
+    "position": 8,
+    "filepath": "src/pages/slides/Slide08.tsx",
+    "title": "A focused portal for clients",
+    "description": "Clients see explicitly shared matters, approved updates, messages, requests, and document uploads; firm notes and drafts remain private.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "00000009-0000-4000-8000-000000000009",
+    "position": 9,
+    "filepath": "src/pages/slides/Slide09.tsx",
+    "title": "Engagement letters with signature tracking",
+    "description": "Draft from scope and billing terms, send through DocuSign, track completion, and attach the signed PDF.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "00000010-0000-4000-8000-000000000010",
+    "position": 10,
+    "filepath": "src/pages/slides/Slide10.tsx",
+    "title": "Client-money records with approvals and reconciliation",
+    "description": "Matter-specific ledger entries, approvals, manual or CSV reconciliation, exceptions, and jurisdiction settings.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "00000011-0000-4000-8000-000000000011",
+    "position": 11,
+    "filepath": "src/pages/slides/Slide11.tsx",
+    "title": "Connect your firm's approved tools",
+    "description": "Connect Google, Microsoft, Xero, and QuickBooks through firm-owned accounts; sync only confirmed or reviewed work.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "00000012-0000-4000-8000-000000000012",
+    "position": 12,
+    "filepath": "src/pages/slides/Slide12.tsx",
+    "title": "Audit, retention, and legal-hold controls",
+    "description": "Audit sensitive activity, set retention periods, search and export activity, and apply or release legal holds.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "00000013-0000-4000-8000-000000000013",
+    "position": 13,
+    "filepath": "src/pages/slides/Slide13.tsx",
+    "title": "Close matters; make return work easier",
+    "description": "Complete final billing, handover, retention review, and re-engagement follow-ups.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "00000014-0000-4000-8000-000000000014",
+    "position": 14,
+    "filepath": "src/pages/slides/Slide14.tsx",
+    "title": "Firm operations reporting—and a transparent roadmap",
+    "description": "Current operations reports plus clearly labeled requested features that are not yet available.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "00000015-0000-4000-8000-000000000015",
+    "position": 15,
+    "filepath": "src/pages/slides/Slide15.tsx",
+    "title": "See what fits your firm",
+    "description": "Free for one client and one matter; AU$15 per client per month for two or more clients; explore the public site.",
+    "speakerNotes": ""
+  }
+]

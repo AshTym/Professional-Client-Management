@@ -1,0 +1,28 @@
+kind = "slides"
+previewPath = "/clientguard-feature-deck/"
+title = "ClientGuard — Feature Overview"
+description = "A 15-slide overview of ClientGuard's current features for law firms and financial-service providers, with requested but unavailable items clearly marked as roadmap."
+version = "1.0.0"
+id = "artifacts/clientguard-feature-deck"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/clientguard-feature-deck/" ]
+localPort = 24555
+
+[services.development]
+run = "pnpm --filter @workspace/clientguard-feature-deck run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/clientguard-feature-deck", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/clientguard-feature-deck/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24555"
+BASE_PATH = "/clientguard-feature-deck/"
