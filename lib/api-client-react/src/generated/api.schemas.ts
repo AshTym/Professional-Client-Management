@@ -9,6 +9,28 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface ContactInquiryInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+  /** @maxLength 254 */
+  email: string;
+  /** @maxLength 160 */
+  organization?: string;
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  message: string;
+  /**
+     * Hidden anti-spam field; leave blank.
+     * @maxLength 255
+     */
+  website?: string;
+}
+
 export type WorkspacePracticeType = typeof WorkspacePracticeType[keyof typeof WorkspacePracticeType];
 
 

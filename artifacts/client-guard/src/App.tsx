@@ -42,6 +42,7 @@ import MembershipConflicts from './MembershipConflicts';
 import PracticeOperations from './PracticeOperations';
 import OperationsReport from './OperationsReport';
 import MatterCloseout from './MatterCloseout';
+import { ContactPage, PricingPage } from './PublicPages';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -88,6 +89,14 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 function ClerkRoutes() {
+  return <Switch>
+    <Route path="/pricing" component={PricingPage} />
+    <Route path="/contact" component={ContactPage} />
+    <Route component={AuthenticatedRoutes} />
+  </Switch>;
+}
+function AuthenticatedRoutes() {
+  if (!clerkPubKey) throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY.');
   const [, setLocation] = useLocation();
   return <ClerkProvider publishableKey={clerkPubKey} proxyUrl={clerkProxyUrl} appearance={appearance}
     signInUrl={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`}
@@ -123,7 +132,6 @@ function ClientPortalRoute() {
   return <><Show when="signed-in"><Portal /></Show><Show when="signed-out"><Redirect to="/sign-in" /></Show></>;
 }
 function App() {
-  if (!clerkPubKey) throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY.');
   return <QueryClientProvider client={queryClient}><WouterRouter base={basePath}><ClerkRoutes /></WouterRouter></QueryClientProvider>;
 }
 export default App;
@@ -145,7 +153,7 @@ function Landing() {
   return <main className="grain min-h-[100dvh] bg-[#f6f3eb] text-[#23353b]">
     <header className="mx-auto flex max-w-[1240px] items-center justify-between px-6 py-6 lg:px-10">
       <Link href="/" className="flex items-center gap-3" data-testid="link-brand"><Logo /><span className="serif text-xl font-extrabold">ClientGuard</span></Link>
-      <div className="flex items-center gap-5"><Link href="/sign-in" className="text-sm font-semibold hover:text-[#a77937]" data-testid="link-sign-in">Sign in</Link><Link href="/sign-up" className="rounded-md bg-[#284651] px-5 py-3 text-sm font-semibold text-[#fbf8ee] transition hover:bg-[#1e3942]" data-testid="link-get-started">Get started <ArrowRight className="ml-2 inline h-4 w-4" /></Link></div>
+      <div className="flex items-center gap-4"><Link href="/pricing" className="text-sm font-semibold text-[#526568] transition hover:text-[#a77937]" data-testid="link-landing-pricing">Pricing</Link><Link href="/contact" className="text-sm font-semibold text-[#526568] transition hover:text-[#a77937]" data-testid="link-landing-contact">Contact</Link><Link href="/sign-in" className="text-sm font-semibold hover:text-[#a77937]" data-testid="link-sign-in">Sign in</Link><Link href="/sign-up" className="rounded-md bg-[#284651] px-5 py-3 text-sm font-semibold text-[#fbf8ee] transition hover:bg-[#1e3942]" data-testid="link-get-started">Get started <ArrowRight className="ml-2 inline h-4 w-4" /></Link></div>
     </header>
     <section className="mx-auto grid max-w-[1240px] items-center gap-14 px-6 pb-20 pt-12 md:grid-cols-[1.1fr_.9fr] md:pb-32 md:pt-20 lg:px-10">
       <div className="page-in"><div className="mb-7 flex items-center gap-3 text-[11px] font-bold uppercase tracking-[.18em] text-[#8b7049]"><span className="h-px w-8 bg-[#b89663]" />THE WORKSPACE FOR TRUST</div>
@@ -170,7 +178,7 @@ function Landing() {
       <Feature index="03" title="Access is intentional" body="Sign in with Google or email and password. Firm roles keep each workspace's records and actions scoped to its members." />
     </div></section>
     <section className="mx-auto flex max-w-[1240px] flex-col items-start justify-between gap-8 px-6 py-16 md:flex-row md:items-center md:py-24 lg:px-10"><div><div className="mono text-[10px] uppercase tracking-[.18em] text-[#92754a]">A composed way to work</div><h2 className="serif mt-3 max-w-2xl text-4xl font-semibold leading-tight md:text-5xl">More confidence in every client relationship.</h2></div><Link href="/sign-up" className="shrink-0 rounded-md bg-[#284651] px-6 py-4 text-sm font-bold text-[#fbf8ee]" data-testid="link-start-now">Set up your firm <ArrowRight className="ml-4 inline h-4 w-4" /></Link></section>
-    <footer className="border-t border-[#ded9cd] px-6 py-6 text-center text-xs text-[#77817d]">ClientGuard <span className="mx-2">·</span> A protected workspace for professional services</footer>
+    <footer className="flex flex-col items-center justify-center gap-3 border-t border-[#ded9cd] px-6 py-6 text-xs text-[#77817d] sm:flex-row"><span>ClientGuard <span className="mx-2">·</span> A protected workspace for professional services</span><span className="hidden text-[#c2b9a8] sm:inline">/</span><nav className="flex gap-4"><Link href="/pricing" className="hover:text-[#405c60]" data-testid="link-landing-footer-pricing">Pricing</Link><Link href="/contact" className="hover:text-[#405c60]" data-testid="link-landing-footer-contact">Contact</Link></nav></footer>
   </main>;
 }
 function Feature({ index, title, body }: { index: string; title: string; body: string }) { return <article className="border-t-2 border-[#b99a65] pt-5"><div className="mono text-[10px] text-[#987747]">{index} / PRINCIPLE</div><h3 className="serif mt-4 text-xl font-bold">{title}</h3><p className="mt-3 max-w-sm text-sm leading-6 text-[#687779]">{body}</p></article>; }

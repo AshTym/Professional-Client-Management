@@ -49,6 +49,7 @@ import type {
   ClientVisibilityInput,
   CloseoutItem,
   CloseoutItemUpdateInput,
+  ContactInquiryInput,
   CreatePortalRequestInput,
   CreatePortalRequestParams,
   DashboardSummary,
@@ -270,6 +271,94 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
+
+export const getSubmitContactInquiryUrl = () => {
+
+
+
+
+  return `/api/contact`
+}
+
+/**
+ * @summary Deliver a public website inquiry to the ClientGuard contact inbox
+ */
+export const submitContactInquiry = async (contactInquiryInput: ContactInquiryInput, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<void>(getSubmitContactInquiryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(contactInquiryInput)
+  }
+);}
+
+
+
+
+
+export const getSubmitContactInquiryMutationKey = () => ['submitContactInquiry'] as const;
+
+export const getSubmitContactInquiryMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitContactInquiry>>, TError,SubmitContactInquiryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitContactInquiry>>, TError,SubmitContactInquiryMutationVariables, TContext> => {
+
+const mutationKey = getSubmitContactInquiryMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitContactInquiry>>, SubmitContactInquiryMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  submitContactInquiry(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitContactInquiryMutationResult = NonNullable<Awaited<ReturnType<typeof submitContactInquiry>>>
+    export type SubmitContactInquiryMutationBody = BodyType<ContactInquiryInput>
+    export type SubmitContactInquiryMutationError = ErrorType<void>
+    export type SubmitContactInquiryMutationVariables = {data: BodyType<ContactInquiryInput>}
+
+    /**
+ * @summary Deliver a public website inquiry to the ClientGuard contact inbox
+ */
+export const useSubmitContactInquiry = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitContactInquiry>>, TError,SubmitContactInquiryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof submitContactInquiry>>,
+        TError,
+        SubmitContactInquiryMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSubmitContactInquiryMutationOptions(options), queryClient);
+    }
 
 export const getGetWorkspaceUrl = () => {
 

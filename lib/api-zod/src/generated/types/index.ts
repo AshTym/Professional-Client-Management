@@ -56,6 +56,7 @@ export * from './closeoutItemItemKey';
 export * from './closeoutItemStatus';
 export * from './closeoutItemUpdateInput';
 export * from './closeoutItemUpdateInputStatus';
+export * from './contactInquiryInput';
 export * from './createPortalRequestInput';
 export * from './createPortalRequestParams';
 export * from './createPortalRequestView';

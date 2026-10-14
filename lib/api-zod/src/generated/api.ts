@@ -17,6 +17,32 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Deliver a public website inquiry to the ClientGuard contact inbox
+ */
+export const submitContactInquiryBodyNameMax = 120;
+
+export const submitContactInquiryBodyEmailMax = 254;
+
+export const submitContactInquiryBodyOrganizationMax = 160;
+
+export const submitContactInquiryBodyMessageMax = 4000;
+
+export const submitContactInquiryBodyWebsiteMax = 255;
+
+
+
+export const SubmitContactInquiryBody = zod.object({
+  "name": zod.string().min(1).max(submitContactInquiryBodyNameMax),
+  "email": zod.string().email().max(submitContactInquiryBodyEmailMax),
+  "organization": zod.string().max(submitContactInquiryBodyOrganizationMax).optional(),
+  "message": zod.string().min(1).max(submitContactInquiryBodyMessageMax),
+  "website": zod.string().max(submitContactInquiryBodyWebsiteMax).optional().describe('Hidden anti-spam field; leave blank.')
+})
+
+export const SubmitContactInquiryResponse = zod.void()
+
+
+/**
  * @summary Get the signed-in user's firm and access assurance
  */
 export const GetWorkspaceResponse = zod.object({

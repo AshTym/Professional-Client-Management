@@ -26,6 +26,8 @@ defaultBucketID = "replit-objstore-c5110ced-95af-4209-a05f-1e3e3dccb110"
 
 [userenv.shared]
 CLIENTGUARD_NOTIFICATION_FROM_EMAIL = "ashtym@gmail.com"
+CLIENTGUARD_CONTACT_TO_EMAIL = "ashtym@gmail.com"
+CLIENTGUARD_CONTACT_FROM_EMAIL = "ClientGuard <onboarding@resend.dev>"
 
 [nix]
 channel = "stable-25_05"

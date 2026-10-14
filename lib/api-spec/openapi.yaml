@@ -20,6 +20,7 @@ tags:
   - name: documents
   - name: planner
   - name: updates
+  - name: contact
 paths:
   /healthz:
     get:
@@ -33,6 +34,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /contact:
+    post:
+      operationId: submitContactInquiry
+      tags: [contact]
+      summary: Deliver a public website inquiry to the ClientGuard contact inbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactInquiryInput"
+      responses:
+        "204":
+          description: The inquiry was accepted by the email provider
+        "400":
+          description: The contact form data is invalid
+        "429":
+          description: Too many contact form submissions
+        "502":
+          description: Contact email delivery failed
   /workspace:
     get:
       operationId: getWorkspace
@@ -2324,6 +2345,18 @@ components:
         status:
           type: string
       required: [status]
+    ContactInquiryInput:
+      type: object
+      required: [name, email, message]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254 }
+        organization: { type: string, maxLength: 160 }
+        message: { type: string, minLength: 1, maxLength: 4000 }
+        website:
+          type: string
+          maxLength: 255
+          description: Hidden anti-spam field; leave blank.
     Workspace:
       type: object
       required: [id, name, practiceType, createdAt]

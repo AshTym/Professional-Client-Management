@@ -9,10 +9,12 @@ import clientguardTrustRouter from "./clientguard-trust";
 import clientguardCloseoutRouter from "./clientguard-closeout";
 import clientguardReportsRouter from "./clientguard-reports";
 import clientguardPracticeSettingsRouter from "./clientguard-practice-settings";
+import contactRouter from "./contact";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(contactRouter);
 router.use(clientguardRouter);
 router.use(clientguardWorkflowsRouter);
 router.use(clientguardOperationsRouter);
