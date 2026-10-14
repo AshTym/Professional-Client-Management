@@ -161,10 +161,15 @@ describe('activity pagination', () => {
     fireEvent.change(screen.getByTestId('input-activity-end-date'), {
       target: { value: '2026-10-14' },
     });
+    fireEvent.change(screen.getByTestId('input-activity-search'), {
+      target: { value: '  client change  ' },
+    });
+    fireEvent.click(screen.getByTestId('button-search-activity'));
     fireEvent.click(screen.getByTestId('button-export-activity'));
 
     await waitFor(() => expect(apiMocks.exportActivity).toHaveBeenCalledWith({
       snapshotId: 41,
+      search: 'client change',
       actorId: primaryActorId,
       entityType: 'client',
       entityId: 10,
@@ -333,6 +338,50 @@ describe('activity pagination', () => {
     );
   });
 
+  it('applies text search with existing filters and resets to the first page', () => {
+    renderActivityPage();
+    fireEvent.change(screen.getByTestId('select-activity-actor'), {
+      target: { value: formerActorId },
+    });
+    fireEvent.change(screen.getByTestId('select-activity-record'), {
+      target: { value: 'client:10' },
+    });
+    fireEvent.click(screen.getByTestId('button-activity-next'));
+    fireEvent.change(screen.getByTestId('input-activity-search'), {
+      target: { value: ' Northline Client ' },
+    });
+    fireEvent.click(screen.getByTestId('button-search-activity'));
+
+    expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        search: 'Northline Client',
+        actorId: formerActorId,
+        entityType: 'client',
+        entityId: 10,
+        offset: 0,
+      }),
+      expect.any(Object),
+    );
+    expect(screen.getByTestId('input-activity-search')).toHaveProperty(
+      'value',
+      'Northline Client',
+    );
+
+    fireEvent.click(screen.getByTestId('button-clear-activity-filters'));
+
+    expect(apiMocks.useListActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        search: undefined,
+        actorId: undefined,
+        entityType: undefined,
+        entityId: undefined,
+        offset: 0,
+      }),
+      expect.any(Object),
+    );
+    expect(screen.getByTestId('input-activity-search')).toHaveProperty('value', '');
+  });
+
   it('keeps same-name teammates separately selectable', () => {
     renderActivityPage();
     fireEvent.change(screen.getByTestId('select-activity-actor'), {
@@ -497,5 +546,28 @@ describe('activity pagination', () => {
     });
 
     expect(screen.getByText('No matching activity')).toBeTruthy();
+  });
+
+  it('explains an empty search and returns to the unfiltered empty state when cleared', () => {
+    apiMocks.useListActivity.mockReturnValue({
+      data: { items: [], snapshotId: 41, latestSnapshotId: 41 },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderActivityPage();
+
+    expect(screen.getByText('No recorded events')).toBeTruthy();
+    fireEvent.change(screen.getByTestId('input-activity-search'), {
+      target: { value: 'missing record' },
+    });
+    fireEvent.click(screen.getByTestId('button-search-activity'));
+
+    expect(screen.getByText('No matching activity')).toBeTruthy();
+    expect(screen.getByText('No events match your search and selected filters. Try another search or clear the filters.')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('button-clear-activity-filters'));
+
+    expect(screen.getByText('No recorded events')).toBeTruthy();
+    expect(screen.getByTestId('input-activity-search')).toHaveProperty('value', '');
   });
 });

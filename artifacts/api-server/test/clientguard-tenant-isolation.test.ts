@@ -2366,6 +2366,167 @@ test("activity filters stay firm-scoped and apply before pagination", async () =
   }
 });
 
+test("activity text search matches actions or record labels within combined firm filters and snapshots", async () => {
+  const insertedActivityIds: number[] = [];
+  const searchTerm = `activityneedle${randomUUID().replaceAll("-", "")}`;
+  const occurredAt = new Date("2099-01-05T00:00:00.000Z");
+
+  try {
+    const actorOptions = await request("/activity/actors", {
+      userId: firms.primary.ownerId,
+    });
+    assert.equal(actorOptions.response.status, 200);
+    const ownerActorId = (
+      actorOptions.body as Array<{ id: string; name: string }>
+    ).find(({ name }) => name === "Primary Owner")?.id;
+    assert.ok(ownerActorId);
+
+    const inserted = await db
+      .insert(activitiesTable)
+      .values([
+        {
+          workspaceId: firms.primary.workspaceId,
+          clerkUserId: firms.primary.ownerId,
+          actor: "Primary Owner",
+          action: `Reviewed ${searchTerm} terms`,
+          entityType: "client",
+          entityId: firms.primary.clientId,
+          entityLabel: "Action search match",
+          occurredAt: new Date(occurredAt.getTime() + 60_000),
+        },
+        {
+          workspaceId: firms.primary.workspaceId,
+          clerkUserId: firms.primary.ownerId,
+          actor: "Primary Owner",
+          action: "Updated client details",
+          entityType: "client",
+          entityId: firms.primary.clientId,
+          entityLabel: `The ${searchTerm} client`,
+          occurredAt: new Date(occurredAt.getTime() + 120_000),
+        },
+        {
+          workspaceId: firms.primary.workspaceId,
+          clerkUserId: firms.primary.ownerId,
+          actor: "Primary Owner",
+          action: `Archived ${searchTerm} notes`,
+          entityType: "client",
+          entityId: firms.primary.clientId,
+          entityLabel: "Newest action match",
+          occurredAt: new Date(occurredAt.getTime() + 180_000),
+        },
+        {
+          workspaceId: firms.primary.workspaceId,
+          clerkUserId: readOnlyUserId,
+          actor: "Read Only User",
+          action: `Reviewed ${searchTerm} as another teammate`,
+          entityType: "client",
+          entityId: firms.primary.clientId,
+          entityLabel: "Other teammate match",
+          occurredAt: new Date(occurredAt.getTime() + 240_000),
+        },
+        {
+          workspaceId: firms.other.workspaceId,
+          clerkUserId: firms.other.ownerId,
+          actor: "Other Firm Owner",
+          action: `Reviewed ${searchTerm} in another firm`,
+          entityType: "client",
+          entityId: firms.other.clientId,
+          entityLabel: "Other firm match",
+          occurredAt: new Date(occurredAt.getTime() + 300_000),
+        },
+      ])
+      .returning({ id: activitiesTable.id });
+    insertedActivityIds.push(...inserted.map(({ id }) => id));
+
+    const matchingSearch = await request(
+      `/activity?search=${encodeURIComponent(searchTerm.toUpperCase())}&limit=20`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(matchingSearch.response.status, 200);
+    assert.equal((matchingSearch.body.items as unknown[]).length, 4);
+    assert(
+      !(matchingSearch.body.items as Array<{ action: string }>).some(({ action }) =>
+        action.includes("another firm"),
+      ),
+    );
+
+    const filteredFirstPage = await request(
+      `/activity?search=${searchTerm}&actorId=${ownerActorId}&entityType=client&entityId=${firms.primary.clientId}&limit=1&offset=0`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(filteredFirstPage.response.status, 200);
+    assert.deepEqual(
+      (filteredFirstPage.body.items as Array<{ action: string }>).map(({ action }) => action),
+      [`Archived ${searchTerm} notes`],
+    );
+    const snapshotId = filteredFirstPage.body.snapshotId as number;
+
+    const lateInserted = await db
+      .insert(activitiesTable)
+      .values({
+        workspaceId: firms.primary.workspaceId,
+        clerkUserId: firms.primary.ownerId,
+        actor: "Primary Owner",
+        action: `Late ${searchTerm} activity`,
+        entityType: "client",
+        entityId: firms.primary.clientId,
+        entityLabel: "Added after the page snapshot",
+        occurredAt: new Date(occurredAt.getTime() + 360_000),
+      })
+      .returning({ id: activitiesTable.id });
+    insertedActivityIds.push(...lateInserted.map(({ id }) => id));
+
+    const filteredSecondPage = await request(
+      `/activity?search=${searchTerm}&actorId=${ownerActorId}&entityType=client&entityId=${firms.primary.clientId}&limit=1&offset=1&snapshotId=${snapshotId}`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.deepEqual(
+      (filteredSecondPage.body.items as Array<{ action: string }>).map(({ action }) => action),
+      [`Updated client details`],
+    );
+    assert.equal(filteredSecondPage.body.snapshotId, snapshotId);
+
+    const recordLabelSearch = await request(
+      `/activity?search=${encodeURIComponent(searchTerm.toUpperCase())}&actorId=${ownerActorId}&entityType=client&entityId=${firms.primary.clientId}&snapshotId=${snapshotId}`,
+      { userId: firms.primary.ownerId },
+    );
+    assert.equal(recordLabelSearch.response.status, 200);
+    assert.deepEqual(
+      (recordLabelSearch.body.items as Array<{ action: string }>).map(({ action }) => action),
+      [`Archived ${searchTerm} notes`, "Updated client details", `Reviewed ${searchTerm} terms`],
+    );
+
+    const literalWildcardSearch = await request("/activity?search=%25", {
+      userId: firms.primary.ownerId,
+    });
+    assert.equal(literalWildcardSearch.response.status, 200);
+    assert.deepEqual(literalWildcardSearch.body.items, []);
+    const oversizedSearch = await request(`/activity?search=${"x".repeat(121)}`, {
+      userId: firms.primary.ownerId,
+    });
+    assert.equal(oversizedSearch.response.status, 400);
+
+    const exported = await fetch(
+      `${baseUrl}/activity/export.csv?search=${encodeURIComponent(searchTerm)}&actorId=${ownerActorId}&entityType=client&entityId=${firms.primary.clientId}&snapshotId=${snapshotId}`,
+      { headers: { "x-test-user-id": firms.primary.ownerId } },
+    );
+    const csv = await exported.text();
+    assert.equal(exported.status, 200);
+    assert(csv.includes(`Reviewed ${searchTerm} terms`));
+    assert(csv.includes(`Updated client details`));
+    assert(csv.includes(`Archived ${searchTerm} notes`));
+    assert(!csv.includes("Late activity"));
+    assert(!csv.includes("Other teammate match"));
+    assert(!csv.includes("Other firm match"));
+  } finally {
+    if (insertedActivityIds.length) {
+      await db
+        .delete(activitiesTable)
+        .where(inArray(activitiesTable.id, insertedActivityIds));
+    }
+  }
+});
+
 test("activity orders events with tied timestamps by descending ID for each firm", async () => {
   const insertedActivityIds: number[] = [];
   const occurredAt = new Date("2099-01-01T00:00:00.000Z");

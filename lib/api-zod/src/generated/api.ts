@@ -495,6 +495,8 @@ export const listActivityQueryOffsetMin = 0;
 
 export const listActivityQuerySnapshotIdMin = 0;
 
+export const listActivityQuerySearchMax = 120;
+
 export const listActivityQueryActorIdMin = 67;
 export const listActivityQueryActorIdMax = 67;
 
@@ -507,6 +509,7 @@ export const ListActivityQueryParams = zod.object({
   "limit": zod.coerce.number().int().min(1).max(listActivityQueryLimitMax).default(listActivityQueryLimitDefault),
   "offset": zod.coerce.number().int().min(listActivityQueryOffsetMin).default(listActivityQueryOffsetDefault),
   "snapshotId": zod.coerce.number().int().min(listActivityQuerySnapshotIdMin).optional().describe('Include only events at or below this firm-wide activity snapshot ID.'),
+  "search": zod.coerce.string().min(1).max(listActivityQuerySearchMax).optional().describe('Case-insensitive text contained in the event action or record label.'),
   "actorId": zod.coerce.string().min(listActivityQueryActorIdMin).max(listActivityQueryActorIdMax).regex(listActivityQueryActorIdRegExp).optional().describe('Restrict results to this actor from the current firm\'s actor list.'),
   "entityType": zod.enum(['client', 'matter', 'workspace']).optional().describe('Restrict results to a related client, matter, or workspace record.'),
   "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.'),
@@ -540,6 +543,8 @@ export const ListActivityResponse = zod.object({
  */
 export const exportActivityQuerySnapshotIdMin = 0;
 
+export const exportActivityQuerySearchMax = 120;
+
 export const exportActivityQueryActorIdMin = 67;
 export const exportActivityQueryActorIdMax = 67;
 
@@ -550,6 +555,7 @@ export const exportActivityQueryActorIdRegExp = new RegExp('^v1_[a-f0-9]{64}$');
 
 export const ExportActivityQueryParams = zod.object({
   "snapshotId": zod.coerce.number().int().min(exportActivityQuerySnapshotIdMin).optional().describe('Include only events at or below this firm-wide activity snapshot ID.'),
+  "search": zod.coerce.string().min(1).max(exportActivityQuerySearchMax).optional().describe('Case-insensitive text contained in the event action or record label.'),
   "actorId": zod.coerce.string().min(exportActivityQueryActorIdMin).max(exportActivityQueryActorIdMax).regex(exportActivityQueryActorIdRegExp).optional().describe('Restrict results to this actor from the current firm\'s actor list.'),
   "entityType": zod.enum(['client', 'matter', 'workspace']).optional().describe('Restrict results to a related client, matter, or workspace record.'),
   "entityId": zod.coerce.number().int().min(1).optional().describe('ID of the related record to include.'),

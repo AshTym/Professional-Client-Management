@@ -23,6 +23,12 @@ offset?: number;
  */
 snapshotId?: number;
 /**
+ * Case-insensitive text contained in the event action or record label.
+ * @minLength 1
+ * @maxLength 120
+ */
+search?: string;
+/**
  * Restrict results to this actor from the current firm's actor list.
  * @minLength 67
  * @maxLength 67

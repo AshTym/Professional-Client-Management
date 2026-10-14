@@ -133,6 +133,14 @@ function parseActivityDate(value: unknown): { value: unknown; invalid: boolean }
   return { value: date, invalid: false };
 }
 
+function activitySearchPattern(search: string): string {
+  const literal = search
+    .replaceAll("\\", "\\\\")
+    .replaceAll("%", "\\%")
+    .replaceAll("_", "\\_");
+  return `%${literal}%`;
+}
+
 async function findActivityActorUserId(
   workspaceId: number,
   actorId: string,
@@ -2884,6 +2892,10 @@ router.get("/activity", async (req, res): Promise<void> => {
   }
   const parsed = ListActivityQueryParams.safeParse({
     ...req.query,
+    search:
+      typeof req.query.search === "string"
+        ? req.query.search.trim() || undefined
+        : req.query.search,
     startDate: startDate.value,
     endDate: endDate.value,
   });
@@ -2933,6 +2945,15 @@ router.get("/activity", async (req, res): Promise<void> => {
   if (parsed.data.entityId !== undefined) {
     filters.push(eq(activitiesTable.entityId, parsed.data.entityId));
   }
+  if (parsed.data.search !== undefined) {
+    const pattern = activitySearchPattern(parsed.data.search);
+    filters.push(
+      or(
+        ilike(activitiesTable.action, pattern),
+        ilike(activitiesTable.entityLabel, pattern),
+      )!,
+    );
+  }
   if (parsed.data.startDate !== undefined) {
     filters.push(gte(activitiesTable.occurredAt, parsed.data.startDate));
   }
@@ -2963,6 +2984,10 @@ router.get("/activity/export.csv", async (req, res): Promise<void> => {
   }
   const parsed = ExportActivityQueryParams.safeParse({
     ...req.query,
+    search:
+      typeof req.query.search === "string"
+        ? req.query.search.trim() || undefined
+        : req.query.search,
     startDate: startDate.value,
     endDate: endDate.value,
   });
@@ -2999,6 +3024,15 @@ router.get("/activity/export.csv", async (req, res): Promise<void> => {
   }
   if (parsed.data.entityId !== undefined) {
     filters.push(eq(activitiesTable.entityId, parsed.data.entityId));
+  }
+  if (parsed.data.search !== undefined) {
+    const pattern = activitySearchPattern(parsed.data.search);
+    filters.push(
+      or(
+        ilike(activitiesTable.action, pattern),
+        ilike(activitiesTable.entityLabel, pattern),
+      )!,
+    );
   }
   if (parsed.data.startDate !== undefined) {
     filters.push(gte(activitiesTable.occurredAt, parsed.data.startDate));

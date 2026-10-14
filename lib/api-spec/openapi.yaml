@@ -537,6 +537,14 @@ paths:
           schema:
             type: integer
             minimum: 0
+        - name: search
+          in: query
+          required: false
+          description: Case-insensitive text contained in the event action or record label.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
         - name: actorId
           in: query
           required: false
@@ -594,6 +602,14 @@ paths:
           schema:
             type: integer
             minimum: 0
+        - name: search
+          in: query
+          required: false
+          description: Case-insensitive text contained in the event action or record label.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
         - name: actorId
           in: query
           required: false
