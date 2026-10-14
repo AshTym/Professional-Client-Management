@@ -409,6 +409,31 @@ paths:
           description: The invitation is not unused in the current firm
         "502":
           description: The invitation email could not be sent
+  /workspace/invitations/{id}/retry-revocation:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    post:
+      operationId: retryWorkspaceInvitationRevocation
+      tags: [invitations]
+      summary: Retry unresolved Clerk invitation revocations for a firm invitation
+      responses:
+        "200":
+          description: Revocation attempts completed; providerRevocationFailed indicates whether any cleanup remains
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceInvitation"
+        "400":
+          description: Invalid invitation identifier
+        "403":
+          description: Only owners and admins can retry invitation revocations
+        "404":
+          description: The invitation was not found in the current firm
   /workspace/invitations/{id}:
     parameters:
       - name: id

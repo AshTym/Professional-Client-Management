@@ -27,6 +27,7 @@ const firms = {
   },
 };
 const emptyDashboardUserId = `empty-dashboard-${randomUUID()}`;
+let readOnlyUserId = "";
 
 let bootstrapPool: Pool | undefined;
 let appPool: Pool | undefined;
@@ -37,6 +38,7 @@ let db: typeof import("@workspace/db").db;
 let workspacesTable: typeof import("@workspace/db").workspacesTable;
 let membershipsTable: typeof import("@workspace/db").membershipsTable;
 let invitationsTable: typeof import("@workspace/db").invitationsTable;
+let invitationRevocationsTable: typeof import("@workspace/db").invitationRevocationsTable;
 let clientsTable: typeof import("@workspace/db").clientsTable;
 let mattersTable: typeof import("@workspace/db").mattersTable;
 let matterCloseoutItemsTable: typeof import("@workspace/db").matterCloseoutItemsTable;
@@ -102,6 +104,16 @@ before(async () => {
       provider_revocation_failed boolean NOT NULL DEFAULT false,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE "${schemaName}".clientguard_invitation_revocations (
+      id serial PRIMARY KEY,
+      workspace_id integer NOT NULL REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,
+      invitation_id integer NOT NULL REFERENCES "${schemaName}".clientguard_invitations(id) ON DELETE CASCADE,
+      clerk_invitation_id text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (workspace_id, clerk_invitation_id)
+    );
+    CREATE INDEX clientguard_invitation_revocation_invitation_idx
+      ON "${schemaName}".clientguard_invitation_revocations (workspace_id, invitation_id);
     CREATE TABLE "${schemaName}".clientguard_clients (
       id serial PRIMARY KEY,
       workspace_id integer NOT NULL REFERENCES "${schemaName}".clientguard_workspaces(id) ON DELETE CASCADE,
@@ -393,6 +405,7 @@ before(async () => {
     workspacesTable,
     membershipsTable,
     invitationsTable,
+    invitationRevocationsTable,
     clientsTable,
     mattersTable,
     matterCloseoutItemsTable,
@@ -420,7 +433,7 @@ before(async () => {
     .returning();
   firms.primary.workspaceId = primaryWorkspace.id;
   firms.other.workspaceId = otherWorkspace.id;
-  const readOnlyUserId = `viewer-${randomUUID()}`;
+  readOnlyUserId = `viewer-${randomUUID()}`;
   const professionalUserId = `professional-${randomUUID()}`;
 
   await db.insert(membershipsTable).values([
@@ -3338,7 +3351,10 @@ test("firm viewers and professionals cannot list or create invitations", async (
     })
     .from(membershipsTable)
     .where(
-      inArray(membershipsTable.role, ["viewer", "professional"]),
+      and(
+        eq(membershipsTable.workspaceId, firms.primary.workspaceId),
+        inArray(membershipsTable.role, ["viewer", "professional"]),
+      ),
     );
   const ordinaryMembers = members.filter((member) =>
     ["viewer", "professional"].includes(member.role),
@@ -3944,6 +3960,14 @@ test("a failed superseded Clerk revocation is visible and the old link cannot cr
     .where(eq(invitationsTable.id, pending.id));
   assert.equal(updated.tokenHash, createHash("sha256").update(newToken).digest("hex"));
   assert.equal(updated.providerRevocationFailed, true);
+  const pendingRevocation = await db
+    .select({ clerkInvitationId: invitationRevocationsTable.clerkInvitationId })
+    .from(invitationRevocationsTable)
+    .where(eq(invitationRevocationsTable.invitationId, pending.id));
+  assert.deepEqual(
+    pendingRevocation.map(({ clerkInvitationId }) => clerkInvitationId),
+    ["unrevoked_superseded_clerk_invitation"],
+  );
 });
 
 test("firm admins can renew expired invitations with a new seven-day link", async (t) => {
@@ -4453,6 +4477,105 @@ test("a failed Clerk revocation leaves a visible withdrawn invitation and the ol
     .where(eq(invitationsTable.id, pending.id));
   assert(stored.revokedAt);
   assert.equal(stored.providerRevocationFailed, true);
+});
+
+test("firm admins can retry failed Clerk revocations without exposing provider identifiers", async (t) => {
+  const memberId = readOnlyUserId;
+  const providerInvitationId = `private-clerk-revocation-${randomUUID()}`;
+  const [pending] = await db
+    .insert(invitationsTable)
+    .values({
+      workspaceId: firms.primary.workspaceId,
+      email: "retry-revocation-target@example.test",
+      role: "assistant",
+      invitedByClerkUserId: firms.primary.ownerId,
+      clerkInvitationId: providerInvitationId,
+      tokenHash: createHash("sha256").update(randomUUID()).digest("hex"),
+      expiresAt: new Date(Date.now() + 60_000),
+    })
+    .returning();
+  let revokeCalls = 0;
+  t.mock.method(
+    clerkClient.invitations,
+    "revokeInvitation",
+    async (clerkInvitationId) => {
+      assert.equal(clerkInvitationId, providerInvitationId);
+      revokeCalls += 1;
+      if (revokeCalls <= 2) throw new Error("Simulated Clerk outage");
+      return { id: clerkInvitationId } as never;
+    },
+  );
+
+  const withdrawn = await request(`/workspace/invitations/${pending.id}`, {
+    userId: firms.primary.ownerId,
+    method: "DELETE",
+  });
+  assert.equal(withdrawn.response.status, 200);
+  assert.equal(
+    (withdrawn.body as { providerRevocationFailed: boolean }).providerRevocationFailed,
+    true,
+  );
+  const queued = await db
+    .select()
+    .from(invitationRevocationsTable)
+    .where(eq(invitationRevocationsTable.invitationId, pending.id));
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0]?.clerkInvitationId, providerInvitationId);
+
+  const listed = await request("/workspace/invitations", {
+    userId: firms.primary.ownerId,
+  });
+  assert.equal(listed.response.status, 200);
+  assert.equal(JSON.stringify(listed.body).includes(providerInvitationId), false);
+
+  const memberRetry = await request(
+    `/workspace/invitations/${pending.id}/retry-revocation`,
+    { userId: memberId, method: "POST" },
+  );
+  assert.equal(memberRetry.response.status, 403);
+  assert.equal(revokeCalls, 1);
+
+  const otherFirmRetry = await request(
+    `/workspace/invitations/${pending.id}/retry-revocation`,
+    { userId: firms.other.ownerId, method: "POST" },
+  );
+  assert.equal(otherFirmRetry.response.status, 404);
+  assert.equal(revokeCalls, 1);
+
+  const failedRetry = await request(
+    `/workspace/invitations/${pending.id}/retry-revocation`,
+    { userId: firms.primary.ownerId, method: "POST" },
+  );
+  assert.equal(failedRetry.response.status, 200);
+  assert.equal(
+    (failedRetry.body as { providerRevocationFailed: boolean })
+      .providerRevocationFailed,
+    true,
+  );
+  assert.equal(JSON.stringify(failedRetry.body).includes(providerInvitationId), false);
+  const stillQueued = await db
+    .select()
+    .from(invitationRevocationsTable)
+    .where(eq(invitationRevocationsTable.invitationId, pending.id));
+  assert.equal(stillQueued.length, 1);
+
+  const successfulRetry = await request(
+    `/workspace/invitations/${pending.id}/retry-revocation`,
+    { userId: firms.primary.ownerId, method: "POST" },
+  );
+  assert.equal(successfulRetry.response.status, 200);
+  assert.equal(
+    (successfulRetry.body as { providerRevocationFailed: boolean })
+      .providerRevocationFailed,
+    false,
+  );
+  assert.equal(JSON.stringify(successfulRetry.body).includes(providerInvitationId), false);
+  assert.equal(revokeCalls, 3);
+  const cleared = await db
+    .select()
+    .from(invitationRevocationsTable)
+    .where(eq(invitationRevocationsTable.invitationId, pending.id));
+  assert.equal(cleared.length, 0);
 });
 
 test("acceptance can finish while a resend email is slow and the new Clerk invitation is revoked", async (t) => {

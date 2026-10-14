@@ -1837,6 +1837,80 @@ export const useResendWorkspaceInvitation = <TError = ErrorType<void>,
       return useMutation(getResendWorkspaceInvitationMutationOptions(options), queryClient);
     }
 
+export const getRetryWorkspaceInvitationRevocationUrl = (id: number,) => {
+
+
+
+
+  return `/api/workspace/invitations/${id}/retry-revocation`
+}
+
+/**
+ * @summary Retry unresolved Clerk invitation revocations for a firm invitation
+ */
+export const retryWorkspaceInvitationRevocation = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceInvitation> => {
+
+  return customFetch<WorkspaceInvitation>(getRetryWorkspaceInvitationRevocationUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryWorkspaceInvitationRevocationMutationKey = () => ['retryWorkspaceInvitationRevocation'] as const;
+
+export const getRetryWorkspaceInvitationRevocationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryWorkspaceInvitationRevocation>>, TError,RetryWorkspaceInvitationRevocationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryWorkspaceInvitationRevocation>>, TError,RetryWorkspaceInvitationRevocationMutationVariables, TContext> => {
+
+const mutationKey = getRetryWorkspaceInvitationRevocationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryWorkspaceInvitationRevocation>>, RetryWorkspaceInvitationRevocationMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  retryWorkspaceInvitationRevocation(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryWorkspaceInvitationRevocationMutationResult = NonNullable<Awaited<ReturnType<typeof retryWorkspaceInvitationRevocation>>>
+
+    export type RetryWorkspaceInvitationRevocationMutationError = ErrorType<void>
+    export type RetryWorkspaceInvitationRevocationMutationVariables = {id: number}
+
+    /**
+ * @summary Retry unresolved Clerk invitation revocations for a firm invitation
+ */
+export const useRetryWorkspaceInvitationRevocation = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryWorkspaceInvitationRevocation>>, TError,RetryWorkspaceInvitationRevocationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof retryWorkspaceInvitationRevocation>>,
+        TError,
+        RetryWorkspaceInvitationRevocationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRetryWorkspaceInvitationRevocationMutationOptions(options), queryClient);
+    }
+
 export const getWithdrawWorkspaceInvitationUrl = (id: number,) => {
 
 

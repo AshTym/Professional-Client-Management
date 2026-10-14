@@ -377,6 +377,28 @@ export const ResendWorkspaceInvitationResponse = zod.object({
 
 
 /**
+ * @summary Retry unresolved Clerk invitation revocations for a firm invitation
+ */
+
+
+
+export const RetryWorkspaceInvitationRevocationParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const RetryWorkspaceInvitationRevocationResponse = zod.object({
+  "id": zod.number().int(),
+  "email": zod.string().email(),
+  "role": zod.enum(['admin', 'advisor', 'professional', 'assistant']),
+  "createdAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date(),
+  "expired": zod.boolean(),
+  "revoked": zod.boolean(),
+  "providerRevocationFailed": zod.boolean()
+})
+
+
+/**
  * @summary Withdraw a pending invitation
  */
 

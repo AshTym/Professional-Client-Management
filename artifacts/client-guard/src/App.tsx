@@ -8,7 +8,8 @@ import {
   useHealthCheck, useGetWorkspace, useCreateWorkspace, useGetDashboard, useListActivity,
   useListActivityActors, exportActivity,
   useListWorkspaceInvitations, useCreateWorkspaceInvitation, useResendWorkspaceInvitation,
-  useWithdrawWorkspaceInvitation, useAcceptWorkspaceInvitation, useListWorkspaceMembers,
+  useWithdrawWorkspaceInvitation, useRetryWorkspaceInvitationRevocation,
+  useAcceptWorkspaceInvitation, useListWorkspaceMembers,
   useUpdateWorkspaceMember, useRemoveWorkspaceMember, useTransferWorkspaceOwnership,
   useListOwnershipNoticeFailures, useRetryOwnershipNotice,
   useGetWorkspaceMemberAssignments,
@@ -620,6 +621,7 @@ function TeamPage() {
   const createInvitation = useCreateWorkspaceInvitation();
   const resendInvitation = useResendWorkspaceInvitation();
   const withdrawInvitation = useWithdrawWorkspaceInvitation();
+  const retryInvitationRevocation = useRetryWorkspaceInvitationRevocation();
   const members = useListWorkspaceMembers();
   const updateMember = useUpdateWorkspaceMember();
   const removeMember = useRemoveWorkspaceMember();
@@ -634,6 +636,7 @@ function TeamPage() {
   const qc = useQueryClient();
   const [invitationActionMessage, setInvitationActionMessage] = useState('');
   const [invitationActionWarning, setInvitationActionWarning] = useState(false);
+  const [retryingRevocationId, setRetryingRevocationId] = useState<number | null>(null);
   const [memberActionMessage, setMemberActionMessage] = useState('');
   const [ownershipNoticeMessage, setOwnershipNoticeMessage] = useState('');
   const [assignmentResolutionMessage, setAssignmentResolutionMessage] = useState('');
@@ -862,12 +865,32 @@ function TeamPage() {
           <Users className="h-5 w-5 text-[#987747]" />
         </div>
         {invitationActionMessage && <p className={`px-5 pt-4 text-sm ${invitationActionWarning ? 'text-[#8a5c24]' : 'text-[#446b55]'}`} role={invitationActionWarning ? 'alert' : 'status'} data-testid="status-invitation-action">{invitationActionMessage}</p>}
-        {(resendInvitation.isError || withdrawInvitation.isError) && <p className="px-5 pt-4 text-sm text-[#9b4941]" role="alert" data-testid="status-invitation-action-error">That invitation could not be updated. It may have changed; refresh the list and try again.</p>}
+        {(resendInvitation.isError || withdrawInvitation.isError || retryInvitationRevocation.isError) && <p className="px-5 pt-4 text-sm text-[#9b4941]" role="alert" data-testid="status-invitation-action-error">That invitation could not be updated. It may have changed; refresh the list and try again.</p>}
         {invitations.isLoading ? <div className="p-5"><Skeleton title="Loading invitations" /></div> :
           invitations.isError ? <div className="p-5 text-sm text-[#9b4941]">Invitations could not be loaded. <button onClick={() => invitations.refetch()} className="underline" data-testid="button-retry-invitations">Try again</button></div> :
           !invitations.data?.length ? <div className="p-6"><EmptyState title="No invitations" detail="When you invite a colleague, their email and role will appear here until they join." /></div> :
           <div className="divide-y divide-[#eee9df]">{invitations.data.map(invite => <div key={invite.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" data-testid={`invitation-row-${invite.id}`}>
-            <div className="min-w-0"><div className="break-all text-sm font-semibold">{invite.email}</div><div className="mt-1 text-xs capitalize text-[#7e8985]">{invite.role} · sent {formatTime(invite.createdAt)}</div>{invite.revoked ? <span className="mt-2 inline-block rounded-full bg-[#ecebe5] px-3 py-1 text-[10px] font-semibold text-[#687371]">Withdrawn</span> : <span className={`mt-2 inline-block rounded-full px-3 py-1 text-[10px] font-semibold ${invite.expired ? 'bg-[#f8e9e5] text-[#9b4941]' : 'bg-[#f2eee3] text-[#806b44]'}`}>{invite.expired ? 'Expired' : 'Expires'} {formatTime(invite.expiresAt)}</span>}{invite.providerRevocationFailed && <p className="mt-3 max-w-xl rounded border border-[#e5d4b1] bg-[#fbf5e8] p-3 text-xs leading-5 text-[#765a2b]" role="alert" data-testid={`invitation-revocation-warning-${invite.id}`}>The ClientGuard link is disabled, but Clerk may still have an active invitation for this address. Check Clerk and revoke any old invitation.</p>}</div>
+            <div className="min-w-0"><div className="break-all text-sm font-semibold">{invite.email}</div><div className="mt-1 text-xs capitalize text-[#7e8985]">{invite.role} · sent {formatTime(invite.createdAt)}</div>{invite.revoked ? <span className="mt-2 inline-block rounded-full bg-[#ecebe5] px-3 py-1 text-[10px] font-semibold text-[#687371]">Withdrawn</span> : <span className={`mt-2 inline-block rounded-full px-3 py-1 text-[10px] font-semibold ${invite.expired ? 'bg-[#f8e9e5] text-[#9b4941]' : 'bg-[#f2eee3] text-[#806b44]'}`}>{invite.expired ? 'Expired' : 'Expires'} {formatTime(invite.expiresAt)}</span>}{invite.providerRevocationFailed && <><p className="mt-3 max-w-xl rounded border border-[#e5d4b1] bg-[#fbf5e8] p-3 text-xs leading-5 text-[#765a2b]" role="alert" data-testid={`invitation-revocation-warning-${invite.id}`}>The ClientGuard link is disabled, but Clerk may still have an active invitation for this address. Retry cleanup here; Clerk invitation details stay private.</p><Button variant="outline" disabled={retryInvitationRevocation.isPending} testId={`button-retry-invitation-revocation-${invite.id}`} onClick={() => {
+              setInvitationActionMessage('');
+              setInvitationActionWarning(false);
+              retryInvitationRevocation.reset();
+              setRetryingRevocationId(invite.id);
+              retryInvitationRevocation.mutate({ id: invite.id }, {
+                onSuccess: async (updatedInvitation) => {
+                  await qc.invalidateQueries({ queryKey: getListWorkspaceInvitationsQueryKey() });
+                  setInvitationActionWarning(updatedInvitation.providerRevocationFailed);
+                  setInvitationActionMessage(updatedInvitation.providerRevocationFailed
+                    ? `Clerk could not confirm cleanup for ${invite.email}. The invitation remains available to retry.`
+                    : `Clerk invitation cleanup succeeded for ${invite.email}.`);
+                },
+                onError: async () => {
+                  await qc.invalidateQueries({ queryKey: getListWorkspaceInvitationsQueryKey() });
+                  setInvitationActionWarning(true);
+                  setInvitationActionMessage(`Cleanup for ${invite.email} could not be confirmed. Refresh the list and retry if it is still unresolved.`);
+                },
+                onSettled: () => setRetryingRevocationId(null),
+              });
+            }}><RefreshCw className="h-4 w-4" />{retryingRevocationId === invite.id ? 'Retrying cleanup…' : 'Retry Clerk cleanup'}</Button></>}</div>
             {!invite.revoked && <div className="flex items-center gap-2">
               <Button variant="outline" disabled={resendInvitation.isPending || withdrawInvitation.isPending} testId={`button-resend-invitation-${invite.id}`} onClick={() => {
                 setInvitationActionMessage('');

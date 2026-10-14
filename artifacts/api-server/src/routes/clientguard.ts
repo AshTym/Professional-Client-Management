@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { createHash, randomUUID } from "node:crypto";
 import { clerkClient } from "@clerk/express";
 import {
@@ -25,6 +25,7 @@ import {
   clientsTable,
   engagementLettersTable,
   invitationsTable,
+  invitationRevocationsTable,
   intakesTable,
   matterCloseoutItemsTable,
   mattersTable,
@@ -65,6 +66,8 @@ import {
   GetWorkspaceMemberAssignmentsResponse,
   ResendWorkspaceInvitationParams,
   ResendWorkspaceInvitationResponse,
+  RetryWorkspaceInvitationRevocationParams,
+  RetryWorkspaceInvitationRevocationResponse,
   WithdrawWorkspaceInvitationParams,
   WithdrawWorkspaceInvitationResponse,
   ListActivityQueryParams,
@@ -107,6 +110,138 @@ import {
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+
+async function attemptInvitationRevocation(
+  req: Request,
+  workspaceId: number,
+  invitationId: number,
+  clerkInvitationId: string,
+): Promise<boolean> {
+  try {
+    await db
+      .insert(invitationRevocationsTable)
+      .values({ workspaceId, invitationId, clerkInvitationId })
+      .onConflictDoNothing();
+    try {
+      await db
+        .update(invitationsTable)
+        .set({ providerRevocationFailed: true })
+        .where(
+          and(
+            eq(invitationsTable.id, invitationId),
+            eq(invitationsTable.workspaceId, workspaceId),
+          ),
+        );
+    } catch (error) {
+      req.log.warn(
+        { invitationId, error },
+        "Could not update the invitation revocation status; cleanup remains queued",
+      );
+    }
+
+    const stillFailed = await db.transaction(async (tx) => {
+      const [invitation] = await tx
+        .select({ id: invitationsTable.id })
+        .from(invitationsTable)
+        .where(
+          and(
+            eq(invitationsTable.id, invitationId),
+            eq(invitationsTable.workspaceId, workspaceId),
+          ),
+        )
+        .limit(1)
+        .for("update");
+      if (!invitation) return true;
+      const [pendingRevocation] = await tx
+        .select({ id: invitationRevocationsTable.id })
+        .from(invitationRevocationsTable)
+        .where(
+          and(
+            eq(invitationRevocationsTable.workspaceId, workspaceId),
+            eq(invitationRevocationsTable.invitationId, invitationId),
+            eq(invitationRevocationsTable.clerkInvitationId, clerkInvitationId),
+          ),
+        )
+        .limit(1)
+        .for("update");
+      if (!pendingRevocation) {
+        return false;
+      }
+      try {
+        await clerkClient.invitations.revokeInvitation(clerkInvitationId);
+      } catch (error) {
+        req.log.warn(
+          { invitationId, error },
+          "Could not revoke a Clerk invitation; cleanup remains available to retry",
+        );
+        return true;
+      }
+
+      await tx
+        .delete(invitationRevocationsTable)
+        .where(eq(invitationRevocationsTable.id, pendingRevocation.id));
+      return false;
+    });
+    if (stillFailed) return true;
+
+    return await synchronizeInvitationRevocationStatus(req, workspaceId, invitationId);
+  } catch (error) {
+    req.log.error(
+      { invitationId, error },
+      "Could not safely process Clerk invitation revocation",
+    );
+    return true;
+  }
+}
+
+async function synchronizeInvitationRevocationStatus(
+  req: Request,
+  workspaceId: number,
+  invitationId: number,
+): Promise<boolean> {
+  try {
+    return await db.transaction(async (tx) => {
+      const [invitation] = await tx
+        .select({ id: invitationsTable.id })
+        .from(invitationsTable)
+        .where(
+          and(
+            eq(invitationsTable.id, invitationId),
+            eq(invitationsTable.workspaceId, workspaceId),
+          ),
+        )
+        .limit(1)
+        .for("update");
+      if (!invitation) return true;
+      const remaining = await tx
+        .select({ id: invitationRevocationsTable.id })
+        .from(invitationRevocationsTable)
+        .where(
+          and(
+            eq(invitationRevocationsTable.workspaceId, workspaceId),
+            eq(invitationRevocationsTable.invitationId, invitationId),
+          ),
+        );
+      const failed = remaining.length > 0;
+      await tx
+        .update(invitationsTable)
+        .set({ providerRevocationFailed: failed })
+        .where(
+          and(
+            eq(invitationsTable.id, invitationId),
+            eq(invitationsTable.workspaceId, workspaceId),
+          ),
+        );
+      return failed;
+    });
+  } catch (error) {
+    req.log.warn(
+      { invitationId, error },
+      "Could not save the latest invitation revocation status",
+    );
+    return true;
+  }
+}
 
 function isWorkspaceMembershipUniqueViolation(error: unknown): boolean {
   const seen = new Set<object>();
@@ -1804,6 +1939,15 @@ function invitationResponse(
   };
 }
 
+function hasQueuedInvitationRevocation(workspaceId: number) {
+  return sql<boolean>`EXISTS (
+    SELECT 1
+    FROM ${invitationRevocationsTable}
+    WHERE ${invitationRevocationsTable.workspaceId} = ${workspaceId}
+      AND ${invitationRevocationsTable.invitationId} = ${invitationsTable.id}
+  )`;
+}
+
 router.get("/workspace/invitations", async (req, res): Promise<void> => {
   const access = await firmAccess(req, res);
   if (!access) return;
@@ -1812,6 +1956,7 @@ router.get("/workspace/invitations", async (req, res): Promise<void> => {
     return;
   }
 
+  const queuedRevocation = hasQueuedInvitationRevocation(access.workspaceId);
   const invitations = await db
     .select({
       id: invitationsTable.id,
@@ -1820,16 +1965,23 @@ router.get("/workspace/invitations", async (req, res): Promise<void> => {
       createdAt: invitationsTable.createdAt,
       expiresAt: invitationsTable.expiresAt,
       revokedAt: invitationsTable.revokedAt,
-      providerRevocationFailed: invitationsTable.providerRevocationFailed,
+      providerRevocationFailed: sql<boolean>`(
+        ${invitationsTable.providerRevocationFailed} OR ${queuedRevocation}
+      )`,
     })
     .from(invitationsTable)
     .where(
       and(
         eq(invitationsTable.workspaceId, access.workspaceId),
-        isNull(invitationsTable.acceptedAt),
+        or(
+          isNull(invitationsTable.acceptedAt),
+          eq(invitationsTable.providerRevocationFailed, true),
+          queuedRevocation,
+        ),
         or(
           isNull(invitationsTable.revokedAt),
           eq(invitationsTable.providerRevocationFailed, true),
+          queuedRevocation,
         ),
       ),
     )
@@ -2111,11 +2263,23 @@ router.post(
           .set({
             tokenHash,
             clerkInvitationId: clerkInvitation.id,
+            providerRevocationFailed:
+              current.providerRevocationFailed || current.clerkInvitationId !== null,
             createdAt: now,
             expiresAt: new Date(now.getTime() + invitationLifetimeMs),
           })
           .where(eq(invitationsTable.id, current.id))
           .returning();
+        if (current.clerkInvitationId) {
+          await tx
+            .insert(invitationRevocationsTable)
+            .values({
+              workspaceId: access.workspaceId,
+              invitationId: current.id,
+              clerkInvitationId: current.clerkInvitationId,
+            })
+            .onConflictDoNothing();
+        }
         return {
           kind: "updated" as const,
           invitation: updated,
@@ -2126,11 +2290,16 @@ router.post(
       if (result.kind !== "updated") {
         if (createdClerkInvitationId) {
           try {
-            await clerkClient.invitations.revokeInvitation(createdClerkInvitationId);
+            await attemptInvitationRevocation(
+              req,
+              access.workspaceId,
+              params.data.id,
+              createdClerkInvitationId,
+            );
           } catch (error) {
             req.log.warn(
               { invitationId: params.data.id, error },
-              "Could not revoke a Clerk invitation created for a resend that lost its state check",
+              "Could not retain a Clerk invitation created for a resend that lost its state check",
             );
           }
           createdClerkInvitationId = undefined;
@@ -2156,21 +2325,12 @@ router.post(
 
       let providerRevocationFailed = result.invitation.providerRevocationFailed;
       if (result.previousClerkInvitationId) {
-        try {
-          await clerkClient.invitations.revokeInvitation(
+        providerRevocationFailed = await attemptInvitationRevocation(
+          req,
+          access.workspaceId,
+          result.invitation.id,
             result.previousClerkInvitationId,
-          );
-        } catch (error) {
-          req.log.warn(
-            { invitationId: params.data.id, error },
-            "Could not revoke the superseded Clerk invitation",
-          );
-          providerRevocationFailed = true;
-          await db
-            .update(invitationsTable)
-            .set({ providerRevocationFailed: true })
-            .where(eq(invitationsTable.id, result.invitation.id));
-        }
+        );
       }
       res.json(
         ResendWorkspaceInvitationResponse.parse(
@@ -2183,11 +2343,16 @@ router.post(
     } catch (error) {
       if (createdClerkInvitationId) {
         try {
-          await clerkClient.invitations.revokeInvitation(createdClerkInvitationId);
+          await attemptInvitationRevocation(
+            req,
+            access.workspaceId,
+            params.data.id,
+            createdClerkInvitationId,
+          );
         } catch (revokeError) {
           req.log.warn(
             { invitationId: params.data.id, error: revokeError },
-            "Could not revoke an unsaved Clerk invitation",
+            "Could not retain an unsaved Clerk invitation for revocation",
           );
         }
       }
@@ -2236,9 +2401,23 @@ router.delete(
 
       const [withdrawn] = await tx
         .update(invitationsTable)
-        .set({ revokedAt: now })
+        .set({
+          revokedAt: now,
+          providerRevocationFailed:
+            pending.providerRevocationFailed || pending.clerkInvitationId !== null,
+        })
         .where(eq(invitationsTable.id, pending.id))
         .returning();
+      if (pending.clerkInvitationId) {
+        await tx
+          .insert(invitationRevocationsTable)
+          .values({
+            workspaceId: access.workspaceId,
+            invitationId: pending.id,
+            clerkInvitationId: pending.clerkInvitationId,
+          })
+          .onConflictDoNothing();
+      }
       return withdrawn;
     });
 
@@ -2249,19 +2428,12 @@ router.delete(
 
     let providerRevocationFailed = invitation.providerRevocationFailed;
     if (invitation.clerkInvitationId) {
-      try {
-        await clerkClient.invitations.revokeInvitation(invitation.clerkInvitationId);
-      } catch (error) {
-        req.log.warn(
-          { invitationId: params.data.id, error },
-          "Could not revoke the withdrawn Clerk invitation",
-        );
-        providerRevocationFailed = true;
-        await db
-          .update(invitationsTable)
-          .set({ providerRevocationFailed: true })
-          .where(eq(invitationsTable.id, invitation.id));
-      }
+      providerRevocationFailed = await attemptInvitationRevocation(
+        req,
+        access.workspaceId,
+        invitation.id,
+        invitation.clerkInvitationId,
+      );
     }
     res.json(
       WithdrawWorkspaceInvitationResponse.parse(
@@ -2269,6 +2441,84 @@ router.delete(
           ...invitation,
           providerRevocationFailed,
         }),
+      ),
+    );
+  },
+);
+
+router.post(
+  "/workspace/invitations/:id/retry-revocation",
+  async (req, res): Promise<void> => {
+    const access = await firmAccess(req, res);
+    if (!access) return;
+    if (!canManageInvitations(access.role)) {
+      res.status(403).json({
+        error: "Only firm owners and admins can retry invitation revocations.",
+      });
+      return;
+    }
+
+    const params = RetryWorkspaceInvitationRevocationParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.message });
+      return;
+    }
+
+    const [invitation] = await db
+      .select()
+      .from(invitationsTable)
+      .where(
+        and(
+          eq(invitationsTable.id, params.data.id),
+          eq(invitationsTable.workspaceId, access.workspaceId),
+        ),
+      )
+      .limit(1);
+    if (!invitation) {
+      res.status(404).json({ error: "This invitation was not found in your firm." });
+      return;
+    }
+    const pendingRevocations = await db
+      .select({ clerkInvitationId: invitationRevocationsTable.clerkInvitationId })
+      .from(invitationRevocationsTable)
+      .where(
+        and(
+          eq(invitationRevocationsTable.workspaceId, access.workspaceId),
+          eq(invitationRevocationsTable.invitationId, invitation.id),
+        ),
+      )
+      .orderBy(asc(invitationRevocationsTable.createdAt));
+
+    let providerRevocationFailed = invitation.providerRevocationFailed;
+    if (pendingRevocations.length > 0) {
+      for (const revocation of pendingRevocations) {
+        await attemptInvitationRevocation(
+          req,
+          access.workspaceId,
+          invitation.id,
+          revocation.clerkInvitationId,
+        );
+      }
+      providerRevocationFailed = await synchronizeInvitationRevocationStatus(
+        req,
+        access.workspaceId,
+        invitation.id,
+      );
+    } else if (
+      invitation.providerRevocationFailed &&
+      invitation.revokedAt &&
+      invitation.clerkInvitationId
+    ) {
+      providerRevocationFailed = await attemptInvitationRevocation(
+        req,
+        access.workspaceId,
+        invitation.id,
+        invitation.clerkInvitationId,
+      );
+    }
+    res.json(
+      RetryWorkspaceInvitationRevocationResponse.parse(
+        invitationResponse({ ...invitation, providerRevocationFailed }),
       ),
     );
   },

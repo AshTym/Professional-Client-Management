@@ -72,6 +72,33 @@ export const invitationsTable = pgTable(
   ],
 );
 
+export const invitationRevocationsTable = pgTable(
+  "clientguard_invitation_revocations",
+  {
+    id: serial("id").primaryKey(),
+    workspaceId: integer("workspace_id")
+      .notNull()
+      .references(() => workspacesTable.id, { onDelete: "cascade" }),
+    invitationId: integer("invitation_id")
+      .notNull()
+      .references(() => invitationsTable.id, { onDelete: "cascade" }),
+    clerkInvitationId: text("clerk_invitation_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("clientguard_invitation_revocation_provider_unique").on(
+      table.workspaceId,
+      table.clerkInvitationId,
+    ),
+    index("clientguard_invitation_revocation_invitation_idx").on(
+      table.workspaceId,
+      table.invitationId,
+    ),
+  ],
+);
+
 export const clientsTable = pgTable(
   "clientguard_clients",
   {
